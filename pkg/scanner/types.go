@@ -1,0 +1,167 @@
+package scanner
+
+import (
+	"fmt"
+)
+
+type WebVitals struct {
+	TTFB float64 `json:"ttfb"` // ms
+	FCP  float64 `json:"fcp"`  // ms
+	LCP  float64 `json:"lcp"`  // ms
+	CLS  float64 `json:"cls"`  // unitless score
+	TBT  float64 `json:"tbt"`  // ms
+}
+
+type MetricGrade struct {
+	Value     float64 `json:"value"`
+	Formatted string  `json:"formatted"`
+	Status    string  `json:"status"` // "good", "needs-improvement", "poor"
+}
+
+type DetailedGrades struct {
+	TTFB MetricGrade `json:"ttfb"`
+	FCP  MetricGrade `json:"fcp"`
+	LCP  MetricGrade `json:"lcp"`
+	CLS  MetricGrade `json:"cls"`
+	TBT  MetricGrade `json:"tbt"`
+}
+
+type ResourceTiming struct {
+	Name     string  `json:"name"`
+	Duration float64 `json:"duration"` // ms
+	Type     string  `json:"type"`     // script, img, css, fetch
+}
+
+type CategoryDiagnostic struct {
+	Category string   `json:"category"` // "ttfb", "fcp", "lcp", "cls", "tbt"
+	Title    string   `json:"title"`
+	Status   string   `json:"status"`  // "good", "needs-improvement", "poor"
+	Summary  string   `json:"summary"` // What caused the score
+	Details  []string `json:"details"` // Specific technical breakdown items
+	Fixes    []string `json:"fixes"`   // Actionable step-by-step solutions
+}
+
+type PageDiagnostics struct {
+	DNSTime             float64                        `json:"dnsTime"`
+	TCPTime             float64                        `json:"tcpTime"`
+	TLSTime             float64                        `json:"tlsTime"`
+	ServerProcessing    float64                        `json:"serverProcessing"`
+	RenderBlockingCount int                            `json:"renderBlockingCount"`
+	RenderBlockingFiles []string                       `json:"renderBlockingFiles"`
+	LCPElement          string                         `json:"lcpElement"`
+	LCPUrl              string                         `json:"lcpUrl"`
+	ShiftCount          int                            `json:"shiftCount"`
+	ShiftCauses         []string                       `json:"shiftCauses"`
+	LongTasksCount      int                            `json:"longTasksCount"`
+	MaxLongTaskMs       float64                        `json:"maxLongTaskMs"`
+	SlowestResources    []ResourceTiming               `json:"slowestResources"`
+	Categories          map[string]CategoryDiagnostic `json:"categories"`
+}
+
+type PageResult struct {
+	ID              int             `json:"id"`
+	URL             string          `json:"url"`
+	StatusCode      int             `json:"statusCode"`
+	Metrics         WebVitals       `json:"metrics"`
+	Grades          DetailedGrades  `json:"grades"`
+	Diagnostics     PageDiagnostics `json:"diagnostics"`
+	OverallStatus   string          `json:"overallStatus"` // "good", "needs-improvement", "poor", "error"
+	Error           string          `json:"error"`
+	Recommendations []string        `json:"recommendations"`
+	DurationMs      int64           `json:"durationMs"`
+}
+
+type ScanProgress struct {
+	TotalProcessed int         `json:"totalProcessed"`
+	TotalURLs      int         `json:"totalUrls"`
+	CurrentURL     string      `json:"currentUrl"`
+	LatestResult   *PageResult `json:"latestResult,omitempty"`
+	IsFinished     bool        `json:"isFinished"`
+}
+
+func CalculateGrade(metricName string, val float64) MetricGrade {
+	status := "good"
+	formatted := ""
+
+	switch metricName {
+	case "TTFB":
+		formatted = formatMs(val)
+		if val > 1800 {
+			status = "poor"
+		} else if val > 800 {
+			status = "needs-improvement"
+		}
+	case "FCP":
+		formatted = formatMs(val)
+		if val > 3000 {
+			status = "poor"
+		} else if val > 1800 {
+			status = "needs-improvement"
+		}
+	case "LCP":
+		formatted = formatMs(val)
+		if val > 4000 {
+			status = "poor"
+		} else if val > 2500 {
+			status = "needs-improvement"
+		}
+	case "CLS":
+		formatted = formatDecimal(val, 3)
+		if val > 0.25 {
+			status = "poor"
+		} else if val > 0.1 {
+			status = "needs-improvement"
+		}
+	case "TBT":
+		formatted = formatMs(val)
+		if val > 600 {
+			status = "poor"
+		} else if val > 200 {
+			status = "needs-improvement"
+		}
+	}
+
+	return MetricGrade{
+		Value:     val,
+		Formatted: formatted,
+		Status:    status,
+	}
+}
+
+func CalculateOverallStatus(g DetailedGrades) string {
+	statuses := []string{g.TTFB.Status, g.FCP.Status, g.LCP.Status, g.CLS.Status, g.TBT.Status}
+	hasPoor := false
+	hasNeedsImprovement := false
+
+	for _, s := range statuses {
+		if s == "poor" {
+			hasPoor = true
+		} else if s == "needs-improvement" {
+			hasNeedsImprovement = true
+		}
+	}
+
+	if hasPoor {
+		return "poor"
+	}
+	if hasNeedsImprovement {
+		return "needs-improvement"
+	}
+	return "good"
+}
+
+func formatMs(val float64) string {
+	if val >= 1000 {
+		return formatDecimal(val/1000.0, 2) + "s"
+	}
+	return formatDecimal(val, 0) + "ms"
+}
+
+func formatDecimal(val float64, decimals int) string {
+	if decimals == 0 {
+		return fmt.Sprintf("%.0f", val)
+	} else if decimals == 2 {
+		return fmt.Sprintf("%.2f", val)
+	}
+	return fmt.Sprintf("%.3f", val)
+}

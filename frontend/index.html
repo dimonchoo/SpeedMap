@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="uk" class="dark h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpeedMap - Core Web Vitals Sitemap Scanner</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Wails JS Runtime -->
+  <script src="/wails/ipc.js"></script>
+  <script src="/wails/runtime.js"></script>
+
+  <!-- Alpine.js CDN -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 h-full font-sans antialiased selection:bg-emerald-500 selection:text-white" x-data="speedMapApp()" x-init="initApp()">
+
+  <div class="flex flex-col h-screen overflow-hidden">
+    
+    <!-- Top Navigation Header -->
+    <header class="bg-slate-950/80 backdrop-blur border-b border-slate-800 px-6 py-3.5 flex items-center justify-between z-20 shrink-0">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 via-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+          <svg class="w-5.5 h-5.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent tracking-tight">SpeedMap</h1>
+          <p class="text-xs text-slate-400 font-medium">Core Web Vitals Sitemap Scanner</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <!-- Active Settings Badges -->
+        <div class="hidden md:flex items-center space-x-3 text-xs bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-300">
+          <div class="flex items-center space-x-1.5">
+            <span class="text-slate-400">Потоки:</span>
+            <span class="font-semibold text-emerald-400" x-text="config.concurrency"></span>
+          </div>
+          <span class="text-slate-700">|</span>
+          <div class="flex items-center space-x-1.5">
+            <span class="text-slate-400">Пристрій:</span>
+            <span class="font-semibold text-cyan-400" x-text="config.isMobile ? 'Mobile 📱' : 'Desktop 🖥️'"></span>
+          </div>
+          <template x-if="config.authUser">
+            <div class="flex items-center space-x-1.5 border-l border-slate-800 pl-3">
+              <span class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-semibold">Basic Auth</span>
+            </div>
+          </template>
+        </div>
+
+        <!-- Open Settings Modal Button -->
+        <button @click="showSettings = true" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-700 px-3.5 py-1.5 rounded-lg transition text-sm font-medium">
+          <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span>Налаштування</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Body -->
+    <main class="flex-1 flex overflow-hidden">
+
+      <!-- Left Column: Sitemap Input & Page Selector -->
+      <section class="w-96 bg-slate-950/40 border-r border-slate-800/80 flex flex-col shrink-0">
+        
+        <!-- Sitemap URL Input Form -->
+        <div class="p-4 border-b border-slate-800/80 space-y-3">
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Sitemap / Domain URL</label>
+          <div class="flex space-x-2">
+            <input type="text" x-model="sitemapInput" @keydown.enter="parseSitemap()" placeholder="https://example.com/sitemap.xml"
+              class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono">
+            <button @click="parseSitemap()" :disabled="isParsing"
+              class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium px-3.5 py-2 rounded-lg text-sm transition flex items-center shrink-0">
+              <template x-if="!isParsing">
+                <span>Парсинг</span>
+              </template>
+              <template x-if="isParsing">
+                <svg class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </template>
+            </button>
+          </div>
+          <p x-if="parseError" class="text-xs text-rose-400 font-medium" x-text="parseError"></p>
+        </div>
+
+        <!-- Discovered URLs List Header & Filter -->
+        <div class="px-4 py-3 border-b border-slate-800/60 flex items-center justify-between bg-slate-900/30">
+          <div class="flex items-center space-x-2">
+            <span class="text-xs font-semibold text-slate-300">Знайдені сторінки</span>
+            <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-slate-300" x-text="discoveredUrls.length"></span>
+          </div>
+          <div class="flex space-x-2 text-xs">
+            <button @click="selectAllUrls()" class="text-emerald-400 hover:underline">Усі</button>
+            <span class="text-slate-600">/</span>
+            <button @click="deselectAllUrls()" class="text-slate-400 hover:underline">Жодної</button>
+          </div>
+        </div>
+
+        <!-- Discovered URL Search Box -->
+        <template x-if="discoveredUrls.length > 0">
+          <div class="px-4 py-2 bg-slate-950/20 border-b border-slate-800/40">
+            <input type="text" x-model="urlFilter" placeholder="Фільтр сторінок..."
+              class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-slate-700">
+          </div>
+        </template>
+
+        <!-- Discovered URLs Scrollable List -->
+        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+          <template x-if="discoveredUrls.length === 0 && !isParsing">
+            <div class="text-center py-12 px-4 text-slate-500 space-y-2">
+              <svg class="w-10 h-10 mx-auto opacity-40 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <p class="text-xs font-medium">Введіть URL sitemap.xml для виявлення URL сторінок</p>
+            </div>
+          </template>
+
+          <template x-for="(item, idx) in filteredDiscoveredUrls" :key="item.url">
+            <label class="flex items-center space-x-2.5 p-2 rounded-lg hover:bg-slate-800/60 cursor-pointer text-xs group transition">
+              <input type="checkbox" :value="item.url" x-model="selectedUrls"
+                class="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500/20 h-4 w-4">
+              <span class="truncate text-slate-300 group-hover:text-white font-mono flex-1" x-text="item.url"></span>
+            </label>
+          </template>
+        </div>
+
+        <!-- Start Scan Action Footer -->
+        <div class="p-4 border-t border-slate-800 bg-slate-950/80">
+          <button @click="startScan()" :disabled="selectedUrls.length === 0 || isScanning"
+            class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 text-white font-semibold py-2.5 px-4 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center space-x-2 transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>Запустити Сканування (<span x-text="selectedUrls.length"></span>)</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Right Column: Live Status & Results Table -->
+      <section class="flex-1 flex flex-col overflow-hidden bg-slate-900">
+        
+        <!-- Live Scan Progress Header Bar (Shown during scan or complete) -->
+        <template x-if="scanProgress || isScanning || scanResults.length > 0">
+          <div class="bg-slate-950/60 border-b border-slate-800 px-6 py-4 space-y-3 shrink-0">
+            
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <template x-if="isScanning">
+                  <span class="flex h-3 w-3 relative">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                </template>
+                <div>
+                  <h2 class="text-sm font-semibold text-slate-200">
+                    <span x-text="isScanning ? 'Сканування сторінок...' : 'Сканування завершено'"></span>
+                  </h2>
+                  <p class="text-xs text-slate-400 font-mono truncate max-w-lg" x-text="currentScanningUrl"></p>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-4">
+                <div class="text-xs text-slate-400">
+                  Оброблено: <span class="font-bold text-slate-100" x-text="processedCount"></span> / <span class="font-bold text-slate-100" x-text="totalToScan"></span>
+                </div>
+                <template x-if="isScanning">
+                  <button @click="cancelScan()" class="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-medium px-3 py-1 rounded text-xs transition">
+                    Скасувати
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div class="bg-gradient-to-r from-emerald-500 to-cyan-400 h-2 rounded-full transition-all duration-300"
+                :style="`width: ${progressPercentage}%`"></div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Stats Overview Cards -->
+        <template x-if="scanResults.length > 0">
+          <div class="grid grid-cols-4 gap-4 p-6 pb-2 shrink-0">
+            <div class="bg-slate-950/40 border border-slate-800 rounded-xl p-3.5">
+              <div class="text-xs text-slate-400 font-medium">Всього перевірено</div>
+              <div class="text-2xl font-bold text-slate-100 mt-1" x-text="scanResults.length"></div>
+            </div>
+            <div class="bg-emerald-950/20 border border-emerald-800/40 rounded-xl p-3.5">
+              <div class="text-xs text-emerald-400 font-medium">Хороші 🟢</div>
+              <div class="text-2xl font-bold text-emerald-400 mt-1" x-text="countByStatus('good')"></div>
+            </div>
+            <div class="bg-amber-950/20 border border-amber-800/40 rounded-xl p-3.5">
+              <div class="text-xs text-amber-400 font-medium">Потребують уваги 🟡</div>
+              <div class="text-2xl font-bold text-amber-400 mt-1" x-text="countByStatus('needs-improvement')"></div>
+            </div>
+            <div class="bg-rose-950/20 border border-rose-800/40 rounded-xl p-3.5">
+              <div class="text-xs text-rose-400 font-medium">Критичні / Помилки 🔴</div>
+              <div class="text-2xl font-bold text-rose-400 mt-1" x-text="countByStatus('poor') + countByStatus('error')"></div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Results Toolbar & Filters -->
+        <div class="px-6 py-3 flex items-center justify-between border-b border-slate-800 shrink-0">
+          <!-- Status Filter Tabs -->
+          <div class="flex space-x-1 bg-slate-950/60 p-1 rounded-lg border border-slate-800 text-xs">
+            <button @click="statusFilter = 'all'" :class="statusFilter === 'all' ? 'bg-slate-800 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
+              Усі (<span x-text="scanResults.length"></span>)
+            </button>
+            <button @click="statusFilter = 'critical'" :class="statusFilter === 'critical' ? 'bg-rose-950/60 text-rose-400 border border-rose-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
+              Критичні 🔴
+            </button>
+            <button @click="statusFilter = 'needs-improvement'" :class="statusFilter === 'needs-improvement' ? 'bg-amber-950/60 text-amber-400 border border-amber-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
+              Потребують уваги 🟡
+            </button>
+            <button @click="statusFilter = 'good'" :class="statusFilter === 'good' ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
+              Хороші 🟢
+            </button>
+          </div>
+
+          <div class="text-xs text-slate-400">
+            Клікніть рядок для деталей або 🔄 для пріоритетної перевірки
+          </div>
+        </div>
+
+        <!-- Results Table Scroll Container (100% Flush Sticky Header with zero padding gap) -->
+        <div class="flex-1 overflow-auto relative">
+          <template x-if="scanResults.length === 0 && !isScanning">
+            <div class="h-full flex flex-col items-center justify-center text-slate-500 space-y-3 p-6">
+              <svg class="w-16 h-16 stroke-1 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+              <p class="text-sm font-medium">Результати сканування з'являться тут</p>
+            </div>
+          </template>
+
+          <template x-if="scanResults.length > 0">
+            <table class="w-full text-left border-collapse">
+              <!-- Flush Sticky Table Header (Pinned 100% to top edge) -->
+              <thead class="sticky top-0 z-10 bg-slate-950 border-b border-slate-800 shadow-md">
+                <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  <th class="py-3 px-6">#</th>
+                  <th class="py-3 px-3 max-w-[200px] xl:max-w-[240px]">URL сторінки</th>
+                  <th class="py-3 px-3 text-center">Статус</th>
+                  <th class="py-3 px-3 text-right">TTFB</th>
+                  <th class="py-3 px-3 text-right">FCP</th>
+                  <th class="py-3 px-3 text-right">LCP</th>
+                  <th class="py-3 px-3 text-right">CLS</th>
+                  <th class="py-3 px-3 text-right">TBT</th>
+                  <th class="py-3 px-6 text-center">Дії</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 text-xs font-mono">
+                <template x-for="item in filteredResults" :key="item.id">
+                  <tr @click="selectedDetail = item" class="hover:bg-slate-800/50 cursor-pointer transition group relative"
+                    :class="rescanLoadingMap[item.id] ? 'bg-cyan-950/30 ring-1 ring-cyan-500/50' : (item.overallStatus === 'error' ? 'bg-rose-950/10' : '')">
+                    <td class="py-3 px-6 text-slate-500" x-text="item.id"></td>
+
+                    <!-- Compact Clickable URL Link with Full URL Tooltip -->
+                    <td class="py-3 px-3 font-mono max-w-[200px] xl:max-w-[240px] truncate">
+                      <button @click.stop="openUrlInBrowser(item.url)"
+                        class="text-slate-200 hover:text-emerald-400 underline decoration-slate-700 hover:decoration-emerald-400 transition inline-flex items-center space-x-1 text-left group-hover:text-white max-w-full"
+                        :title="'Відкрити сторінку у браузері:\n' + item.url">
+                        <span class="truncate" x-text="item.url"></span>
+                        <span class="text-slate-500 group-hover:text-emerald-400 text-[10px] shrink-0">↗</span>
+                      </button>
+                    </td>
+
+                    <!-- Status Badge -->
+                    <td class="py-3 px-3 text-center">
+                      <template x-if="rescanLoadingMap[item.id]">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold inline-flex items-center space-x-1 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                          <svg class="animate-spin h-3 w-3 text-cyan-300" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Сканується...</span>
+                        </span>
+                      </template>
+                      <template x-if="!rescanLoadingMap[item.id]">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold inline-flex items-center space-x-1"
+                          :title="item.error || 'HTTP Status ' + item.statusCode"
+                          :class="item.statusCode >= 200 && item.statusCode < 300 && !item.error ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'">
+                          <span x-text="item.statusCode || 'ERR'"></span>
+                          <template x-if="item.error">
+                            <span class="text-rose-400 ml-1" title="Помилка при зборі метрик">⚠️</span>
+                          </template>
+                        </span>
+                      </template>
+                    </td>
+
+                    <!-- TTFB -->
+                    <td class="py-3 px-3 text-right">
+                      <span class="px-2 py-0.5 rounded text-[11px] font-medium" :class="badgeClass(item.grades?.ttfb?.status)" x-text="item.grades?.ttfb?.formatted || '-'"></span>
+                    </td>
+
+                    <!-- FCP -->
+                    <td class="py-3 px-3 text-right">
+                      <span class="px-2 py-0.5 rounded text-[11px] font-medium" :class="badgeClass(item.grades?.fcp?.status)" x-text="item.grades?.fcp?.formatted || '-'"></span>
+                    </td>
+
+                    <!-- LCP -->
+                    <td class="py-3 px-3 text-right">
+                      <span class="px-2 py-0.5 rounded text-[11px] font-medium" :class="badgeClass(item.grades?.lcp?.status)" x-text="item.grades?.lcp?.formatted || '-'"></span>
+                    </td>
+
+                    <!-- CLS -->
+                    <td class="py-3 px-3 text-right">
+                      <span class="px-2 py-0.5 rounded text-[11px] font-medium" :class="badgeClass(item.grades?.cls?.status)" x-text="item.grades?.cls?.formatted || '-'"></span>
+                    </td>
+
+                    <!-- TBT -->
+                    <td class="py-3 px-3 text-right">
+                      <span class="px-2 py-0.5 rounded text-[11px] font-medium" :class="badgeClass(item.grades?.tbt?.status)" x-text="item.grades?.tbt?.formatted || '-'"></span>
+                    </td>
+
+                    <!-- Actions Column: Details & Priority Single Rescan Button -->
+                    <td class="py-3 px-6 text-center">
+                      <div class="flex items-center justify-center space-x-2">
+                        <!-- Priority Single Rescan Button -->
+                        <button @click.stop="rescanSingle(item)" :disabled="rescanLoadingMap[item.id]"
+                          class="p-1 rounded bg-slate-800 hover:bg-cyan-600 text-slate-300 hover:text-white transition shadow" title="Пріоритетно пересканувати лише цю сторінку">
+                          <template x-if="!rescanLoadingMap[item.id]">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                          </template>
+                          <template x-if="rescanLoadingMap[item.id]">
+                            <svg class="animate-spin h-3.5 w-3.5 text-cyan-400" fill="none" viewBox="0 0 24 24">
+                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          </template>
+                        </button>
+                        <button class="text-cyan-400 hover:text-cyan-300 underline text-xs font-sans">Деталі</button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </template>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- SETTINGS MODAL / SLIDE-OVER -->
+    <div x-show="showSettings" x-cloak class="fixed inset-0 z-50 overflow-hidden" aria-labelledby="slide-over-title" role="dialog" aria-modal="true">
+      <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" @click="showSettings = false"></div>
+
+      <div class="fixed inset-y-0 right-0 pl-10 max-w-full flex">
+        <div class="w-screen max-w-md bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col">
+          
+          <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+            <h2 class="text-lg font-bold text-slate-100">Налаштування сканера</h2>
+            <button @click="showSettings = false" class="text-slate-400 hover:text-slate-200">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6 space-y-6 text-sm">
+            
+            <!-- Concurrency Slider -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center">
+                <label class="font-semibold text-slate-200">Паралелелізм (Concurrency)</label>
+                <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono font-bold" x-text="config.concurrency + ' Chrome'"></span>
+              </div>
+              <input type="range" min="1" max="10" x-model.number="config.concurrency"
+                class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
+              <p class="text-xs text-slate-400">Кількість одночасних процесів Chrome (1 - 10)</p>
+            </div>
+
+            <hr class="border-slate-800">
+
+            <!-- Device Emulation Switch -->
+            <div class="space-y-3">
+              <label class="font-semibold text-slate-200 block">Емуляция пристрою (Device Mode)</label>
+              <div class="grid grid-cols-2 gap-3">
+                <button type="button" @click="config.isMobile = false"
+                  :class="!config.isMobile ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold' : 'bg-slate-800/60 border-slate-700 text-slate-400'"
+                  class="border rounded-xl p-3 text-center transition flex flex-col items-center space-y-1">
+                  <span class="text-lg">🖥️</span>
+                  <span class="text-xs">Desktop (1920x1080)</span>
+                </button>
+
+                <button type="button" @click="config.isMobile = true"
+                  :class="config.isMobile ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold' : 'bg-slate-800/60 border-slate-700 text-slate-400'"
+                  class="border rounded-xl p-3 text-center transition flex flex-col items-center space-y-1">
+                  <span class="text-lg">📱</span>
+                  <span class="text-xs">Mobile (375x812)</span>
+                </button>
+              </div>
+            </div>
+
+            <hr class="border-slate-800">
+
+            <!-- Basic Auth -->
+            <div class="space-y-3">
+              <label class="font-semibold text-slate-200 block">HTTP Basic Authentication</label>
+              <div class="space-y-2">
+                <input type="text" x-model="config.authUser" placeholder="Username"
+                  class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none">
+                <input type="password" x-model="config.authPass" placeholder="Password"
+                  class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none">
+              </div>
+            </div>
+
+            <hr class="border-slate-800">
+
+            <!-- Custom Headers -->
+            <div class="space-y-3">
+              <div class="flex justify-between items-center">
+                <label class="font-semibold text-slate-200">Custom HTTP Headers</label>
+                <button @click="addHeader()" class="text-xs text-emerald-400 hover:underline font-medium">+ Додати заголовок</button>
+              </div>
+              
+              <div class="space-y-2">
+                <template x-for="(h, idx) in config.headers" :key="idx">
+                  <div class="flex space-x-2">
+                    <input type="text" x-model="h.key" placeholder="Header Name"
+                      class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                    <input type="text" x-model="h.value" placeholder="Value"
+                      class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                    <button @click="removeHeader(idx)" class="text-rose-400 hover:text-rose-300 p-1">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="p-6 border-t border-slate-800">
+            <button @click="showSettings = false" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-xl transition">
+              Зберегти та закрити
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- DETAIL SLIDE-OVER PANEL -->
+    <div x-show="selectedDetail" x-cloak class="fixed inset-0 z-50 overflow-hidden">
+      <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" @click="selectedDetail = null"></div>
+
+      <div class="fixed inset-y-0 right-0 pl-10 max-w-full flex">
+        <div class="w-screen max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col">
+          
+          <!-- Header with URL Link & Rescan Button -->
+          <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+            <div class="flex-1 pr-4 truncate">
+              <h3 class="text-base font-bold text-slate-100">Детальний аналіз Web Vitals</h3>
+              <button @click="openUrlInBrowser(selectedDetail?.url)" class="text-xs text-emerald-400 hover:underline font-mono truncate block mt-0.5" title="Відкрити сторінку у браузері">
+                <span x-text="selectedDetail?.url"></span> ↗
+              </button>
+            </div>
+            
+            <div class="flex items-center space-x-2 shrink-0">
+              <!-- Rescan Button inside Slide-over -->
+              <button @click="rescanSingle(selectedDetail)" :disabled="rescanLoadingMap[selectedDetail?.id]"
+                class="flex items-center space-x-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
+                <template x-if="!rescanLoadingMap[selectedDetail?.id]">
+                  <span class="flex items-center space-x-1">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    <span>Пріоритетна перевірка 🔄</span>
+                  </span>
+                </template>
+                <template x-if="rescanLoadingMap[selectedDetail?.id]">
+                  <span class="flex items-center space-x-1 text-cyan-400">
+                    <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Сканування...</span>
+                  </span>
+                </template>
+              </button>
+
+              <button @click="selectedDetail = null" class="text-slate-400 hover:text-slate-200 p-1">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-6 space-y-6">
+
+            <!-- Error Banner (Shown when scan failed) -->
+            <template x-if="selectedDetail?.error">
+              <div class="bg-rose-950/50 border border-rose-800/80 p-4 rounded-xl space-y-1.5 shadow-lg">
+                <div class="flex items-center space-x-2 text-rose-400 font-bold text-xs">
+                  <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  </svg>
+                  <span>Причина помилки (Scan Failure)</span>
+                </div>
+                <p class="text-xs text-rose-300 font-mono break-words leading-relaxed" x-text="selectedDetail?.error"></p>
+              </div>
+            </template>
+            
+            <!-- Overall Status Badge -->
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="text-xs text-slate-400">Загальний оцінка</div>
+                <div class="text-lg font-bold capitalize mt-0.5"
+                  :class="selectedDetail?.overallStatus === 'good' ? 'text-emerald-400' : (selectedDetail?.overallStatus === 'needs-improvement' ? 'text-amber-400' : 'text-rose-400')"
+                  x-text="selectedDetail?.overallStatus"></div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-slate-400">HTTP Status</div>
+                <div class="text-sm font-mono font-bold text-slate-200" x-text="selectedDetail?.statusCode || 'ERR'"></div>
+              </div>
+            </div>
+
+            <!-- Granular LCP Element Diagnostic Card -->
+            <template x-if="selectedDetail?.diagnostics?.lcpElement">
+              <div class="bg-slate-950/80 p-4 rounded-xl border border-cyan-500/30 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-cyan-400 uppercase tracking-wider">🎯 Головний елемент сторінки (LCP Element)</span>
+                  <span class="font-mono text-slate-400" x-text="selectedDetail?.grades?.lcp?.formatted"></span>
+                </div>
+                <div class="bg-slate-900 p-2.5 rounded-lg font-mono text-xs text-emerald-300 border border-slate-800 break-all" x-text="selectedDetail?.diagnostics?.lcpElement"></div>
+                <template x-if="selectedDetail?.diagnostics?.lcpUrl">
+                  <div class="text-xs text-slate-400 truncate">
+                    Ресурс: <a :href="selectedDetail?.diagnostics?.lcpUrl" target="_blank" class="text-cyan-400 underline font-mono" x-text="selectedDetail?.diagnostics?.lcpUrl"></a>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <!-- Categorized Core Web Vitals Audit (All 5 Categories) -->
+            <template x-if="selectedDetail?.diagnostics?.categories">
+              <div class="space-y-3">
+                <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider">📊 Аудит продуктивності за 5 категоріями</h4>
+                <div class="space-y-3">
+                  <template x-for="(cat, key) in selectedDetail.diagnostics.categories" :key="key">
+                    <div class="bg-slate-950/60 p-4 rounded-xl border space-y-2"
+                      :class="cat.status === 'good' ? 'border-emerald-500/20' : (cat.status === 'needs-improvement' ? 'border-amber-500/30' : 'border-rose-500/40')">
+                      
+                      <!-- Category Title & Status -->
+                      <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                          <span class="text-sm" x-text="cat.status === 'good' ? '🟢' : (cat.status === 'needs-improvement' ? '🟡' : '🔴')"></span>
+                          <span class="font-bold text-xs text-slate-200" x-text="cat.title"></span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase" :class="badgeClass(cat.status)" x-text="cat.status"></span>
+                      </div>
+
+                      <!-- Summary -->
+                      <p class="text-xs text-slate-300 font-medium" x-text="cat.summary"></p>
+
+                      <!-- Details Breakdown -->
+                      <template x-if="cat.details && cat.details.length > 0">
+                        <div class="bg-slate-900/80 p-2.5 rounded-lg text-[11px] font-mono space-y-1 border border-slate-800 text-slate-300">
+                          <div class="text-slate-400 font-sans font-semibold text-[10px] uppercase">Фактори впливу:</div>
+                          <template x-for="d in cat.details" :key="d">
+                            <div class="flex items-start space-x-1.5">
+                              <span class="text-slate-500">•</span>
+                              <span x-text="d"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+
+                      <!-- Actionable Step-by-Step Fixes -->
+                      <template x-if="cat.fixes && cat.fixes.length > 0 && cat.status !== 'good'">
+                        <div class="space-y-1.5 pt-1">
+                          <div class="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">Як виправити:</div>
+                          <template x-for="fix in cat.fixes" :key="fix">
+                            <div class="text-xs text-slate-300 leading-relaxed flex items-start space-x-2 bg-amber-500/5 p-2 rounded border border-amber-500/10">
+                              <span class="text-amber-400 font-bold shrink-0">✓</span>
+                              <span x-text="fix"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Slowest Resources Diagnostic Section -->
+            <template x-if="selectedDetail?.diagnostics?.slowestResources && selectedDetail?.diagnostics?.slowestResources.length > 0">
+              <div class="space-y-3">
+                <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider">🐌 Найповільніші ресурси сторінки</h4>
+                <div class="bg-slate-950/60 rounded-xl border border-slate-800 overflow-hidden">
+                  <table class="w-full text-xs text-left font-mono">
+                    <thead class="bg-slate-900/80 text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th class="p-2.5">Ресурс</th>
+                        <th class="p-2.5">Тип</th>
+                        <th class="p-2.5 text-right">Час (ms)</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                      <template x-for="r in selectedDetail?.diagnostics?.slowestResources" :key="r.name">
+                        <tr>
+                          <td class="p-2.5 truncate max-w-[200px] text-slate-200" x-text="r.name"></td>
+                          <td class="p-2.5 text-slate-400 text-[11px]" x-text="r.type"></td>
+                          <td class="p-2.5 text-right font-bold" :class="r.duration > 500 ? 'text-rose-400' : 'text-amber-400'" x-text="r.duration + 'ms'"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/src/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "SpeedMap",
+  "outputfilename": "SpeedMap",
+  "wailsjsdir": "./frontend",
+  "author": {
+    "name": "Dmytro Buhaiov",
+    "email": "dmytro@buhaiov"
+  }
+}
