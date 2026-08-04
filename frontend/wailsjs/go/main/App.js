@@ -6,6 +6,10 @@ export function CancelScan() {
   return window['go']['main']['App']['CancelScan']();
 }
 
+export function ComputeSiteAnalytics(arg1, arg2) {
+  return window['go']['main']['App']['ComputeSiteAnalytics'](arg1, arg2);
+}
+
 export function OpenURL(arg1) {
   return window['go']['main']['App']['OpenURL'](arg1);
 }
@@ -20,4 +24,8 @@ export function RescanSingleURL(arg1, arg2, arg3) {
 
 export function StartScan(arg1, arg2) {
   return window['go']['main']['App']['StartScan'](arg1, arg2);
+}
+
+export function ValidateW3C(arg1) {
+  return window['go']['main']['App']['ValidateW3C'](arg1);
 }

@@ -14,13 +14,24 @@ function speedMapApp() {
     },
 
     // UI state
+    activeTab: 'pages', // 'pages' | 'analytics'
     showSettings: false,
+    showLogDrawer: false,
     sitemapInput: 'https://example.com/sitemap.xml',
     discoveredUrls: [],
     selectedUrls: [],
     urlFilter: '',
     isParsing: false,
     parseError: '',
+
+    // Activity Log & Toast Feed
+    activityLogs: [],
+    toast: {
+      show: false,
+      type: 'info', // 'info' | 'success' | 'warning' | 'error'
+      title: '',
+      message: ''
+    },
 
     // Scan state
     isScanning: false,
@@ -32,11 +43,21 @@ function speedMapApp() {
     statusFilter: 'all',
     selectedDetail: null,
     rescanLoadingMap: {},
+    w3cLoadingMap: {},
+
+    // Site Analytics & Comparison State
+    siteAnalytics: null,
+    runComparison: null,
+    isComputingAnalytics: false,
 
     initApp() {
+      console.log("[JS LOG] speedMapApp initialized.");
+      this.addLog('info', 'SpeedMap додаток готовий до роботи.');
+
       // Listen to Wails scan progress events
       if (window.runtime && window.runtime.EventsOn) {
-        window.runtime.EventsOn("scan:progress", (progress) => {
+        window.runtime.EventsOn("scan:progress", async (progress) => {
+          console.log("[JS LOG] scan:progress event:", progress);
           this.scanProgress = progress;
           this.processedCount = progress.totalProcessed;
           this.totalToScan = progress.totalUrls;
@@ -52,16 +73,59 @@ function speedMapApp() {
               this.scanResults.push(progress.latestResult);
               this.scanResults = [...this.scanResults];
             }
+
+            this.addLog('info', `Оброблено сторінку [${progress.latestResult.id}]: ${progress.latestResult.url} (${progress.latestResult.overallStatus})`);
           }
 
           if (progress.isFinished) {
             this.isScanning = false;
+            this.showToast('success', 'Сканування завершено', `Всього перевірено ${this.scanResults.length} сторінок.`);
+            this.addLog('success', `Сканування завершено! Усього оброблено ${this.scanResults.length} сторінок.`);
+            await this.updateAnalytics();
           }
         });
 
         window.runtime.EventsOn("scan:canceled", () => {
           this.isScanning = false;
+          this.showToast('warning', 'Сканування скасовано', 'Сканування зупинено за запитом.');
+          this.addLog('warning', 'Сканування скасовано користувачем.');
         });
+      }
+    },
+
+    addLog(type, message) {
+      const timeStr = new Date().toLocaleTimeString('uk-UA');
+      this.activityLogs.unshift({ time: timeStr, type: type, message: message });
+      if (this.activityLogs.length > 100) {
+        this.activityLogs.pop();
+      }
+    },
+
+    showToast(type, title, message) {
+      this.toast = { show: true, type, title, message };
+      setTimeout(() => {
+        if (this.toast.title === title) {
+          this.toast.show = false;
+        }
+      }, 5000);
+    },
+
+    async updateAnalytics() {
+      if (this.scanResults.length === 0) return;
+      this.isComputingAnalytics = true;
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.ComputeSiteAnalytics) {
+          const res = await window.go.main.App.ComputeSiteAnalytics(this.config.sitemapUrl || this.sitemapInput, this.scanResults);
+          if (res) {
+            this.siteAnalytics = res.analytics;
+            this.runComparison = res.comparison;
+            this.addLog('info', `Оновлено загальну статистику сайту: Health Score = ${this.siteAnalytics.healthScore}%`);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to compute analytics:", err);
+      } finally {
+        this.isComputingAnalytics = false;
       }
     },
 
@@ -75,6 +139,8 @@ function speedMapApp() {
       this.isParsing = true;
       this.parseError = '';
       this.config.sitemapUrl = this.sitemapInput.trim();
+      this.addLog('info', `Запит на парсинг sitemap: ${this.sitemapInput.trim()}`);
+      this.showToast('info', 'Парсинг sitemap', `Завантаження та парсинг ${this.sitemapInput.trim()}...`);
 
       try {
         let urls = [];
@@ -91,8 +157,12 @@ function speedMapApp() {
 
         this.discoveredUrls = urls;
         this.selectedUrls = [...urls]; // Select all by default
+        this.addLog('success', `Успішно знайдено ${urls.length} сторінок у sitemap.`);
+        this.showToast('success', 'Sitemap розпарсено', `Знайдено ${urls.length} URL для перевірки.`);
       } catch (err) {
         this.parseError = err.message || 'Помилка при парсингу sitemap';
+        this.addLog('error', `Помилка парсингу sitemap: ${this.parseError}`);
+        this.showToast('error', 'Помилка Sitemap', this.parseError);
       } finally {
         this.isParsing = false;
       }
@@ -130,9 +200,14 @@ function speedMapApp() {
 
       this.isScanning = true;
       this.scanResults = [];
+      this.siteAnalytics = null;
+      this.runComparison = null;
       this.processedCount = 0;
       this.totalToScan = this.selectedUrls.length;
       this.currentScanningUrl = 'Запуск процесів Chrome...';
+
+      this.addLog('info', `Запуск повного сканування (${this.selectedUrls.length} сторінок, ${this.config.concurrency} Chrome потоків)...`);
+      this.showToast('info', 'Сканування запущено', `Сканується ${this.selectedUrls.length} сторінок...`);
 
       try {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.StartScan) {
@@ -140,19 +215,33 @@ function speedMapApp() {
         }
       } catch (err) {
         alert("Не вдалося запустити сканування: " + err.message);
+        this.addLog('error', `Не вдалося запустити сканування: ${err.message}`);
+        this.showToast('error', 'Помилка старту', err.message);
         this.isScanning = false;
       }
     },
 
     // Priority Single Rescan URL
     async rescanSingle(item) {
-      if (!item || !item.url) return;
-      this.rescanLoadingMap[item.id] = true;
+      console.log("[JS LOG] rescanSingle clicked:", item);
+      if (!item || !item.url) {
+        console.warn("[JS LOG] rescanSingle missing item or url:", item);
+        return;
+      }
+      this.rescanLoadingMap = { ...this.rescanLoadingMap, [item.id]: true };
+
+      this.addLog('info', `🔄 Пріоритетна перевірка сторінки [${item.id}]: ${item.url}`);
+      this.showToast('info', 'Повторна перевірка', `Запущено сканування сторінки: ${item.url}`);
 
       try {
         let updatedResult = null;
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.RescanSingleURL) {
+          console.log("[JS LOG] Calling window.go.main.App.RescanSingleURL...");
           updatedResult = await window.go.main.App.RescanSingleURL(this.config, item.url, item.id);
+          console.log("[JS LOG] RescanSingleURL returned:", updatedResult);
+        } else {
+          console.error("[JS LOG] window.go.main.App.RescanSingleURL is NOT available!");
+          throw new Error("Wails backend RescanSingleURL method is unavailable");
         }
 
         if (updatedResult) {
@@ -164,11 +253,79 @@ function speedMapApp() {
           if (this.selectedDetail && this.selectedDetail.id === item.id) {
             this.selectedDetail = updatedResult;
           }
+
+          if (updatedResult.error) {
+            this.addLog('error', `❌ Помилка перевірки [${item.id}]: ${updatedResult.error}`);
+            this.showToast('error', 'Помилка сканування', updatedResult.error);
+          } else {
+            this.addLog('success', `✅ Успішно перевірено [${item.id}]: Status ${updatedResult.statusCode}, LCP ${updatedResult.grades?.lcp?.formatted || '-'}`);
+            this.showToast('success', 'Сторінку оновлено', `Отримано нові показники для ${item.url}`);
+          }
+
+          await this.updateAnalytics();
         }
       } catch (err) {
-        alert("Помилка при повторному скануванні: " + err.message);
+        console.error("[JS LOG] Error in rescanSingle:", err);
+        this.addLog('error', `Помилка при повторному скануванні: ${err.message}`);
+        this.showToast('error', 'Помилка повторного сканування', err.message);
       } finally {
-        this.rescanLoadingMap[item.id] = false;
+        this.rescanLoadingMap = { ...this.rescanLoadingMap, [item.id]: false };
+      }
+    },
+
+    // Official W3C Nu API Validation
+    async validateW3C(item) {
+      console.log("[JS LOG] validateW3C clicked:", item);
+      if (!item || !item.url) {
+        console.warn("[JS LOG] validateW3C missing item or url:", item);
+        return;
+      }
+      this.w3cLoadingMap = { ...this.w3cLoadingMap, [item.id]: true };
+
+      this.addLog('info', `🌐 Запит на W3C HTML5 валідацію: ${item.url}`);
+      this.showToast('info', 'W3C Валідація', `Надсилання HTML до W3C Nu Validator API...`);
+
+      try {
+        let report = null;
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.ValidateW3C) {
+          console.log("[JS LOG] Calling window.go.main.App.ValidateW3C...");
+          report = await window.go.main.App.ValidateW3C(item.url);
+          console.log("[JS LOG] ValidateW3C returned:", report);
+        } else {
+          console.error("[JS LOG] window.go.main.App.ValidateW3C is NOT available!");
+          throw new Error("Wails backend ValidateW3C method is unavailable");
+        }
+
+        if (report) {
+          if (!item.diagnostics) item.diagnostics = {};
+          item.diagnostics.w3c = report;
+
+          const idx = this.scanResults.findIndex(r => r.id === item.id);
+          if (idx >= 0) {
+            this.scanResults[idx] = item;
+            this.scanResults = [...this.scanResults];
+          }
+          if (this.selectedDetail && this.selectedDetail.id === item.id) {
+            this.selectedDetail = item;
+          }
+
+          if (report.error) {
+            this.addLog('error', `❌ Помилка W3C Валідації для ${item.url}: ${report.error}`);
+            this.showToast('error', 'Помилка W3C API', report.error);
+          } else if (report.isValid) {
+            this.addLog('success', `🟢 W3C Валідацію пройдено ідеально! 0 помилок.`);
+            this.showToast('success', 'W3C Валідно 🟢', 'Сторінка відповідає стандартам W3C.');
+          } else {
+            this.addLog('warning', `⚠️ W3C Звіт для ${item.url}: ${report.errorCount} помилок, ${report.warningCount} варнінгів.`);
+            this.showToast('warning', 'Зауваження W3C', `Знайдено ${report.errorCount} помилок та ${report.warningCount} варнінгів у розмітці.`);
+          }
+        }
+      } catch (err) {
+        console.error("[JS LOG] Error in validateW3C:", err);
+        this.addLog('error', `Помилка W3C Валідації: ${err.message}`);
+        this.showToast('error', 'W3C Помилка', err.message);
+      } finally {
+        this.w3cLoadingMap = { ...this.w3cLoadingMap, [item.id]: false };
       }
     },
 

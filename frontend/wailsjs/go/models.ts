@@ -1,3 +1,68 @@
+export namespace analytics {
+	
+	export class ResourceImpact {
+	    name: string;
+	    type: string;
+	    occurrences: number;
+	    avgDurationMs: number;
+	    totalDurationMs: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ResourceImpact(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.occurrences = source["occurrences"];
+	        this.avgDurationMs = source["avgDurationMs"];
+	        this.totalDurationMs = source["totalDurationMs"];
+	    }
+	}
+	export class SiteAnalytics {
+	    totalPages: number;
+	    healthScore: number;
+	    statusCounts: Record<string, number>;
+	    averageMetrics: Record<string, number>;
+	    topResourceBottlenecks: ResourceImpact[];
+	    globalFixes: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SiteAnalytics(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalPages = source["totalPages"];
+	        this.healthScore = source["healthScore"];
+	        this.statusCounts = source["statusCounts"];
+	        this.averageMetrics = source["averageMetrics"];
+	        this.topResourceBottlenecks = this.convertValues(source["topResourceBottlenecks"], ResourceImpact);
+	        this.globalFixes = source["globalFixes"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace config {
 	
 	export class CustomHeader {
@@ -36,6 +101,74 @@ export namespace config {
 	        this.headers = this.convertValues(source["headers"], CustomHeader);
 	        this.isMobile = source["isMobile"];
 	        this.timeoutSec = source["timeoutSec"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace history {
+	
+	export class RunComparison {
+	    hasPrevious: boolean;
+	    previousTime: string;
+	    previousScore: number;
+	    currentScore: number;
+	    scoreDelta: number;
+	    metricDeltas: Record<string, number>;
+	    summaryStatus: string;
+	    summaryText: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunComparison(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hasPrevious = source["hasPrevious"];
+	        this.previousTime = source["previousTime"];
+	        this.previousScore = source["previousScore"];
+	        this.currentScore = source["currentScore"];
+	        this.scoreDelta = source["scoreDelta"];
+	        this.metricDeltas = source["metricDeltas"];
+	        this.summaryStatus = source["summaryStatus"];
+	        this.summaryText = source["summaryText"];
+	    }
+	}
+
+}
+
+export namespace main {
+	
+	export class AnalyticsResult {
+	    analytics: analytics.SiteAnalytics;
+	    comparison: history.RunComparison;
+	
+	    static createFrom(source: any = {}) {
+	        return new AnalyticsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.analytics = this.convertValues(source["analytics"], analytics.SiteAnalytics);
+	        this.comparison = this.convertValues(source["comparison"], history.RunComparison);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -169,6 +302,7 @@ export namespace scanner {
 	    maxLongTaskMs: number;
 	    slowestResources: ResourceTiming[];
 	    categories: Record<string, CategoryDiagnostic>;
+	    w3c?: any;
 	
 	    static createFrom(source: any = {}) {
 	        return new PageDiagnostics(source);
@@ -190,6 +324,7 @@ export namespace scanner {
 	        this.maxLongTaskMs = source["maxLongTaskMs"];
 	        this.slowestResources = this.convertValues(source["slowestResources"], ResourceTiming);
 	        this.categories = this.convertValues(source["categories"], CategoryDiagnostic, true);
+	        this.w3c = source["w3c"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -279,6 +414,81 @@ export namespace scanner {
 		}
 	}
 	
+
+}
+
+export namespace w3c {
+	
+	export class W3CMessage {
+	    type: string;
+	    subType?: string;
+	    lastLine: number;
+	    lastColumn: number;
+	    firstColumn?: number;
+	    message: string;
+	    extract?: string;
+	    hiliteStart?: number;
+	    hiliteLength?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new W3CMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.subType = source["subType"];
+	        this.lastLine = source["lastLine"];
+	        this.lastColumn = source["lastColumn"];
+	        this.firstColumn = source["firstColumn"];
+	        this.message = source["message"];
+	        this.extract = source["extract"];
+	        this.hiliteStart = source["hiliteStart"];
+	        this.hiliteLength = source["hiliteLength"];
+	    }
+	}
+	export class W3CReport {
+	    url: string;
+	    errorCount: number;
+	    warningCount: number;
+	    isValid: boolean;
+	    status: string;
+	    messages: W3CMessage[];
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new W3CReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.errorCount = source["errorCount"];
+	        this.warningCount = source["warningCount"];
+	        this.isValid = source["isValid"];
+	        this.status = source["status"];
+	        this.messages = this.convertValues(source["messages"], W3CMessage);
+	        this.error = source["error"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

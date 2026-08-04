@@ -3,6 +3,7 @@ package sitemap
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
@@ -45,7 +46,25 @@ func FetchAndParse(sitemapURL string, cfg config.ScanConfig) ([]string, error) {
 	}
 
 	visited := make(map[string]bool)
-	return fetchRecursive(sitemapURL, cfg, visited, 0)
+	urls, err := fetchRecursive(sitemapURL, cfg, visited, 0)
+	if err == nil && len(urls) > 0 {
+		return urls, nil
+	}
+
+	// Fallback 1: If URL doesn't end with /sitemap.xml, try appending /sitemap.xml
+	if !strings.HasSuffix(sitemapURL, "/sitemap.xml") && !strings.HasSuffix(sitemapURL, ".xml") {
+		altURL := strings.TrimRight(sitemapURL, "/") + "/sitemap.xml"
+		altVisited := make(map[string]bool)
+		altURLs, altErr := fetchRecursive(altURL, cfg, altVisited, 0)
+		if altErr == nil && len(altURLs) > 0 {
+			return altURLs, nil
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("не знайдено дійсних URL у sitemap: %s", sitemapURL)
 }
 
 func fetchRecursive(rawURL string, cfg config.ScanConfig, visited map[string]bool, depth int) ([]string, error) {
@@ -60,7 +79,7 @@ func fetchRecursive(rawURL string, cfg config.ScanConfig, visited map[string]boo
 
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request for %s: %w", rawURL, err)
+		return nil, fmt.Errorf("не вдалося створити запит для %s: %w", rawURL, err)
 	}
 
 	// Apply Basic Auth
@@ -81,18 +100,34 @@ func fetchRecursive(rawURL string, cfg config.ScanConfig, visited map[string]boo
 	}
 
 	timeoutSec := cfg.NormalizedTimeout()
+
+	// HTTP Transport with InsecureSkipVerify enabled for local dev domains (*.localdev / self-signed TLS)
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+
 	client := &http.Client{
-		Timeout: time.Duration(timeoutSec) * time.Second,
+		Transport: tr,
+		Timeout:   time.Duration(timeoutSec) * time.Second,
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching %s: %w", rawURL, err)
+		errStr := err.Error()
+		if strings.Contains(errStr, "connection refused") {
+			return nil, fmt.Errorf("помилка з'єднання з %s: сервер не відповідає (Connection Refused). Перевірте чи запущено ваш локальний dev-сервер", rawURL)
+		}
+		if strings.Contains(errStr, "no such host") {
+			return nil, fmt.Errorf("не знайдено хост %s (DNS Error). Перевірте налаштування /etc/hosts для вашого локального домену", rawURL)
+		}
+		return nil, fmt.Errorf("помилка завантаження sitemap %s: %v", rawURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP error %d while fetching sitemap %s", resp.StatusCode, rawURL)
+		return nil, fmt.Errorf("HTTP помилка %d при отриманні sitemap %s", resp.StatusCode, rawURL)
 	}
 
 	var reader io.Reader = resp.Body
@@ -106,7 +141,7 @@ func fetchRecursive(rawURL string, cfg config.ScanConfig, visited map[string]boo
 
 	body, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body from %s: %w", rawURL, err)
+		return nil, fmt.Errorf("помилка читання тіла відповіді sitemap %s: %w", rawURL, err)
 	}
 
 	// 1. Try parsing as SitemapIndex
@@ -156,7 +191,7 @@ func fetchRecursive(rawURL string, cfg config.ScanConfig, visited map[string]boo
 		return deduplicate(fallbackURLs), nil
 	}
 
-	return nil, fmt.Errorf("no valid URLs found in sitemap at %s", rawURL)
+	return nil, fmt.Errorf("не знайдено дійсних URL у sitemap за адресою %s", rawURL)
 }
 
 func charsetReader(charset string, input io.Reader) (io.Reader, error) {

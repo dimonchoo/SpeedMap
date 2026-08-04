@@ -56,6 +56,7 @@ type PageDiagnostics struct {
 	MaxLongTaskMs       float64                        `json:"maxLongTaskMs"`
 	SlowestResources    []ResourceTiming               `json:"slowestResources"`
 	Categories          map[string]CategoryDiagnostic `json:"categories"`
+	W3C                 interface{}                    `json:"w3c,omitempty"`
 }
 
 type PageResult struct {
