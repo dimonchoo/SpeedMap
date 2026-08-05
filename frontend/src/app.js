@@ -3,21 +3,23 @@ function speedMapApp() {
     // Config state - DEFAULT TO MOBILE MODE 📱
     config: {
       sitemapUrl: '',
-      concurrency: 3,
+      concurrency: 1, // Default 1 process as requested
+      heavyImageThresholdKB: 100, // Default 100 KB heavy image threshold
       authUser: '',
       authPass: '',
       headers: [
         { key: 'X-SpeedMap-Scanner', value: '1.0' }
       ],
       isMobile: true, // Default to Mobile Emulation as requested
+      autoScroll: false, // Disabled by default as requested
       timeoutSec: 30
     },
 
     // UI state
-    activeTab: 'pages', // 'pages' | 'analytics'
+    activeTab: 'pages', // 'pages' | 'analytics' | 'images'
     showSettings: false,
     showLogDrawer: false,
-    sitemapInput: 'https://example.com/sitemap.xml',
+    sitemapInput: '', // Empty initially, placeholder only
     discoveredUrls: [],
     selectedUrls: [],
     urlFilter: '',
@@ -49,6 +51,12 @@ function speedMapApp() {
     siteAnalytics: null,
     runComparison: null,
     isComputingAnalytics: false,
+
+    // Image Optimization & Comparison Hub State (SEOAEO-235)
+    imageSearchQuery: '',
+    imageFilterTab: 'all', // 'all' | 'heavy' | 'non-webp' | 'missing-lazy' | 'png' | 'jpg'
+    imageSortKey: 'size', // 'size' | 'savings' | 'duration' | 'pages'
+    isExportingReport: false,
 
     initApp() {
       console.log("[JS LOG] speedMapApp initialized.");
@@ -115,7 +123,7 @@ function speedMapApp() {
       this.isComputingAnalytics = true;
       try {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.ComputeSiteAnalytics) {
-          const res = await window.go.main.App.ComputeSiteAnalytics(this.config.sitemapUrl || this.sitemapInput, this.scanResults);
+          const res = await window.go.main.App.ComputeSiteAnalytics(this.config.sitemapUrl || this.sitemapInput, this.config, this.scanResults);
           if (res) {
             this.siteAnalytics = res.analytics;
             this.runComparison = res.comparison;
@@ -363,6 +371,91 @@ function speedMapApp() {
         return this.scanResults.filter(r => r.overallStatus === 'poor' || r.overallStatus === 'error');
       }
       return this.scanResults.filter(r => r.overallStatus === this.statusFilter);
+    },
+
+    get filteredImages() {
+      if (!this.siteAnalytics || !this.siteAnalytics.allImages) return [];
+      let list = [...this.siteAnalytics.allImages];
+
+      // Text search filter
+      if (this.imageSearchQuery.trim()) {
+        const q = this.imageSearchQuery.toLowerCase().trim();
+        list = list.filter(img => img.url.toLowerCase().includes(q) || (img.format && img.format.toLowerCase().includes(q)));
+      }
+
+      // Filter tabs
+      if (this.imageFilterTab === 'heavy') {
+        list = list.filter(img => img.isHeavy);
+      } else if (this.imageFilterTab === 'non-webp') {
+        list = list.filter(img => img.format !== 'webp' && img.format !== 'avif' && img.format !== 'svg');
+      } else if (this.imageFilterTab === 'missing-lazy') {
+        list = list.filter(img => !img.isLazy && !img.isLCP);
+      } else if (this.imageFilterTab === 'png') {
+        list = list.filter(img => img.format === 'png');
+      } else if (this.imageFilterTab === 'jpg') {
+        list = list.filter(img => img.format === 'jpg' || img.format === 'jpeg');
+      }
+
+      // Sorting
+      list.sort((a, b) => {
+        if (this.imageSortKey === 'size') return b.maxTransferSize - a.maxTransferSize;
+        if (this.imageSortKey === 'savings') return b.estimatedSavingsBytes - a.estimatedSavingsBytes;
+        if (this.imageSortKey === 'duration') return b.avgDurationMs - a.avgDurationMs;
+        if (this.imageSortKey === 'pages') return b.pageCount - a.pageCount;
+        return 0;
+      });
+
+      return list;
+    },
+
+    async previewImageReport() {
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку виконайте сканування сторінок.');
+        return;
+      }
+      this.isPreviewingReport = true;
+      this.addLog('info', '🌐 Запуск локального веб-сервера для перегляду звіту (SEOAEO-235)...');
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.PreviewImageComparisonHTML) {
+          const domain = this.config.sitemapUrl || this.sitemapInput || 'site';
+          const reportUrl = await window.go.main.App.PreviewImageComparisonHTML(domain, this.config, this.scanResults);
+          this.addLog('success', `🟢 Звіт відкрито у браузері: ${reportUrl}`);
+          this.showToast('success', 'Звіт відкрито 🟢', `Локальний веб-сервер запущено: ${reportUrl}`);
+        } else {
+          throw new Error('PreviewImageComparisonHTML method not available');
+        }
+      } catch (err) {
+        console.error('Failed to preview HTML report:', err);
+        this.addLog('error', `Помилка відкриття звіту: ${err.message}`);
+        this.showToast('error', 'Помилка перегляду', err.message);
+      } finally {
+        this.isPreviewingReport = false;
+      }
+    },
+
+    async exportImageReport() {
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку виконайте сканування сторінок.');
+        return;
+      }
+      this.isExportingReport = true;
+      this.addLog('info', '📄 Генерація HTML звіту порівняння зображень (SEOAEO-235)...');
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.ExportImageComparisonHTML) {
+          const domain = this.config.sitemapUrl || this.sitemapInput || 'site';
+          const savedPath = await window.go.main.App.ExportImageComparisonHTML(domain, this.config, this.scanResults);
+          this.addLog('success', `🟢 Звіт успішно збережено у файл: ${savedPath}`);
+          this.showToast('success', 'Звіт збережено 🟢', `Файл порівняння зображень створено: ${savedPath}`);
+        } else {
+          throw new Error('ExportImageComparisonHTML method not available');
+        }
+      } catch (err) {
+        console.error('Failed to export HTML report:', err);
+        this.addLog('error', `Помилка збереження звіту: ${err.message}`);
+        this.showToast('error', 'Помилка експорту', err.message);
+      } finally {
+        this.isExportingReport = false;
+      }
     },
 
     // Helpers

@@ -32,6 +32,28 @@ type ResourceTiming struct {
 	Type     string  `json:"type"`     // script, img, css, fetch
 }
 
+type ImageDetail struct {
+	URL           string  `json:"url"`
+	TransferSize  int64   `json:"transferSize"`  // bytes
+	EncodedSize   int64   `json:"encodedSize"`   // bytes
+	Duration      float64 `json:"duration"`     // ms
+	Width         int     `json:"width"`        // px
+	Height        int     `json:"height"`       // px
+	FormattedSize string  `json:"formattedSize"` // e.g. "450 KB"
+	Format        string  `json:"format"`        // e.g. "png", "jpg", "webp", "svg", "avif"
+	IsLazy        bool    `json:"isLazy"`        // whether loading="lazy" is set
+	Alt           string  `json:"alt"`           // image alt text if available
+	IsLCP         bool    `json:"isLCP"`         // whether this image is the LCP element
+}
+
+type FontDetail struct {
+	Family       string  `json:"family"`       // e.g. "Inter", "Roboto"
+	URL          string  `json:"url"`          // font asset URL if available
+	Type         string  `json:"type"`         // woff2, woff, ttf, google-font, etc.
+	TransferSize int64   `json:"transferSize"` // bytes
+	Duration     float64 `json:"duration"`     // ms
+}
+
 type CategoryDiagnostic struct {
 	Category string   `json:"category"` // "ttfb", "fcp", "lcp", "cls", "tbt"
 	Title    string   `json:"title"`
@@ -55,6 +77,8 @@ type PageDiagnostics struct {
 	LongTasksCount      int                            `json:"longTasksCount"`
 	MaxLongTaskMs       float64                        `json:"maxLongTaskMs"`
 	SlowestResources    []ResourceTiming               `json:"slowestResources"`
+	LargestImages       []ImageDetail                  `json:"largestImages"`
+	Fonts               []FontDetail                   `json:"fonts"`
 	Categories          map[string]CategoryDiagnostic `json:"categories"`
 	W3C                 interface{}                    `json:"w3c,omitempty"`
 }

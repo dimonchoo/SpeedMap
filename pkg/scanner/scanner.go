@@ -241,7 +241,8 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 		}),
 		chromedp.Poll(`document.readyState === "interactive" || document.readyState === "complete"`, nil, chromedp.WithPollingInterval(100*time.Millisecond)),
 		chromedp.ActionFunc(func(ctx context.Context) error {
-			resObj, expObj, err := runtime.Evaluate(WebVitalsCollectorJS).
+			evalJS := fmt.Sprintf(WebVitalsCollectorJS, s.cfg.AutoScroll)
+			resObj, expObj, err := runtime.Evaluate(evalJS).
 				WithAwaitPromise(true).
 				WithReturnByValue(true).
 				Do(ctx)

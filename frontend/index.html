@@ -79,6 +79,15 @@
               <span class="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px]" x-text="siteAnalytics.healthScore + '%'"></span>
             </template>
           </button>
+
+          <button @click="activeTab = 'images'; updateAnalytics()"
+            :class="activeTab === 'images' ? 'bg-slate-800 text-amber-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
+            <span>🖼️ Зображення</span>
+            <template x-if="siteAnalytics && siteAnalytics.totalImageCount > 0">
+              <span class="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px]" x-text="siteAnalytics.totalImageCount"></span>
+            </template>
+          </button>
         </nav>
       </div>
 
@@ -547,6 +556,76 @@
                   </div>
                 </template>
 
+                <!-- Largest Images Across Site -->
+                <template x-if="siteAnalytics.largestImages && siteAnalytics.largestImages.length > 0">
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                      <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">🖼️ Найбільші зображення сайту (Largest Images)</h3>
+                      <span class="text-xs text-slate-400">Ранжовано за обсягом переданих даних</span>
+                    </div>
+
+                    <div class="bg-slate-950/60 rounded-2xl border border-slate-800 overflow-hidden">
+                      <table class="w-full text-xs text-left font-mono">
+                        <thead class="bg-slate-900 text-slate-400 border-b border-slate-800">
+                          <tr>
+                            <th class="p-3.5">Зображення / URL</th>
+                            <th class="p-3.5 text-center">Роздільна здатність</th>
+                            <th class="p-3.5 text-center">Сторінок</th>
+                            <th class="p-3.5 text-right">Розмір файлу</th>
+                            <th class="p-3.5 text-right">Завантаження</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60">
+                          <template x-for="img in siteAnalytics.largestImages" :key="img.url">
+                            <tr class="hover:bg-slate-800/40">
+                              <td class="p-3.5 max-w-xs truncate text-slate-200 font-medium">
+                                <a :href="img.url" target="_blank" class="hover:text-emerald-400 underline font-mono" :title="img.url" x-text="img.url"></a>
+                              </td>
+                              <td class="p-3.5 text-center text-slate-400 font-sans text-[11px]" x-text="(img.width && img.height) ? (img.width + 'x' + img.height + ' px') : '-'"></td>
+                              <td class="p-3.5 text-center font-bold text-cyan-400">
+                                <span x-text="img.pageCount + ' стор.'"></span>
+                              </td>
+                              <td class="p-3.5 text-right font-bold text-amber-400" x-text="img.formattedSize || '0 B'"></td>
+                              <td class="p-3.5 text-right text-slate-300" x-text="img.avgDurationMs + 'ms'"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Font Usage & Frequency Across Site -->
+                <template x-if="siteAnalytics.fontUsage && siteAnalytics.fontUsage.length > 0">
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                      <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">🔤 Аналіз шрифтів сайту (Font Usage & Frequency)</h3>
+                      <span class="text-xs text-slate-400">Частота використання гарнітур на сторінках</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <template x-for="font in siteAnalytics.fontUsage" :key="font.family">
+                        <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-2 relative overflow-hidden">
+                          <div class="flex items-center justify-between">
+                            <span class="font-bold text-sm text-slate-100 font-sans truncate" x-text="font.family"></span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30" x-text="font.type || 'font'"></span>
+                          </div>
+                          <div class="flex items-baseline justify-between text-xs pt-1 border-t border-slate-800/60">
+                            <span class="text-slate-400 font-sans">Покриття:</span>
+                            <span class="font-bold text-emerald-400 font-mono" x-text="font.occurrences + ' стор. (' + font.percentage + '%)'"></span>
+                          </div>
+                          <template x-if="font.avgDurationMs > 0">
+                            <div class="flex items-baseline justify-between text-[11px] text-slate-400">
+                              <span>Час завантаження:</span>
+                              <span class="font-mono text-slate-300" x-text="font.avgDurationMs + 'ms'"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+
                 <!-- Site-Wide Action Plan -->
                 <template x-if="siteAnalytics.globalFixes && siteAnalytics.globalFixes.length > 0">
                   <div class="space-y-3">
@@ -561,6 +640,249 @@
                     </div>
                   </div>
                 </template>
+
+              </div>
+            </template>
+
+          </div>
+        </template>
+
+        <!-- VIEW 3: IMAGE OPTIMIZATION & COMPARISON HUB (SEOAEO-235) -->
+        <template x-if="activeTab === 'images'">
+          <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            
+            <template x-if="!siteAnalytics">
+              <div class="h-full flex flex-col items-center justify-center text-slate-500 space-y-3 py-16">
+                <svg class="w-14 h-14 text-slate-700 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                <p class="text-sm font-medium">Запустіть сканування сторінок для аналізу зображень та формування порівняльної таблиці</p>
+              </div>
+            </template>
+
+            <template x-if="siteAnalytics">
+              <div class="space-y-6">
+                
+                <!-- Header Stats Cards & Export HTML Button -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  
+                  <div class="bg-gradient-to-br from-slate-950 to-slate-900 p-5 rounded-2xl border border-slate-800 shadow-lg space-y-1">
+                    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Загальний обсяг зображень</div>
+                    <div class="text-2xl font-extrabold text-amber-400 font-mono" x-text="siteAnalytics.totalImagePayloadFormatted || '0 B'"></div>
+                    <div class="text-[11px] text-slate-500 font-mono">Ціль SEOAEO-235: &lt; 2.0 MB</div>
+                  </div>
+
+                  <div class="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 space-y-1">
+                    <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Унікальних зображень</div>
+                    <div class="text-2xl font-extrabold text-slate-100 font-mono" x-text="siteAnalytics.totalImageCount || 0"></div>
+                    <div class="text-[11px] text-slate-400">
+                      Не-WebP: <span class="font-bold text-amber-400" x-text="siteAnalytics.nonWebPCount || 0"></span>
+                    </div>
+                  </div>
+
+                  <div class="bg-rose-950/20 p-5 rounded-2xl border border-rose-800/40 space-y-1">
+                    <div class="text-xs font-semibold text-rose-400 uppercase tracking-wider">Важкі зображення (&gt;<span x-text="config.heavyImageThresholdKB || 100"></span>KB) 🔴</div>
+                    <div class="text-2xl font-extrabold text-rose-400 font-mono" x-text="siteAnalytics.heavyImagesCount || 0"></div>
+                    <div class="text-[11px] text-rose-300/80">Потребують термінового стиснення</div>
+                  </div>
+
+                  <div class="bg-emerald-950/20 p-5 rounded-2xl border border-emerald-800/40 space-y-2 flex flex-col justify-between">
+                    <div>
+                      <div class="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Потенційна економія (WebP) 🟢</div>
+                      <div class="text-2xl font-extrabold text-emerald-400 font-mono" x-text="'-' + (siteAnalytics.totalWebPSavingsFormatted || '0 B')"></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                      <button @click="previewImageReport()" :disabled="isPreviewingReport"
+                        class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium py-1.5 px-2 rounded-lg text-[11px] transition flex items-center justify-center space-x-1 shadow"
+                        title="Відкрити звіт у локальному веб-сервері у браузері (без скачування)">
+                        <template x-if="!isPreviewingReport">
+                          <span>🌐 Переглянути</span>
+                        </template>
+                        <template x-if="isPreviewingReport">
+                          <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        </template>
+                      </button>
+
+                      <button @click="exportImageReport()" :disabled="isExportingReport"
+                        class="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-medium py-1.5 px-2 rounded-lg text-[11px] border border-slate-700 transition flex items-center justify-center space-x-1 shadow"
+                        title="Завантажити звіт як HTML файл на диск">
+                        <template x-if="!isExportingReport">
+                          <span>💾 Скачати</span>
+                        </template>
+                        <template x-if="isExportingReport">
+                          <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        </template>
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+
+                <!-- LCP Heavy Image Spotlight (Ticket hero-8.png scenario) -->
+                <template x-if="siteAnalytics.allImages && siteAnalytics.allImages.length > 0 && siteAnalytics.allImages[0].isHeavy">
+                  <div class="bg-gradient-to-r from-amber-950/40 via-slate-900 to-rose-950/30 p-5 rounded-2xl border border-amber-500/40 shadow-xl space-y-3">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center space-x-2">
+                        <span class="text-amber-400 text-lg">⚠️</span>
+                        <h3 class="text-xs font-bold text-amber-300 uppercase tracking-wider">Критичне зображення для LCP (Аудит hero-8 / LCP Assets)</h3>
+                      </div>
+                      <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold uppercase">
+                        Найбільший обсяг: <span x-text="siteAnalytics.allImages[0].formattedSize"></span>
+                      </span>
+                    </div>
+
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs font-mono bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+                      <div class="space-y-1 max-w-xl truncate">
+                        <div class="text-slate-400 font-sans">URL зображення:</div>
+                        <a :href="siteAnalytics.allImages[0].url" target="_blank" class="text-amber-300 hover:underline font-bold text-sm truncate block" x-text="siteAnalytics.allImages[0].url"></a>
+                        <div class="text-slate-500 font-sans text-[11px]">
+                          Формат: <span class="text-slate-200 uppercase font-bold" x-text="siteAnalytics.allImages[0].format"></span> |
+                          Роздільна здатність: <span class="text-slate-200" x-text="(siteAnalytics.allImages[0].width || 0) + 'x' + (siteAnalytics.allImages[0].height || 0) + ' px'"></span> |
+                          Зустрічається на: <span class="text-cyan-400 font-bold" x-text="siteAnalytics.allImages[0].pageCount + ' стор.'"></span>
+                        </div>
+                      </div>
+
+                      <div class="flex items-center space-x-6 text-right shrink-0">
+                        <div>
+                          <div class="text-slate-400 font-sans text-[11px]">Поточний розмір</div>
+                          <div class="text-rose-400 font-bold text-base" x-text="siteAnalytics.allImages[0].formattedSize"></div>
+                        </div>
+                        <div class="text-slate-500 text-lg">➔</div>
+                        <div>
+                          <div class="text-emerald-400 font-sans text-[11px]">WebP Оцінка</div>
+                          <div class="text-emerald-400 font-bold text-base" x-text="siteAnalytics.allImages[0].estimatedWebPFormatted"></div>
+                        </div>
+                        <div class="bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 rounded-lg text-emerald-300 text-xs font-bold font-sans">
+                          Економія <span x-text="siteAnalytics.allImages[0].estimatedSavingsPercent + '%'"></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Filter Toolbar & Search Bar -->
+                <div class="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4 shrink-0">
+                  
+                  <div class="flex items-center space-x-2 w-full md:w-auto overflow-x-auto text-xs">
+                    <button @click="imageFilterTab = 'all'"
+                      :class="imageFilterTab === 'all' ? 'bg-slate-800 text-slate-100 font-bold border border-slate-700' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      Усі (<span x-text="siteAnalytics.allImages?.length || 0"></span>)
+                    </button>
+                    <button @click="imageFilterTab = 'heavy'"
+                      :class="imageFilterTab === 'heavy' ? 'bg-rose-950/60 text-rose-400 font-bold border border-rose-800/50' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      Важкі &gt;<span x-text="config.heavyImageThresholdKB || 100"></span>KB 🔴 (<span x-text="siteAnalytics.heavyImagesCount || 0"></span>)
+                    </button>
+                    <button @click="imageFilterTab = 'non-webp'"
+                      :class="imageFilterTab === 'non-webp' ? 'bg-amber-950/60 text-amber-400 font-bold border border-amber-800/50' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      Не-WebP 🟡 (<span x-text="siteAnalytics.nonWebPCount || 0"></span>)
+                    </button>
+                    <button @click="imageFilterTab = 'missing-lazy'"
+                      :class="imageFilterTab === 'missing-lazy' ? 'bg-indigo-950/60 text-indigo-300 font-bold border border-indigo-800/50' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      Без loading="lazy" ⚠️ (<span x-text="siteAnalytics.missingLazyCount || 0"></span>)
+                    </button>
+                    <button @click="imageFilterTab = 'png'"
+                      :class="imageFilterTab === 'png' ? 'bg-slate-800 text-cyan-400 font-bold border border-slate-700' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      PNG
+                    </button>
+                    <button @click="imageFilterTab = 'jpg'"
+                      :class="imageFilterTab === 'jpg' ? 'bg-slate-800 text-cyan-400 font-bold border border-slate-700' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      JPG / JPEG
+                    </button>
+                  </div>
+
+                  <div class="flex items-center space-x-3 w-full md:w-auto shrink-0">
+                    <input type="text" x-model="imageSearchQuery" placeholder="Пошук зображень..."
+                      class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 w-full md:w-48 font-mono">
+
+                    <select x-model="imageSortKey" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                      <option value="size">Сортувати: За розміром</option>
+                      <option value="savings">Сортувати: За економією</option>
+                      <option value="duration">Сортувати: За часом завантаження</option>
+                      <option value="pages">Сортувати: За к-стю сторінок</option>
+                    </select>
+                  </div>
+
+                </div>
+
+                <!-- Site-Wide Image Comparison Table -->
+                <div class="bg-slate-950/60 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                  <table class="w-full text-xs text-left font-mono border-collapse">
+                    <thead class="bg-slate-950 text-slate-400 border-b border-slate-800">
+                      <tr class="uppercase text-[11px] font-semibold tracking-wider">
+                        <th class="p-3.5">#</th>
+                        <th class="p-3.5 max-w-xs">Зображення / URL</th>
+                        <th class="p-3.5 text-center">Формат</th>
+                        <th class="p-3.5 text-center">Роздільна здатність</th>
+                        <th class="p-3.5 text-center">Сторінок</th>
+                        <th class="p-3.5 text-right">Поточний розмір</th>
+                        <th class="p-3.5 text-right">WebP Оцінка</th>
+                        <th class="p-3.5 text-right">Економія (KB / %)</th>
+                        <th class="p-3.5 text-center">Lazy Loading</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                      <template x-if="filteredImages.length === 0">
+                        <tr>
+                          <td colspan="9" class="p-8 text-center text-slate-500 font-sans">
+                            Не знайдено зображень за обраними фільтрами.
+                          </td>
+                        </tr>
+                      </template>
+
+                      <template x-for="(img, idx) in filteredImages" :key="img.url">
+                        <tr class="hover:bg-slate-800/40 transition" :class="img.isHeavy ? 'bg-rose-950/10' : ''">
+                          <td class="p-3.5 text-slate-500" x-text="idx + 1"></td>
+                          
+                          <td class="p-3.5 max-w-xs truncate text-slate-200 font-medium">
+                            <a :href="img.url" target="_blank" class="hover:text-amber-400 underline font-mono text-xs block truncate" :title="img.url" x-text="img.url"></a>
+                            <template x-if="img.isLCP">
+                              <span class="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">LCP Hero 🔥</span>
+                            </template>
+                          </td>
+
+                          <td class="p-3.5 text-center">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                              :class="img.format === 'webp' || img.format === 'avif' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (img.format === 'png' || img.format === 'jpg' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-slate-800 text-slate-300')"
+                              x-text="img.format || 'OTHER'"></span>
+                          </td>
+
+                          <td class="p-3.5 text-center text-slate-400 font-sans text-[11px]" x-text="(img.width && img.height) ? (img.width + 'x' + img.height + ' px') : '-'"></td>
+                          
+                          <td class="p-3.5 text-center font-bold text-cyan-400" x-text="img.pageCount + ' стор.'"></td>
+                          
+                          <td class="p-3.5 text-right font-bold" :class="img.isHeavy ? 'text-rose-400' : 'text-slate-200'" x-text="img.formattedSize || '0 B'"></td>
+                          
+                          <td class="p-3.5 text-right font-bold text-emerald-400" x-text="img.estimatedWebPFormatted || '0 B'"></td>
+                          
+                          <td class="p-3.5 text-right font-bold text-emerald-400">
+                            <span x-text="'-' + img.estimatedSavingsFormatted + ' (' + img.estimatedSavingsPercent + '%)'"></span>
+                          </td>
+
+                          <td class="p-3.5 text-center">
+                            <template x-if="img.isLazy">
+                              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">loading="lazy" 🟢</span>
+                            </template>
+                            <template x-if="!img.isLazy">
+                              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">Відсутнє ⚠️</span>
+                            </template>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
 
               </div>
             </template>
@@ -624,6 +946,16 @@
 
           <div class="flex-1 overflow-y-auto p-6 space-y-6 text-sm">
             
+            <!-- Default Sitemap URL -->
+            <div class="space-y-2">
+              <label class="font-semibold text-slate-200 block">Sitemap / Domain за замовчуванням</label>
+              <input type="text" x-model="config.sitemapUrl" placeholder="https://example.com/sitemap.xml"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none font-mono">
+              <p class="text-xs text-slate-400">Вкажіть ваш постійний sitemap URL для автоматичного заповнення</p>
+            </div>
+
+            <hr class="border-slate-800">
+
             <!-- Concurrency Slider -->
             <div class="space-y-2">
               <div class="flex justify-between items-center">
@@ -632,7 +964,36 @@
               </div>
               <input type="range" min="1" max="10" x-model.number="config.concurrency"
                 class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
-              <p class="text-xs text-slate-400">Кількість одночасних процесів Chrome (1 - 10)</p>
+              <p class="text-xs text-slate-400">Кількість одночасних процесів Chrome (за замовчуванням 1, щоб не навантажувати сайт)</p>
+            </div>
+
+            <hr class="border-slate-800">
+
+            <!-- Auto-Scroll Toggle Switch -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center">
+                <div>
+                  <label class="font-semibold text-slate-200 block">Автоматична прокрутка (Full-Page Auto-Scroll)</label>
+                  <p class="text-xs text-slate-400 max-w-xs mt-0.5">Прокручує кожну сторінку донизу для завантаження лінивих зображень (loading="lazy") та динамічних ресурсів</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                  <input type="checkbox" x-model="config.autoScroll" class="sr-only peer">
+                  <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <hr class="border-slate-800">
+
+            <!-- Heavy Image Threshold KB -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center">
+                <label class="font-semibold text-slate-200">Поріг важкого зображення (Heavy Threshold)</label>
+                <span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono font-bold" x-text="(config.heavyImageThresholdKB || 100) + ' KB'"></span>
+              </div>
+              <input type="number" min="10" max="5000" step="10" x-model.number="config.heavyImageThresholdKB" placeholder="100"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+              <p class="text-xs text-slate-400">Розмір у КБ, вище якого зображення вважається важким (поза замовчуванням 100 KB)</p>
             </div>
 
             <hr class="border-slate-800">
@@ -955,6 +1316,52 @@
                       </template>
                     </tbody>
                   </table>
+                </div>
+              </div>
+            </template>
+
+            <!-- Page Largest Images Section -->
+            <template x-if="selectedDetail?.diagnostics?.largestImages && selectedDetail?.diagnostics?.largestImages.length > 0">
+              <div class="space-y-3">
+                <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider">🖼️ Найбільші зображення сторінки</h4>
+                <div class="bg-slate-950/60 rounded-xl border border-slate-800 overflow-hidden">
+                  <table class="w-full text-xs text-left font-mono">
+                    <thead class="bg-slate-900/80 text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th class="p-2.5">Зображення</th>
+                        <th class="p-2.5 text-center">Розмірність</th>
+                        <th class="p-2.5 text-right">Обсяг</th>
+                        <th class="p-2.5 text-right">Час</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                      <template x-for="img in selectedDetail?.diagnostics?.largestImages" :key="img.url">
+                        <tr>
+                          <td class="p-2.5 truncate max-w-[180px] text-slate-200">
+                            <a :href="img.url" target="_blank" class="hover:text-emerald-400 underline" :title="img.url" x-text="img.url"></a>
+                          </td>
+                          <td class="p-2.5 text-center text-slate-400 text-[11px] font-sans" x-text="(img.width && img.height) ? (img.width + 'x' + img.height) : '-'"></td>
+                          <td class="p-2.5 text-right font-bold text-amber-400" x-text="img.formattedSize || '0 B'"></td>
+                          <td class="p-2.5 text-right text-slate-300" x-text="img.duration + 'ms'"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+
+            <!-- Page Fonts Section -->
+            <template x-if="selectedDetail?.diagnostics?.fonts && selectedDetail?.diagnostics?.fonts.length > 0">
+              <div class="space-y-3">
+                <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider">🔤 Шрифти сторінки</h4>
+                <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+                  <template x-for="f in selectedDetail?.diagnostics?.fonts" :key="f.family">
+                    <div class="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between">
+                      <span class="font-sans font-bold text-slate-200 truncate pr-2" x-text="f.family"></span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0" x-text="f.type || 'font'"></span>
+                    </div>
+                  </template>
                 </div>
               </div>
             </template>

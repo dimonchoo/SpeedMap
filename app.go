@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	"os"
 	"sync"
 
 	"SpeedMap/pkg/analytics"
@@ -25,6 +28,10 @@ type App struct {
 	ctx           context.Context
 	activeScanner *scanner.Scanner
 	scannerMu     sync.Mutex
+
+	reportServerMu    sync.Mutex
+	reportServerPort  int
+	currentReportHTML string
 }
 
 // NewApp creates a new App application struct
@@ -103,9 +110,9 @@ func (a *App) RescanSingleURL(cfg config.ScanConfig, url string, id int) (scanne
 }
 
 // ComputeSiteAnalytics computes analytics and compares with previous scan run
-func (a *App) ComputeSiteAnalytics(domain string, results []scanner.PageResult) (AnalyticsResult, error) {
-	fmt.Printf("[GO LOG] ComputeSiteAnalytics called for %s (%d pages)\n", domain, len(results))
-	siteAnalytics := analytics.ComputeSiteAnalytics(results)
+func (a *App) ComputeSiteAnalytics(domain string, cfg config.ScanConfig, results []scanner.PageResult) (AnalyticsResult, error) {
+	fmt.Printf("[GO LOG] ComputeSiteAnalytics called for %s (%d pages, threshold=%d KB)\n", domain, len(results), cfg.HeavyImageThresholdKB)
+	siteAnalytics := analytics.ComputeSiteAnalytics(results, cfg.HeavyImageThresholdKB)
 
 	// Fetch previous run for comparison BEFORE saving current run
 	prevRun, _ := history.GetPreviousRun(domain, "")
@@ -163,3 +170,81 @@ func (a *App) CancelScan() {
 		}
 	}
 }
+
+// PreviewImageComparisonHTML spins up an in-process local HTTP server on a random free port (127.0.0.1:0)
+// and opens the report directly in the user's default browser without forcing a file download.
+func (a *App) PreviewImageComparisonHTML(domain string, cfg config.ScanConfig, results []scanner.PageResult) (string, error) {
+	fmt.Printf("[GO LOG] PreviewImageComparisonHTML called for %s (%d pages)\n", domain, len(results))
+	siteAnalytics := analytics.ComputeSiteAnalytics(results, cfg.HeavyImageThresholdKB)
+	htmlContent := analytics.GenerateImageComparisonHTML(siteAnalytics, domain)
+
+	a.reportServerMu.Lock()
+	a.currentReportHTML = htmlContent
+
+	if a.reportServerPort == 0 {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			a.reportServerMu.Unlock()
+			return "", fmt.Errorf("failed to start local web server: %w", err)
+		}
+		a.reportServerPort = listener.Addr().(*net.TCPAddr).Port
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
+			a.reportServerMu.Lock()
+			content := a.currentReportHTML
+			a.reportServerMu.Unlock()
+
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write([]byte(content))
+		})
+
+		server := &http.Server{Handler: mux}
+		go func() {
+			_ = server.Serve(listener)
+		}()
+	}
+	port := a.reportServerPort
+	a.reportServerMu.Unlock()
+
+	reportURL := fmt.Sprintf("http://127.0.0.1:%d/report", port)
+	fmt.Printf("[GO LOG] Ephemeral report web server running at %s\n", reportURL)
+
+	if a.ctx != nil {
+		runtime.BrowserOpenURL(a.ctx, reportURL)
+	}
+
+	return reportURL, nil
+}
+
+// ExportImageComparisonHTML generates and saves an HTML image comparison report for designers & stakeholders
+func (a *App) ExportImageComparisonHTML(domain string, cfg config.ScanConfig, results []scanner.PageResult) (string, error) {
+	fmt.Printf("[GO LOG] ExportImageComparisonHTML called for %s (%d pages)\n", domain, len(results))
+	siteAnalytics := analytics.ComputeSiteAnalytics(results, cfg.HeavyImageThresholdKB)
+	htmlContent := analytics.GenerateImageComparisonHTML(siteAnalytics, domain)
+
+	var savePath string
+	var err error
+	if a.ctx != nil {
+		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Зберегти звіт порівняння зображень (SEOAEO-235)",
+			DefaultFilename: "image_comparison_report.html",
+			Filters: []runtime.FileFilter{
+				{DisplayName: "HTML Файли (*.html)", Pattern: "*.html"},
+			},
+		})
+	}
+
+	if savePath == "" || err != nil {
+		savePath = "image_comparison_report.html"
+	}
+
+	err = os.WriteFile(savePath, []byte(htmlContent), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to save report: %w", err)
+	}
+
+	fmt.Printf("[GO LOG] Image comparison HTML saved to %s\n", savePath)
+	return savePath, nil
+}
+

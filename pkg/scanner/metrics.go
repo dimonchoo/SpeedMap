@@ -6,7 +6,8 @@ import (
 
 // WebVitalsCollectorJS returns both WebVitals metrics and granular diagnostic insights
 const WebVitalsCollectorJS = `
-new Promise((resolve) => {
+new Promise(async (resolve) => {
+    const autoScrollEnabled = %t;
     const data = {
         metrics: {
             ttfb: 0,
@@ -29,9 +30,40 @@ new Promise((resolve) => {
             longTasksCount: 0,
             maxLongTaskMs: 0,
             slowestResources: [],
+            largestImages: [],
+            fonts: [],
             categories: {}
         }
     };
+
+    const formatBytes = (bytes) => {
+        if (!bytes || bytes <= 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    };
+
+    // Auto-scroll down the page to trigger lazy loading if enabled in settings
+    if (autoScrollEnabled) {
+        try {
+            await new Promise((res) => {
+                let totalHeight = 0;
+                const distance = 400;
+                const timer = setInterval(() => {
+                    const scrollHeight = Math.max(document.body.scrollHeight || 0, document.documentElement.scrollHeight || 0);
+                    window.scrollBy(0, distance);
+                    totalHeight += distance;
+
+                    if (totalHeight >= scrollHeight || totalHeight >= 10000) {
+                        clearInterval(timer);
+                        window.scrollTo(0, 0);
+                        setTimeout(res, 350); // Allow brief pause for images and network requests to complete
+                    }
+                }, 60);
+            });
+        } catch (e) {}
+    }
 
     // 1. Navigation Timing & Network breakdown
     try {
@@ -169,6 +201,140 @@ new Promise((resolve) => {
                 };
             });
         data.diagnostics.slowestResources = slow;
+    } catch (e) {}
+
+    // 5. Images Extraction & Diagnostics
+    try {
+        const getImgFormat = (url) => {
+            if (!url) return 'unknown';
+            const cleanUrl = url.split('?')[0].toLowerCase();
+            if (cleanUrl.endsWith('.png')) return 'png';
+            if (cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg')) return 'jpg';
+            if (cleanUrl.endsWith('.webp')) return 'webp';
+            if (cleanUrl.endsWith('.avif')) return 'avif';
+            if (cleanUrl.endsWith('.svg')) return 'svg';
+            if (cleanUrl.endsWith('.gif')) return 'gif';
+            return 'other';
+        };
+
+        const resources = performance.getEntriesByType('resource');
+        const imgElements = Array.from(document.querySelectorAll('img'));
+        const domImgMap = new Map();
+        imgElements.forEach(img => {
+            const src = img.currentSrc || img.src;
+            if (src) {
+                domImgMap.set(src, {
+                    width: img.naturalWidth || img.width || 0,
+                    height: img.naturalHeight || img.height || 0,
+                    isLazy: img.getAttribute('loading') === 'lazy',
+                    alt: img.getAttribute('alt') || ''
+                });
+            }
+        });
+
+        const imageMap = new Map();
+        resources.forEach(r => {
+            const isImgType = r.initiatorType === 'img' || r.initiatorType === 'image' || r.initiatorType === 'css';
+            const isImgExt = /\.(jpg|jpeg|png|webp|avif|gif|svg|ico)(\?.*)?$/i.test(r.name);
+            if (isImgType || isImgExt) {
+                const size = r.transferSize || r.encodedBodySize || r.decodedBodySize || 0;
+                const domInfo = domImgMap.get(r.name) || { width: 0, height: 0, isLazy: false, alt: '' };
+                imageMap.set(r.name, {
+                    url: r.name,
+                    transferSize: size,
+                    encodedSize: r.encodedBodySize || 0,
+                    duration: Math.round(r.duration || 0),
+                    width: domInfo.width,
+                    height: domInfo.height,
+                    formattedSize: formatBytes(size),
+                    format: getImgFormat(r.name),
+                    isLazy: domInfo.isLazy,
+                    alt: domInfo.alt,
+                    isLCP: data.diagnostics.lcpUrl === r.name
+                });
+            }
+        });
+
+        // Also add DOM <img> elements that might not be in performance timing (e.g. data URLs or fast inline)
+        imgElements.forEach(img => {
+            const src = img.currentSrc || img.src;
+            if (src && !imageMap.has(src) && !src.startsWith('data:')) {
+                imageMap.set(src, {
+                    url: src,
+                    transferSize: 0,
+                    encodedSize: 0,
+                    duration: 0,
+                    width: img.naturalWidth || img.width || 0,
+                    height: img.naturalHeight || img.height || 0,
+                    formattedSize: '0 B',
+                    format: getImgFormat(src),
+                    isLazy: img.getAttribute('loading') === 'lazy',
+                    alt: img.getAttribute('alt') || '',
+                    isLCP: data.diagnostics.lcpUrl === src
+                });
+            }
+        });
+
+        const imageList = Array.from(imageMap.values())
+            .sort((a, b) => (b.transferSize - a.transferSize) || (b.duration - a.duration))
+            .slice(0, 15);
+
+        data.diagnostics.largestImages = imageList;
+    } catch (e) {}
+
+    // 6. Font Usage & Resource Extraction
+    try {
+        const fontMap = new Map();
+        const resources = performance.getEntriesByType('resource');
+
+        // Extract font resource timings
+        resources.forEach(r => {
+            const isFontType = r.initiatorType === 'font';
+            const isFontExt = /\.(woff2|woff|ttf|otf|eot)(\?.*)?$/i.test(r.name) || r.name.includes('fonts.gstatic.com') || r.name.includes('use.typekit.net');
+            if (isFontType || isFontExt) {
+                let familyName = '';
+                try {
+                    const u = new URL(r.name);
+                    const filename = u.pathname.split('/').pop() || '';
+                    familyName = filename.split('.')[0].replace(/[-_]/g, ' ');
+                } catch(err) {
+                    familyName = 'Web Font';
+                }
+                const size = r.transferSize || r.encodedBodySize || r.decodedBodySize || 0;
+                let fontType = 'woff2';
+                if (r.name.includes('.woff2')) fontType = 'woff2';
+                else if (r.name.includes('.woff')) fontType = 'woff';
+                else if (r.name.includes('.ttf')) fontType = 'ttf';
+                else if (r.name.includes('.otf')) fontType = 'otf';
+                else if (r.name.includes('gstatic.com') || r.name.includes('googleapis.com')) fontType = 'google-font';
+
+                fontMap.set(familyName || r.name, {
+                    family: familyName || 'Font Resource',
+                    url: r.name,
+                    type: fontType,
+                    transferSize: size,
+                    duration: Math.round(r.duration || 0)
+                });
+            }
+        });
+
+        // Extract document fonts API families
+        if (document.fonts && document.fonts.forEach) {
+            document.fonts.forEach(f => {
+                const familyName = (f.family || '').replace(/["']/g, '').trim();
+                if (familyName && !fontMap.has(familyName)) {
+                    fontMap.set(familyName, {
+                        family: familyName,
+                        url: '',
+                        type: f.status === 'loaded' ? 'loaded-font' : 'css-font',
+                        transferSize: 0,
+                        duration: 0
+                    });
+                }
+            });
+        }
+
+        data.diagnostics.fonts = Array.from(fontMap.values()).slice(0, 8);
     } catch (e) {}
 
     // 1.0s observation window

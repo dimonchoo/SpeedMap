@@ -6,8 +6,12 @@ export function CancelScan() {
   return window['go']['main']['App']['CancelScan']();
 }
 
-export function ComputeSiteAnalytics(arg1, arg2) {
-  return window['go']['main']['App']['ComputeSiteAnalytics'](arg1, arg2);
+export function ComputeSiteAnalytics(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ComputeSiteAnalytics'](arg1, arg2, arg3);
+}
+
+export function ExportImageComparisonHTML(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportImageComparisonHTML'](arg1, arg2, arg3);
 }
 
 export function OpenURL(arg1) {
@@ -16,6 +20,10 @@ export function OpenURL(arg1) {
 
 export function ParseSitemap(arg1, arg2) {
   return window['go']['main']['App']['ParseSitemap'](arg1, arg2);
+}
+
+export function PreviewImageComparisonHTML(arg1, arg2, arg3) {
+  return window['go']['main']['App']['PreviewImageComparisonHTML'](arg1, arg2, arg3);
 }
 
 export function RescanSingleURL(arg1, arg2, arg3) {

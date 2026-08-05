@@ -24,6 +24,12 @@ func TestComputeSiteAnalytics(t *testing.T) {
 				SlowestResources: []scanner.ResourceTiming{
 					{Name: "https://example.com/js/app.js", Type: "script", Duration: 350},
 				},
+				LargestImages: []scanner.ImageDetail{
+					{URL: "https://example.com/img/hero.jpg", TransferSize: 524288, Duration: 250, Width: 1200, Height: 800, FormattedSize: "512 KB"},
+				},
+				Fonts: []scanner.FontDetail{
+					{Family: "Inter", URL: "https://example.com/fonts/inter.woff2", Type: "woff2", TransferSize: 25000, Duration: 60},
+				},
 			},
 		},
 		{
@@ -42,6 +48,14 @@ func TestComputeSiteAnalytics(t *testing.T) {
 				SlowestResources: []scanner.ResourceTiming{
 					{Name: "https://example.com/js/app.js", Type: "script", Duration: 400},
 					{Name: "https://example.com/fonts/inter.woff2", Type: "font", Duration: 200},
+				},
+				LargestImages: []scanner.ImageDetail{
+					{URL: "https://example.com/img/hero.jpg", TransferSize: 524288, Duration: 280, Width: 1200, Height: 800, FormattedSize: "512 KB"},
+					{URL: "https://example.com/img/banner.png", TransferSize: 1048576, Duration: 450, Width: 1920, Height: 1080, FormattedSize: "1.0 MB"},
+				},
+				Fonts: []scanner.FontDetail{
+					{Family: "Inter", URL: "https://example.com/fonts/inter.woff2", Type: "woff2", TransferSize: 25000, Duration: 80},
+					{Family: "Roboto", URL: "https://example.com/fonts/roboto.woff2", Type: "woff2", TransferSize: 30000, Duration: 90},
 				},
 			},
 		},
@@ -69,7 +83,49 @@ func TestComputeSiteAnalytics(t *testing.T) {
 		t.Errorf("Expected app.js occurrences = 2, got %d", analytics.TopResourceBottlenecks[0].Occurrences)
 	}
 
+	// Check Largest Images
+	if len(analytics.LargestImages) != 2 {
+		t.Fatalf("Expected 2 aggregated largest images, got %d", len(analytics.LargestImages))
+	}
+	if analytics.LargestImages[0].URL != "https://example.com/img/banner.png" {
+		t.Errorf("Expected top image to be banner.png, got %s", analytics.LargestImages[0].URL)
+	}
+	if analytics.LargestImages[1].PageCount != 2 {
+		t.Errorf("Expected hero.jpg page count = 2, got %d", analytics.LargestImages[1].PageCount)
+	}
+
+	// Check Font Usage
+	if len(analytics.FontUsage) != 2 {
+		t.Fatalf("Expected 2 fonts aggregated, got %d", len(analytics.FontUsage))
+	}
+	if analytics.FontUsage[0].Family != "Inter" {
+		t.Errorf("Expected top font to be Inter, got %s", analytics.FontUsage[0].Family)
+	}
+	if analytics.FontUsage[0].Occurrences != 2 || analytics.FontUsage[0].Percentage != 100 {
+		t.Errorf("Expected Inter font occurrences=2, percentage=100%%, got %d (%.1f%%)", analytics.FontUsage[0].Occurrences, analytics.FontUsage[0].Percentage)
+	}
+
 	if len(analytics.GlobalFixes) == 0 {
 		t.Errorf("Expected global fixes to be generated")
+	}
+
+	// Verify SEOAEO-235 Image Optimization Analytics
+	if analytics.TotalImageCount != 2 {
+		t.Errorf("Expected TotalImageCount = 2, got %d", analytics.TotalImageCount)
+	}
+	if analytics.HeavyImagesCount != 2 {
+		t.Errorf("Expected HeavyImagesCount = 2 (>100KB), got %d", analytics.HeavyImagesCount)
+	}
+	if analytics.TotalWebPSavingsBytes <= 0 {
+		t.Errorf("Expected positive WebP savings, got %d", analytics.TotalWebPSavingsBytes)
+	}
+
+	// Test GenerateImageComparisonHTML
+	htmlReport := GenerateImageComparisonHTML(analytics, "example.com")
+	if len(htmlReport) == 0 {
+		t.Fatalf("Expected non-empty HTML report string")
+	}
+	if !testing.Short() && len(htmlReport) < 100 {
+		t.Errorf("Report HTML seems unexpectedly small: %d chars", len(htmlReport))
 	}
 }

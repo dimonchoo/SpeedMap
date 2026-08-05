@@ -1,5 +1,71 @@
 export namespace analytics {
 	
+	export class AggregatedFont {
+	    family: string;
+	    url: string;
+	    type: string;
+	    occurrences: number;
+	    percentage: number;
+	    avgDurationMs: number;
+	    formattedSize: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AggregatedFont(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.family = source["family"];
+	        this.url = source["url"];
+	        this.type = source["type"];
+	        this.occurrences = source["occurrences"];
+	        this.percentage = source["percentage"];
+	        this.avgDurationMs = source["avgDurationMs"];
+	        this.formattedSize = source["formattedSize"];
+	    }
+	}
+	export class AggregatedImage {
+	    url: string;
+	    maxTransferSize: number;
+	    formattedSize: string;
+	    avgDurationMs: number;
+	    pageCount: number;
+	    width: number;
+	    height: number;
+	    format: string;
+	    isHeavy: boolean;
+	    isLazy: boolean;
+	    isLCP: boolean;
+	    estimatedWebPSize: number;
+	    estimatedWebPFormatted: string;
+	    estimatedSavingsBytes: number;
+	    estimatedSavingsFormatted: string;
+	    estimatedSavingsPercent: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AggregatedImage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.maxTransferSize = source["maxTransferSize"];
+	        this.formattedSize = source["formattedSize"];
+	        this.avgDurationMs = source["avgDurationMs"];
+	        this.pageCount = source["pageCount"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.format = source["format"];
+	        this.isHeavy = source["isHeavy"];
+	        this.isLazy = source["isLazy"];
+	        this.isLCP = source["isLCP"];
+	        this.estimatedWebPSize = source["estimatedWebPSize"];
+	        this.estimatedWebPFormatted = source["estimatedWebPFormatted"];
+	        this.estimatedSavingsBytes = source["estimatedSavingsBytes"];
+	        this.estimatedSavingsFormatted = source["estimatedSavingsFormatted"];
+	        this.estimatedSavingsPercent = source["estimatedSavingsPercent"];
+	    }
+	}
 	export class ResourceImpact {
 	    name: string;
 	    type: string;
@@ -26,7 +92,19 @@ export namespace analytics {
 	    statusCounts: Record<string, number>;
 	    averageMetrics: Record<string, number>;
 	    topResourceBottlenecks: ResourceImpact[];
+	    largestImages: AggregatedImage[];
+	    allImages: AggregatedImage[];
+	    fontUsage: AggregatedFont[];
 	    globalFixes: string[];
+	    totalImagePayloadBytes: number;
+	    totalImagePayloadFormatted: string;
+	    totalImageCount: number;
+	    heavyImagesCount: number;
+	    nonWebPCount: number;
+	    missingLazyCount: number;
+	    totalWebPSavingsBytes: number;
+	    totalWebPSavingsFormatted: string;
+	    formatBreakdown: Record<string, number>;
 	
 	    static createFrom(source: any = {}) {
 	        return new SiteAnalytics(source);
@@ -39,7 +117,19 @@ export namespace analytics {
 	        this.statusCounts = source["statusCounts"];
 	        this.averageMetrics = source["averageMetrics"];
 	        this.topResourceBottlenecks = this.convertValues(source["topResourceBottlenecks"], ResourceImpact);
+	        this.largestImages = this.convertValues(source["largestImages"], AggregatedImage);
+	        this.allImages = this.convertValues(source["allImages"], AggregatedImage);
+	        this.fontUsage = this.convertValues(source["fontUsage"], AggregatedFont);
 	        this.globalFixes = source["globalFixes"];
+	        this.totalImagePayloadBytes = source["totalImagePayloadBytes"];
+	        this.totalImagePayloadFormatted = source["totalImagePayloadFormatted"];
+	        this.totalImageCount = source["totalImageCount"];
+	        this.heavyImagesCount = source["heavyImagesCount"];
+	        this.nonWebPCount = source["nonWebPCount"];
+	        this.missingLazyCount = source["missingLazyCount"];
+	        this.totalWebPSavingsBytes = source["totalWebPSavingsBytes"];
+	        this.totalWebPSavingsFormatted = source["totalWebPSavingsFormatted"];
+	        this.formatBreakdown = source["formatBreakdown"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -82,10 +172,12 @@ export namespace config {
 	export class ScanConfig {
 	    sitemapUrl: string;
 	    concurrency: number;
+	    heavyImageThresholdKB: number;
 	    authUser: string;
 	    authPass: string;
 	    headers: CustomHeader[];
 	    isMobile: boolean;
+	    autoScroll: boolean;
 	    timeoutSec: number;
 	
 	    static createFrom(source: any = {}) {
@@ -96,10 +188,12 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sitemapUrl = source["sitemapUrl"];
 	        this.concurrency = source["concurrency"];
+	        this.heavyImageThresholdKB = source["heavyImageThresholdKB"];
 	        this.authUser = source["authUser"];
 	        this.authPass = source["authPass"];
 	        this.headers = this.convertValues(source["headers"], CustomHeader);
 	        this.isMobile = source["isMobile"];
+	        this.autoScroll = source["autoScroll"];
 	        this.timeoutSec = source["timeoutSec"];
 	    }
 	
@@ -270,6 +364,58 @@ export namespace scanner {
 		    return a;
 		}
 	}
+	export class FontDetail {
+	    family: string;
+	    url: string;
+	    type: string;
+	    transferSize: number;
+	    duration: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FontDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.family = source["family"];
+	        this.url = source["url"];
+	        this.type = source["type"];
+	        this.transferSize = source["transferSize"];
+	        this.duration = source["duration"];
+	    }
+	}
+	export class ImageDetail {
+	    url: string;
+	    transferSize: number;
+	    encodedSize: number;
+	    duration: number;
+	    width: number;
+	    height: number;
+	    formattedSize: string;
+	    format: string;
+	    isLazy: boolean;
+	    alt: string;
+	    isLCP: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImageDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.transferSize = source["transferSize"];
+	        this.encodedSize = source["encodedSize"];
+	        this.duration = source["duration"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.formattedSize = source["formattedSize"];
+	        this.format = source["format"];
+	        this.isLazy = source["isLazy"];
+	        this.alt = source["alt"];
+	        this.isLCP = source["isLCP"];
+	    }
+	}
 	
 	export class ResourceTiming {
 	    name: string;
@@ -301,6 +447,8 @@ export namespace scanner {
 	    longTasksCount: number;
 	    maxLongTaskMs: number;
 	    slowestResources: ResourceTiming[];
+	    largestImages: ImageDetail[];
+	    fonts: FontDetail[];
 	    categories: Record<string, CategoryDiagnostic>;
 	    w3c?: any;
 	
@@ -323,6 +471,8 @@ export namespace scanner {
 	        this.longTasksCount = source["longTasksCount"];
 	        this.maxLongTaskMs = source["maxLongTaskMs"];
 	        this.slowestResources = this.convertValues(source["slowestResources"], ResourceTiming);
+	        this.largestImages = this.convertValues(source["largestImages"], ImageDetail);
+	        this.fonts = this.convertValues(source["fonts"], FontDetail);
 	        this.categories = this.convertValues(source["categories"], CategoryDiagnostic, true);
 	        this.w3c = source["w3c"];
 	    }
