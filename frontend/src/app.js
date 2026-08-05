@@ -5,6 +5,10 @@ function speedMapApp() {
       sitemapUrl: '',
       concurrency: 1, // Default 1 process as requested
       heavyImageThresholdKB: 100, // Default 100 KB heavy image threshold
+      webpQuality: 80, // WebP compression quality (1 - 100)
+      pngWebPRatio: 30, // Default 30% of original (70% savings)
+      jpgWebPRatio: 60, // Default 60% of original (40% savings)
+      gifWebPRatio: 50, // Default 50% of original (50% savings)
       authUser: '',
       authPass: '',
       headers: [
@@ -17,6 +21,7 @@ function speedMapApp() {
 
     // UI state
     activeTab: 'pages', // 'pages' | 'analytics' | 'images'
+    settingsTab: 'general', // 'general' | 'images' | 'scanner' | 'auth'
     showSettings: false,
     showLogDrawer: false,
     sitemapInput: '', // Empty initially, placeholder only
@@ -57,10 +62,44 @@ function speedMapApp() {
     imageFilterTab: 'all', // 'all' | 'heavy' | 'non-webp' | 'missing-lazy' | 'png' | 'jpg'
     imageSortKey: 'size', // 'size' | 'savings' | 'duration' | 'pages'
     isExportingReport: false,
+    selectedImageComparison: null, // { url, conversionResult, isConverting, error }
+    isBatchDownloadingZIP: false,
+
+    loadSavedConfig() {
+      try {
+        const saved = localStorage.getItem('speedmap_config_v1');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          this.config = { ...this.config, ...parsed };
+          if (this.config.sitemapUrl && !this.sitemapInput) {
+            this.sitemapInput = this.config.sitemapUrl;
+          }
+          console.log("[JS LOG] Loaded persistent config from localStorage:", this.config);
+        }
+      } catch (err) {
+        console.error("Failed to load saved config:", err);
+      }
+    },
+
+    saveConfig() {
+      try {
+        localStorage.setItem('speedmap_config_v1', JSON.stringify(this.config));
+        console.log("[JS LOG] Saved config to localStorage.");
+      } catch (err) {
+        console.error("Failed to save config:", err);
+      }
+    },
 
     initApp() {
       console.log("[JS LOG] speedMapApp initialized.");
+      this.loadSavedConfig();
       this.addLog('info', 'SpeedMap додаток готовий до роботи.');
+
+      if (this.$watch) {
+        this.$watch('config', () => {
+          this.saveConfig();
+        }, { deep: true });
+      }
 
       // Listen to Wails scan progress events
       if (window.runtime && window.runtime.EventsOn) {
@@ -147,6 +186,7 @@ function speedMapApp() {
       this.isParsing = true;
       this.parseError = '';
       this.config.sitemapUrl = this.sitemapInput.trim();
+      this.saveConfig();
       this.addLog('info', `Запит на парсинг sitemap: ${this.sitemapInput.trim()}`);
       this.showToast('info', 'Парсинг sitemap', `Завантаження та парсинг ${this.sitemapInput.trim()}...`);
 
@@ -229,111 +269,119 @@ function speedMapApp() {
       }
     },
 
-    // Priority Single Rescan URL
+    // Priority Single Rescan URL (one page only — does not start full site scan)
     async rescanSingle(item) {
       console.log("[JS LOG] rescanSingle clicked:", item);
-      if (!item || !item.url) {
-        console.warn("[JS LOG] rescanSingle missing item or url:", item);
+      const target = item || this.selectedDetail;
+      if (!target || !target.url) {
+        console.warn("[JS LOG] rescanSingle missing item or url:", target);
+        this.addLog('warning', 'Пересканування: немає URL сторінки.');
+        this.showToast('warning', 'Немає URL', 'Відкрийте деталі сторінки і спробуйте знову.');
         return;
       }
-      this.rescanLoadingMap = { ...this.rescanLoadingMap, [item.id]: true };
+      const pageId = target.id;
+      this.rescanLoadingMap = { ...this.rescanLoadingMap, [pageId]: true };
 
-      this.addLog('info', `🔄 Пріоритетна перевірка сторінки [${item.id}]: ${item.url}`);
-      this.showToast('info', 'Повторна перевірка', `Запущено сканування сторінки: ${item.url}`);
+      this.addLog('info', `🔄 Пересканування однієї сторінки [${pageId}]: ${target.url}`);
+      this.showToast('info', 'Пересканування сторінки', `Лише ця URL (не весь сайт): ${target.url}`);
 
       try {
         let updatedResult = null;
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.RescanSingleURL) {
           console.log("[JS LOG] Calling window.go.main.App.RescanSingleURL...");
-          updatedResult = await window.go.main.App.RescanSingleURL(this.config, item.url, item.id);
+          updatedResult = await window.go.main.App.RescanSingleURL(this.config, target.url, pageId);
           console.log("[JS LOG] RescanSingleURL returned:", updatedResult);
         } else {
           console.error("[JS LOG] window.go.main.App.RescanSingleURL is NOT available!");
-          throw new Error("Wails backend RescanSingleURL method is unavailable");
+          throw new Error("Wails backend RescanSingleURL method is unavailable — перезапустіть додаток після збірки");
         }
 
         if (updatedResult) {
-          const idx = this.scanResults.findIndex(r => r.id === item.id);
+          const idx = this.scanResults.findIndex(r => r.id === pageId);
           if (idx >= 0) {
             this.scanResults[idx] = updatedResult;
             this.scanResults = [...this.scanResults]; // Force reactive UI update
           }
-          if (this.selectedDetail && this.selectedDetail.id === item.id) {
+          if (this.selectedDetail && this.selectedDetail.id === pageId) {
             this.selectedDetail = updatedResult;
           }
 
           if (updatedResult.error) {
-            this.addLog('error', `❌ Помилка перевірки [${item.id}]: ${updatedResult.error}`);
+            this.addLog('error', `❌ Помилка перевірки [${pageId}]: ${updatedResult.error}`);
             this.showToast('error', 'Помилка сканування', updatedResult.error);
           } else {
-            this.addLog('success', `✅ Успішно перевірено [${item.id}]: Status ${updatedResult.statusCode}, LCP ${updatedResult.grades?.lcp?.formatted || '-'}`);
-            this.showToast('success', 'Сторінку оновлено', `Отримано нові показники для ${item.url}`);
+            this.addLog('success', `✅ Сторінку оновлено [${pageId}]: Status ${updatedResult.statusCode}, LCP ${updatedResult.grades?.lcp?.formatted || '-'}`);
+            this.showToast('success', 'Сторінку оновлено', `Нові метрики для ${target.url}`);
           }
 
           await this.updateAnalytics();
         }
       } catch (err) {
         console.error("[JS LOG] Error in rescanSingle:", err);
-        this.addLog('error', `Помилка при повторному скануванні: ${err.message}`);
-        this.showToast('error', 'Помилка повторного сканування', err.message);
+        this.addLog('error', `Помилка при повторному скануванні: ${err.message || err}`);
+        this.showToast('error', 'Помилка повторного сканування', err.message || String(err));
       } finally {
-        this.rescanLoadingMap = { ...this.rescanLoadingMap, [item.id]: false };
+        this.rescanLoadingMap = { ...this.rescanLoadingMap, [pageId]: false };
       }
     },
 
     // Official W3C Nu API Validation
     async validateW3C(item) {
       console.log("[JS LOG] validateW3C clicked:", item);
-      if (!item || !item.url) {
-        console.warn("[JS LOG] validateW3C missing item or url:", item);
+      const target = item || this.selectedDetail;
+      if (!target || !target.url) {
+        console.warn("[JS LOG] validateW3C missing item or url:", target);
+        this.addLog('warning', 'W3C: немає URL сторінки для валідації.');
+        this.showToast('warning', 'Немає URL', 'Відкрийте деталі сторінки і натисніть W3C знову.');
         return;
       }
-      this.w3cLoadingMap = { ...this.w3cLoadingMap, [item.id]: true };
+      const pageId = target.id;
+      this.w3cLoadingMap = { ...this.w3cLoadingMap, [pageId]: true };
 
-      this.addLog('info', `🌐 Запит на W3C HTML5 валідацію: ${item.url}`);
+      this.addLog('info', `🌐 Запит на W3C HTML5 валідацію: ${target.url}`);
       this.showToast('info', 'W3C Валідація', `Надсилання HTML до W3C Nu Validator API...`);
 
       try {
         let report = null;
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.ValidateW3C) {
           console.log("[JS LOG] Calling window.go.main.App.ValidateW3C...");
-          report = await window.go.main.App.ValidateW3C(item.url);
+          report = await window.go.main.App.ValidateW3C(target.url);
           console.log("[JS LOG] ValidateW3C returned:", report);
         } else {
           console.error("[JS LOG] window.go.main.App.ValidateW3C is NOT available!");
-          throw new Error("Wails backend ValidateW3C method is unavailable");
+          throw new Error("Wails backend ValidateW3C method is unavailable — перезапустіть додаток після збірки");
         }
 
         if (report) {
-          if (!item.diagnostics) item.diagnostics = {};
-          item.diagnostics.w3c = report;
+          const diagnostics = { ...(target.diagnostics || {}), w3c: report };
+          const updated = { ...target, diagnostics };
 
-          const idx = this.scanResults.findIndex(r => r.id === item.id);
+          const idx = this.scanResults.findIndex(r => r.id === pageId);
           if (idx >= 0) {
-            this.scanResults[idx] = item;
+            this.scanResults[idx] = updated;
             this.scanResults = [...this.scanResults];
           }
-          if (this.selectedDetail && this.selectedDetail.id === item.id) {
-            this.selectedDetail = item;
+          if (this.selectedDetail && this.selectedDetail.id === pageId) {
+            this.selectedDetail = updated;
           }
 
           if (report.error) {
-            this.addLog('error', `❌ Помилка W3C Валідації для ${item.url}: ${report.error}`);
+            this.addLog('error', `❌ Помилка W3C Валідації для ${target.url}: ${report.error}`);
             this.showToast('error', 'Помилка W3C API', report.error);
           } else if (report.isValid) {
             this.addLog('success', `🟢 W3C Валідацію пройдено ідеально! 0 помилок.`);
             this.showToast('success', 'W3C Валідно 🟢', 'Сторінка відповідає стандартам W3C.');
           } else {
-            this.addLog('warning', `⚠️ W3C Звіт для ${item.url}: ${report.errorCount} помилок, ${report.warningCount} варнінгів.`);
+            this.addLog('warning', `⚠️ W3C Звіт для ${target.url}: ${report.errorCount} помилок, ${report.warningCount} варнінгів.`);
             this.showToast('warning', 'Зауваження W3C', `Знайдено ${report.errorCount} помилок та ${report.warningCount} варнінгів у розмітці.`);
           }
         }
       } catch (err) {
         console.error("[JS LOG] Error in validateW3C:", err);
-        this.addLog('error', `Помилка W3C Валідації: ${err.message}`);
-        this.showToast('error', 'W3C Помилка', err.message);
+        this.addLog('error', `Помилка W3C Валідації: ${err.message || err}`);
+        this.showToast('error', 'W3C Помилка', err.message || String(err));
       } finally {
-        this.w3cLoadingMap = { ...this.w3cLoadingMap, [item.id]: false };
+        this.w3cLoadingMap = { ...this.w3cLoadingMap, [pageId]: false };
       }
     },
 
@@ -455,6 +503,77 @@ function speedMapApp() {
         this.showToast('error', 'Помилка експорту', err.message);
       } finally {
         this.isExportingReport = false;
+      }
+    },
+
+    async openImageQualityModal(img) {
+      if (!img || !img.url) return;
+      this.selectedImageComparison = {
+        url: img.url,
+        conversionResult: null,
+        isConverting: true,
+        error: null
+      };
+      this.addLog('info', `🖼️ Конвертація зображення в WebP (якість ${this.config.webpQuality || 80}%): ${img.url}`);
+
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.ConvertImageToWebP) {
+          const res = await window.go.main.App.ConvertImageToWebP(img.url, this.config);
+          this.selectedImageComparison.conversionResult = res;
+          this.addLog('success', `🟢 Конвертацію завершено: ${res.originalFormatted} ➔ ${res.optimizedFormatted} (-${res.savingsPercent.toFixed(1)}%)`);
+        } else {
+          throw new Error('ConvertImageToWebP method not available');
+        }
+      } catch (err) {
+        console.error('Failed to convert image:', err);
+        this.selectedImageComparison.error = err.message || 'Помилка завантаження/конвертації зображення';
+        this.addLog('error', `Помилка конвертації WebP: ${err.message}`);
+      } finally {
+        if (this.selectedImageComparison) {
+          this.selectedImageComparison.isConverting = false;
+        }
+      }
+    },
+
+    async downloadSingleWebP(url) {
+      const targetUrl = url || (this.selectedImageComparison && this.selectedImageComparison.url);
+      if (!targetUrl) return;
+      this.showToast('info', 'Збереження WebP', 'Завантаження та конвертація зображення...');
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.DownloadSingleWebPImage) {
+          const savedPath = await window.go.main.App.DownloadSingleWebPImage(targetUrl, this.config);
+          this.addLog('success', `🟢 WebP зображення збережено: ${savedPath}`);
+          this.showToast('success', 'Файл збережено 🟢', savedPath);
+        }
+      } catch (err) {
+        console.error('Failed to download single WebP:', err);
+        this.showToast('error', 'Помилка збереження WebP', err.message);
+      }
+    },
+
+    async downloadBatchWebPZIP() {
+      const heavyImages = this.filteredImages.filter(img => img.isHeavy || img.format !== 'webp');
+      if (heavyImages.length === 0) {
+        this.showToast('warning', 'Відсутні важкі зображення', 'Не знайдено зображень для пакетного стиснення.');
+        return;
+      }
+      this.isBatchDownloadingZIP = true;
+      this.addLog('info', `📦 Конвертація ${heavyImages.length} зображень та упакування у ZIP (WebP якість ${this.config.webpQuality || 80}%)...`);
+      this.showToast('info', 'Пакетна компресія WebP', `Оптимізація ${heavyImages.length} зображень...`);
+
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.DownloadOptimizedWebPZIP) {
+          const urls = heavyImages.map(img => img.url);
+          const zipPath = await window.go.main.App.DownloadOptimizedWebPZIP(urls, this.config);
+          this.addLog('success', `🟢 ZIP архів успішно збережено: ${zipPath}`);
+          this.showToast('success', 'ZIP Архів збережено 📦', zipPath);
+        }
+      } catch (err) {
+        console.error('Failed to download ZIP archive:', err);
+        this.addLog('error', `Помилка створення ZIP архіву: ${err.message}`);
+        this.showToast('error', 'Помилка пакетної компресії', err.message);
+      } finally {
+        this.isBatchDownloadingZIP = false;
       }
     },
 

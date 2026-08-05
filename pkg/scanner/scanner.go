@@ -109,7 +109,7 @@ func (s *Scanner) ScanURLs(urls []string, onProgress func(progress ScanProgress)
 				}
 
 				// Continuously scan URL in a lightweight tab context
-				res := s.scanWithContext(allocCtx, item.index+1, item.url)
+				res := s.scanWithContext(allocCtx, item.index+1, item.url, false)
 				results[item.index] = res
 
 				currentCount := atomic.AddInt32(&processedCount, 1)
@@ -132,7 +132,8 @@ func (s *Scanner) ScanURLs(urls []string, onProgress func(progress ScanProgress)
 	return results, nil
 }
 
-// ScanSingleURL executes an on-demand single URL scan with immediate Chrome teardown
+// ScanSingleURL executes an on-demand single URL scan with immediate Chrome teardown.
+// Cache is disabled so re-checks after site edits see fresh HTML (not Chrome/HTTP cache).
 func (s *Scanner) ScanSingleURL(id int, rawURL string) PageResult {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.NoFirstRun,
@@ -142,15 +143,16 @@ func (s *Scanner) ScanSingleURL(id int, rawURL string) PageResult {
 		chromedp.IgnoreCertErrors,
 		chromedp.Flag("disable-background-networking", true),
 		chromedp.Flag("disable-extensions", true),
+		chromedp.Flag("disk-cache-size", "0"),
 	)
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(s.ctx, opts...)
 	defer allocCancel()
 
-	return s.scanWithContext(allocCtx, id, rawURL)
+	return s.scanWithContext(allocCtx, id, rawURL, true)
 }
 
-func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL string) PageResult {
+func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL string, bypassCache bool) PageResult {
 	startTime := time.Now()
 	res := PageResult{
 		ID:  id,
@@ -171,13 +173,32 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 	timeoutCtx, timeCancel := context.WithTimeout(taskCtx, time.Duration(timeoutSec)*time.Second)
 	defer timeCancel()
 
-	// Capture Response Status Code via CDP event listener
+	// Capture Response Status Code & Cache Status via CDP event listener
 	var statusCode int = 200
+	var pluginCacheStatus string = "NONE"
+	var cfCacheStatus string = "NONE"
+
 	chromedp.ListenTarget(timeoutCtx, func(ev interface{}) {
 		switch e := ev.(type) {
 		case *network.EventResponseReceived:
-			if e.Response != nil && (e.Response.URL == rawURL || e.Response.URL == rawURL+"/") {
+			if e.Response != nil && (e.Type == network.ResourceTypeDocument || e.Response.URL == rawURL || e.Response.URL == rawURL+"/") {
 				statusCode = int(e.Response.Status)
+				if e.Response.Headers != nil {
+					for k, v := range e.Response.Headers {
+						lk := strings.ToLower(k)
+						val := strings.ToUpper(fmt.Sprintf("%v", v))
+
+						// 1. Plugin / Redis Cache Header Detection
+						if lk == "x-lightweight-cache-status" || lk == "x-redis-cache" || lk == "x-cache-status" || lk == "x-cache" || lk == "x-page-cache" {
+							pluginCacheStatus = val
+						}
+
+						// 2. Cloudflare Cache Header Detection
+						if lk == "cf-cache-status" {
+							cfCacheStatus = val
+						}
+					}
+				}
 			}
 		}
 	})
@@ -193,6 +214,10 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 			headers[h.Key] = h.Value
 		}
 	}
+	if bypassCache {
+		headers["Cache-Control"] = "no-cache"
+		headers["Pragma"] = "no-cache"
+	}
 
 	// Build Tasks
 	var vitals WebVitals
@@ -203,6 +228,12 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
 		if err := network.Enable().Do(ctx); err != nil {
 			return err
+		}
+		if bypassCache {
+			// ponytail: Chrome HTTP cache can hide site edits after rescan; disable for single-URL path.
+			if err := network.SetCacheDisabled(true).Do(ctx); err != nil {
+				return err
+			}
 		}
 		if len(headers) > 0 {
 			if err := network.SetExtraHTTPHeaders(headers).Do(ctx); err != nil {
@@ -285,6 +316,8 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 
 	res.DurationMs = time.Since(startTime).Milliseconds()
 	res.StatusCode = statusCode
+	res.PluginCacheStatus = pluginCacheStatus
+	res.CloudflareCacheStatus = cfCacheStatus
 	res.Metrics = vitals
 
 	// Calculate Grades

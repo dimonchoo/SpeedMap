@@ -84,16 +84,18 @@ type PageDiagnostics struct {
 }
 
 type PageResult struct {
-	ID              int             `json:"id"`
-	URL             string          `json:"url"`
-	StatusCode      int             `json:"statusCode"`
-	Metrics         WebVitals       `json:"metrics"`
-	Grades          DetailedGrades  `json:"grades"`
-	Diagnostics     PageDiagnostics `json:"diagnostics"`
-	OverallStatus   string          `json:"overallStatus"` // "good", "needs-improvement", "poor", "error"
-	Error           string          `json:"error"`
-	Recommendations []string        `json:"recommendations"`
-	DurationMs      int64           `json:"durationMs"`
+	ID                    int             `json:"id"`
+	URL                   string          `json:"url"`
+	StatusCode            int             `json:"statusCode"`
+	PluginCacheStatus     string          `json:"pluginCacheStatus"`     // e.g. "HIT", "MISS", "BYPASS", "NONE"
+	CloudflareCacheStatus string          `json:"cloudflareCacheStatus"` // e.g. "HIT", "MISS", "DYNAMIC", "REVALIDATED", "BYPASS", "NONE"
+	Metrics               WebVitals       `json:"metrics"`
+	Grades                DetailedGrades  `json:"grades"`
+	Diagnostics           PageDiagnostics `json:"diagnostics"`
+	OverallStatus         string          `json:"overallStatus"` // "good", "needs-improvement", "poor", "error"
+	Error                 string          `json:"error"`
+	Recommendations       []string        `json:"recommendations"`
+	DurationMs            int64           `json:"durationMs"`
 }
 
 type ScanProgress struct {

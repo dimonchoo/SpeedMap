@@ -346,13 +346,33 @@
                         :class="rescanLoadingMap[item.id] ? 'bg-cyan-950/30 ring-1 ring-cyan-500/50' : (item.overallStatus === 'error' ? 'bg-rose-950/10' : '')">
                         <td class="py-3 px-6 text-slate-500" x-text="item.id"></td>
 
-                        <td class="py-3 px-3 font-mono max-w-[200px] xl:max-w-[240px] truncate">
-                          <button @click.stop="openUrlInBrowser(item.url)"
-                            class="text-slate-200 hover:text-emerald-400 underline decoration-slate-700 hover:decoration-emerald-400 transition inline-flex items-center space-x-1 text-left group-hover:text-white max-w-full"
-                            :title="'Відкрити сторінку у браузері:\n' + item.url">
-                            <span class="truncate" x-text="item.url"></span>
-                            <span class="text-slate-500 group-hover:text-emerald-400 text-[10px] shrink-0">↗</span>
-                          </button>
+                        <td class="py-3 px-3 font-mono max-w-[240px] xl:max-w-[300px]">
+                          <div class="flex flex-col space-y-1">
+                            <div class="flex items-center space-x-1.5 truncate">
+                              <!-- Plugin / Redis Cache Badge -->
+                              <template x-if="item.pluginCacheStatus && item.pluginCacheStatus !== 'NONE'">
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold border shrink-0"
+                                  :class="item.pluginCacheStatus === 'HIT' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : (item.pluginCacheStatus === 'MISS' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-slate-800 text-slate-400 border-slate-700')"
+                                  :title="'Plugin / Redis Cache Status: ' + item.pluginCacheStatus"
+                                  x-text="'⚡ ' + item.pluginCacheStatus"></span>
+                              </template>
+
+                              <!-- Cloudflare Cache Badge -->
+                              <template x-if="item.cloudflareCacheStatus && item.cloudflareCacheStatus !== 'NONE'">
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold border shrink-0"
+                                  :class="item.cloudflareCacheStatus === 'HIT' ? 'bg-sky-500/20 text-sky-300 border-sky-500/30' : (item.cloudflareCacheStatus === 'MISS' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30')"
+                                  :title="'Cloudflare Cache Status: ' + item.cloudflareCacheStatus"
+                                  x-text="'☁️ ' + item.cloudflareCacheStatus"></span>
+                              </template>
+                            </div>
+
+                            <button @click.stop="openUrlInBrowser(item.url)"
+                              class="text-slate-200 hover:text-emerald-400 underline decoration-slate-700 hover:decoration-emerald-400 transition inline-flex items-center space-x-1 text-left group-hover:text-white truncate"
+                              :title="'Відкрити сторінку у браузері:\n' + item.url">
+                              <span class="truncate" x-text="item.url"></span>
+                              <span class="text-slate-500 group-hover:text-emerald-400 text-[10px] shrink-0">↗</span>
+                            </button>
+                          </div>
                         </td>
 
                         <td class="py-3 px-3 text-center">
@@ -399,19 +419,15 @@
 
                         <td class="py-3 px-6 text-center">
                           <div class="flex items-center justify-center space-x-2">
-                            <button type="button" @click.stop="rescanSingle(item)" :disabled="rescanLoadingMap[item.id]"
-                              class="p-1 rounded bg-slate-800 hover:bg-cyan-600 text-slate-300 hover:text-white transition shadow" title="Пріоритетно пересканувати лише цю сторінку">
-                              <template x-if="!rescanLoadingMap[item.id]">
-                                <svg class="w-3.5 h-3.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                                </svg>
-                              </template>
-                              <template x-if="rescanLoadingMap[item.id]">
-                                <svg class="animate-spin h-3.5 w-3.5 text-cyan-400 pointer-events-none" fill="none" viewBox="0 0 24 24">
-                                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                              </template>
+                            <button type="button" @click.stop.prevent="rescanSingle(item)" :disabled="!!rescanLoadingMap[item.id]"
+                              class="p-1 rounded bg-slate-800 hover:bg-cyan-600 text-slate-300 hover:text-white transition shadow disabled:opacity-50" title="Пріоритетно пересканувати лише цю сторінку">
+                              <svg x-show="!rescanLoadingMap[item.id]" class="w-3.5 h-3.5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                              </svg>
+                              <svg x-show="!!rescanLoadingMap[item.id]" x-cloak class="animate-spin h-3.5 w-3.5 text-cyan-400 pointer-events-none" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
                             </button>
                             <button class="text-cyan-400 hover:text-cyan-300 underline text-xs font-sans">Деталі</button>
                           </div>
@@ -691,15 +707,15 @@
                       <div class="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Потенційна економія (WebP) 🟢</div>
                       <div class="text-2xl font-extrabold text-emerald-400 font-mono" x-text="'-' + (siteAnalytics.totalWebPSavingsFormatted || '0 B')"></div>
                     </div>
-                    <div class="grid grid-cols-2 gap-2 mt-2">
+                    <div class="grid grid-cols-3 gap-1.5 mt-2">
                       <button @click="previewImageReport()" :disabled="isPreviewingReport"
-                        class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium py-1.5 px-2 rounded-lg text-[11px] transition flex items-center justify-center space-x-1 shadow"
-                        title="Відкрити звіт у локальному веб-сервері у браузері (без скачування)">
+                        class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium py-1.5 px-1 rounded-lg text-[10px] transition flex items-center justify-center space-x-1 shadow"
+                        title="Відкрити звіт у локальному веб-сервері у браузері">
                         <template x-if="!isPreviewingReport">
-                          <span>🌐 Переглянути</span>
+                          <span>🌐 Звіт</span>
                         </template>
                         <template x-if="isPreviewingReport">
-                          <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                          <svg class="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
@@ -707,13 +723,27 @@
                       </button>
 
                       <button @click="exportImageReport()" :disabled="isExportingReport"
-                        class="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-medium py-1.5 px-2 rounded-lg text-[11px] border border-slate-700 transition flex items-center justify-center space-x-1 shadow"
-                        title="Завантажити звіт як HTML файл на диск">
+                        class="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-medium py-1.5 px-1 rounded-lg text-[10px] border border-slate-700 transition flex items-center justify-center space-x-1 shadow"
+                        title="Завантажити звіт як HTML файл">
                         <template x-if="!isExportingReport">
-                          <span>💾 Скачати</span>
+                          <span>📄 HTML</span>
                         </template>
                         <template x-if="isExportingReport">
-                          <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                          <svg class="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                        </template>
+                      </button>
+
+                      <button @click="downloadBatchWebPZIP()" :disabled="isBatchDownloadingZIP"
+                        class="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-medium py-1.5 px-1 rounded-lg text-[10px] transition flex items-center justify-center space-x-1 shadow"
+                        title="Конвертувати та завантажити ZIP архів WebP зображень">
+                        <template x-if="!isBatchDownloadingZIP">
+                          <span>📦 ZIP WebP</span>
+                        </template>
+                        <template x-if="isBatchDownloadingZIP">
+                          <svg class="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
@@ -830,12 +860,13 @@
                         <th class="p-3.5 text-right">WebP Оцінка</th>
                         <th class="p-3.5 text-right">Економія (KB / %)</th>
                         <th class="p-3.5 text-center">Lazy Loading</th>
+                        <th class="p-3.5 text-center">Дії / Порівняння</th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-800/60">
                       <template x-if="filteredImages.length === 0">
                         <tr>
-                          <td colspan="9" class="p-8 text-center text-slate-500 font-sans">
+                          <td colspan="10" class="p-8 text-center text-slate-500 font-sans">
                             Не знайдено зображень за обраними фільтрами.
                           </td>
                         </tr>
@@ -877,6 +908,19 @@
                             <template x-if="!img.isLazy">
                               <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">Відсутнє ⚠️</span>
                             </template>
+                          </td>
+
+                          <td class="p-3.5 text-center space-x-1 whitespace-nowrap">
+                            <button @click="openImageQualityModal(img)"
+                              class="bg-amber-600/90 hover:bg-amber-500 text-white font-semibold px-2 py-1 rounded text-[10px] transition shadow"
+                              title="Відкрити порівняння якості (Original vs Real WebP)">
+                              👁️ Якість
+                            </button>
+                            <button @click="downloadSingleWebP(img.url)"
+                              class="bg-emerald-700/90 hover:bg-emerald-600 text-white font-semibold px-2 py-1 rounded text-[10px] transition shadow"
+                              title="Завантажити WebP файл">
+                              💾 WebP
+                            </button>
                           </td>
                         </tr>
                       </template>
@@ -933,10 +977,13 @@
       <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" @click="showSettings = false"></div>
 
       <div class="fixed inset-y-0 right-0 pl-10 max-w-full flex">
-        <div class="w-screen max-w-md bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col">
+        <div class="w-screen max-w-lg bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col">
           
-          <div class="p-6 border-b border-slate-800 flex items-center justify-between">
-            <h2 class="text-lg font-bold text-slate-100">Налаштування сканера</h2>
+          <!-- Modal Header & Tab Bar -->
+          <div class="p-6 border-b border-slate-800 flex items-center justify-between pb-4">
+            <h2 class="text-lg font-bold text-slate-100 flex items-center space-x-2">
+              <span>⚙️ Налаштування сканера</span>
+            </h2>
             <button @click="showSettings = false" class="text-slate-400 hover:text-slate-200">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -944,123 +991,225 @@
             </button>
           </div>
 
+          <!-- Category Navigation Tabs -->
+          <div class="px-6 pt-2 bg-slate-950/60 border-b border-slate-800/80 flex space-x-1 overflow-x-auto text-xs font-semibold">
+            <button type="button" @click="settingsTab = 'general'"
+              :class="settingsTab === 'general' ? 'border-b-2 border-emerald-400 text-emerald-400 font-bold bg-slate-900' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-2.5 rounded-t-lg transition whitespace-nowrap">
+              🌐 Загальні
+            </button>
+            <button type="button" @click="settingsTab = 'images'"
+              :class="settingsTab === 'images' ? 'border-b-2 border-emerald-400 text-emerald-400 font-bold bg-slate-900' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-2.5 rounded-t-lg transition whitespace-nowrap">
+              🖼️ Зображення & WebP
+            </button>
+            <button type="button" @click="settingsTab = 'scanner'"
+              :class="settingsTab === 'scanner' ? 'border-b-2 border-emerald-400 text-emerald-400 font-bold bg-slate-900' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-2.5 rounded-t-lg transition whitespace-nowrap">
+              📜 Сканер
+            </button>
+            <button type="button" @click="settingsTab = 'auth'"
+              :class="settingsTab === 'auth' ? 'border-b-2 border-emerald-400 text-emerald-400 font-bold bg-slate-900' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-2.5 rounded-t-lg transition whitespace-nowrap">
+              🔐 Auth & Headers
+            </button>
+          </div>
+
+          <!-- Tab Contents -->
           <div class="flex-1 overflow-y-auto p-6 space-y-6 text-sm">
             
-            <!-- Default Sitemap URL -->
-            <div class="space-y-2">
-              <label class="font-semibold text-slate-200 block">Sitemap / Domain за замовчуванням</label>
-              <input type="text" x-model="config.sitemapUrl" placeholder="https://example.com/sitemap.xml"
-                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none font-mono">
-              <p class="text-xs text-slate-400">Вкажіть ваш постійний sitemap URL для автоматичного заповнення</p>
-            </div>
-
-            <hr class="border-slate-800">
-
-            <!-- Concurrency Slider -->
-            <div class="space-y-2">
-              <div class="flex justify-between items-center">
-                <label class="font-semibold text-slate-200">Паралелелізм (Concurrency)</label>
-                <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono font-bold" x-text="config.concurrency + ' Chrome'"></span>
-              </div>
-              <input type="range" min="1" max="10" x-model.number="config.concurrency"
-                class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
-              <p class="text-xs text-slate-400">Кількість одночасних процесів Chrome (за замовчуванням 1, щоб не навантажувати сайт)</p>
-            </div>
-
-            <hr class="border-slate-800">
-
-            <!-- Auto-Scroll Toggle Switch -->
-            <div class="space-y-2">
-              <div class="flex justify-between items-center">
-                <div>
-                  <label class="font-semibold text-slate-200 block">Автоматична прокрутка (Full-Page Auto-Scroll)</label>
-                  <p class="text-xs text-slate-400 max-w-xs mt-0.5">Прокручує кожну сторінку донизу для завантаження лінивих зображень (loading="lazy") та динамічних ресурсів</p>
+            <!-- TAB 1: GENERAL SETTINGS -->
+            <template x-if="settingsTab === 'general'">
+              <div class="space-y-6">
+                <!-- Default Sitemap URL -->
+                <div class="space-y-2">
+                  <label class="font-semibold text-slate-200 block">Sitemap / Domain за замовчуванням</label>
+                  <input type="text" x-model="config.sitemapUrl" placeholder="https://example.com/sitemap.xml"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none font-mono">
+                  <p class="text-xs text-slate-400">Вкажіть ваш постійний sitemap URL для автоматичного заповнення</p>
                 </div>
-                <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                  <input type="checkbox" x-model="config.autoScroll" class="sr-only peer">
-                  <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                </label>
-              </div>
-            </div>
 
-            <hr class="border-slate-800">
+                <hr class="border-slate-800">
 
-            <!-- Heavy Image Threshold KB -->
-            <div class="space-y-2">
-              <div class="flex justify-between items-center">
-                <label class="font-semibold text-slate-200">Поріг важкого зображення (Heavy Threshold)</label>
-                <span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono font-bold" x-text="(config.heavyImageThresholdKB || 100) + ' KB'"></span>
-              </div>
-              <input type="number" min="10" max="5000" step="10" x-model.number="config.heavyImageThresholdKB" placeholder="100"
-                class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
-              <p class="text-xs text-slate-400">Розмір у КБ, вище якого зображення вважається важким (поза замовчуванням 100 KB)</p>
-            </div>
+                <!-- Concurrency Slider -->
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center">
+                    <label class="font-semibold text-slate-200">Паралелелізм (Concurrency)</label>
+                    <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono font-bold" x-text="config.concurrency + ' Chrome'"></span>
+                  </div>
+                  <input type="range" min="1" max="10" x-model.number="config.concurrency"
+                    class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
+                  <p class="text-xs text-slate-400">Кількість одночасних процесів Chrome (за замовчуванням 1, щоб не навантажувати сайт)</p>
+                </div>
 
-            <hr class="border-slate-800">
+                <hr class="border-slate-800">
 
-            <!-- Device Emulation Switch -->
-            <div class="space-y-3">
-              <label class="font-semibold text-slate-200 block">Емуляция пристрою (Device Mode)</label>
-              <div class="grid grid-cols-2 gap-3">
-                <button type="button" @click="config.isMobile = false"
-                  :class="!config.isMobile ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold' : 'bg-slate-800/60 border-slate-700 text-slate-400'"
-                  class="border rounded-xl p-3 text-center transition flex flex-col items-center space-y-1">
-                  <span class="text-lg">🖥️</span>
-                  <span class="text-xs">Desktop (1920x1080)</span>
-                </button>
+                <!-- Device Emulation Switch -->
+                <div class="space-y-3">
+                  <label class="font-semibold text-slate-200 block">Емуляция пристрою (Device Mode)</label>
+                  <div class="grid grid-cols-2 gap-3">
+                    <button type="button" @click="config.isMobile = false"
+                      :class="!config.isMobile ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold' : 'bg-slate-800/60 border-slate-700 text-slate-400'"
+                      class="border rounded-xl p-3 text-center transition flex flex-col items-center space-y-1">
+                      <span class="text-lg">🖥️</span>
+                      <span class="text-xs">Desktop (1920x1080)</span>
+                    </button>
 
-                <button type="button" @click="config.isMobile = true"
-                  :class="config.isMobile ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold' : 'bg-slate-800/60 border-slate-700 text-slate-400'"
-                  class="border rounded-xl p-3 text-center transition flex flex-col items-center space-y-1">
-                  <span class="text-lg">📱</span>
-                  <span class="text-xs">Mobile (375x812)</span>
-                </button>
-              </div>
-            </div>
-
-            <hr class="border-slate-800">
-
-            <!-- Basic Auth -->
-            <div class="space-y-3">
-              <label class="font-semibold text-slate-200 block">HTTP Basic Authentication</label>
-              <div class="space-y-2">
-                <input type="text" x-model="config.authUser" placeholder="Username"
-                  class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none">
-                <input type="password" x-model="config.authPass" placeholder="Password"
-                  class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none">
-              </div>
-            </div>
-
-            <hr class="border-slate-800">
-
-            <!-- Custom Headers -->
-            <div class="space-y-3">
-              <div class="flex justify-between items-center">
-                <label class="font-semibold text-slate-200">Custom HTTP Headers</label>
-                <button @click="addHeader()" class="text-xs text-emerald-400 hover:underline font-medium">+ Додати заголовок</button>
-              </div>
-              
-              <div class="space-y-2">
-                <template x-for="(h, idx) in config.headers" :key="idx">
-                  <div class="flex space-x-2">
-                    <input type="text" x-model="h.key" placeholder="Header Name"
-                      class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
-                    <input type="text" x-model="h.value" placeholder="Value"
-                      class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
-                    <button @click="removeHeader(idx)" class="text-rose-400 hover:text-rose-300 p-1">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                      </svg>
+                    <button type="button" @click="config.isMobile = true"
+                      :class="config.isMobile ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 font-bold' : 'bg-slate-800/60 border-slate-700 text-slate-400'"
+                      class="border rounded-xl p-3 text-center transition flex flex-col items-center space-y-1">
+                      <span class="text-lg">📱</span>
+                      <span class="text-xs">Mobile (375x812)</span>
                     </button>
                   </div>
-                </template>
+                </div>
               </div>
-            </div>
+            </template>
+
+            <!-- TAB 2: IMAGES & WEBP SETTINGS -->
+            <template x-if="settingsTab === 'images'">
+              <div class="space-y-6">
+                <!-- Heavy Image Threshold KB -->
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center">
+                    <label class="font-semibold text-slate-200">Поріг важкого зображення (Heavy Threshold)</label>
+                    <span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono font-bold" x-text="(config.heavyImageThresholdKB || 100) + ' KB'"></span>
+                  </div>
+                  <input type="number" min="10" max="5000" step="10" x-model.number="config.heavyImageThresholdKB" placeholder="100"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                  <p class="text-xs text-slate-400">Розмір у КБ, вище якого зображення вважається важким (за замовчуванням 100 KB)</p>
+                </div>
+
+                <hr class="border-slate-800">
+
+                <!-- WebP Compression Quality -->
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center">
+                    <label class="font-semibold text-slate-200">Якість стиснення WebP (Quality)</label>
+                    <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono font-bold" x-text="(config.webpQuality || 80) + '%'"></span>
+                  </div>
+                  <input type="range" min="10" max="100" step="5" x-model.number="config.webpQuality"
+                    class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
+                  <p class="text-xs text-slate-400">Рівень якості для реального CGo WebP конвертера (за замовчуванням 80% — оптимальний баланс якості та розміру)</p>
+                </div>
+
+                <hr class="border-slate-800">
+
+                <div class="space-y-4">
+                  <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider">📊 Коефіцієнти Аналітичної Оцінки Розміру WebP</h3>
+                  <p class="text-xs text-slate-400">Вкажіть, який відсоток від оригінального розміру очікується після стиснення в WebP для кожного формату:</p>
+
+                  <!-- PNG WebP Ratio -->
+                  <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex justify-between items-center">
+                      <label class="text-xs font-bold text-slate-200">PNG WebP Ratio</label>
+                      <span class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300" x-text="(config.pngWebPRatio || 30) + '% (' + (100 - (config.pngWebPRatio || 30)) + '% економії)'"></span>
+                    </div>
+                    <input type="range" min="10" max="95" step="5" x-model.number="config.pngWebPRatio"
+                      class="w-full accent-indigo-500 bg-slate-800 rounded-lg cursor-pointer">
+                  </div>
+
+                  <!-- JPEG WebP Ratio -->
+                  <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex justify-between items-center">
+                      <label class="text-xs font-bold text-slate-200">JPEG WebP Ratio</label>
+                      <span class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-amber-500/20 text-amber-300" x-text="(config.jpgWebPRatio || 60) + '% (' + (100 - (config.jpgWebPRatio || 60)) + '% економії)'"></span>
+                    </div>
+                    <input type="range" min="10" max="95" step="5" x-model.number="config.jpgWebPRatio"
+                      class="w-full accent-amber-500 bg-slate-800 rounded-lg cursor-pointer">
+                  </div>
+
+                  <!-- GIF WebP Ratio -->
+                  <div class="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex justify-between items-center">
+                      <label class="text-xs font-bold text-slate-200">GIF WebP Ratio</label>
+                      <span class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300" x-text="(config.gifWebPRatio || 50) + '% (' + (100 - (config.gifWebPRatio || 50)) + '% економії)'"></span>
+                    </div>
+                    <input type="range" min="10" max="95" step="5" x-model.number="config.gifWebPRatio"
+                      class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- TAB 3: SCANNER & SCROLL SETTINGS -->
+            <template x-if="settingsTab === 'scanner'">
+              <div class="space-y-6">
+                <!-- Auto-Scroll Toggle Switch -->
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center">
+                    <div>
+                      <label class="font-semibold text-slate-200 block">Автоматична прокрутка (Full-Page Auto-Scroll)</label>
+                      <p class="text-xs text-slate-400 max-w-xs mt-0.5">Прокручує кожну сторінку донизу для завантаження лінивих зображень (loading="lazy") та динамічних ресурсів</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                      <input type="checkbox" x-model="config.autoScroll" class="sr-only peer">
+                      <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+                </div>
+
+                <hr class="border-slate-800">
+
+                <!-- Timeout Sec -->
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center">
+                    <label class="font-semibold text-slate-200">Таймаут завантаження сторінки (Timeout)</label>
+                    <span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono font-bold" x-text="(config.timeoutSec || 30) + ' сек'"></span>
+                  </div>
+                  <input type="number" min="5" max="180" step="5" x-model.number="config.timeoutSec" placeholder="30"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                  <p class="text-xs text-slate-400">Максимальний час очікування завантаження однієї сторінки (за замовчуванням 30 сек)</p>
+                </div>
+              </div>
+            </template>
+
+            <!-- TAB 4: AUTH & HEADERS SETTINGS -->
+            <template x-if="settingsTab === 'auth'">
+              <div class="space-y-6">
+                <!-- Basic Auth -->
+                <div class="space-y-3">
+                  <label class="font-semibold text-slate-200 block">HTTP Basic Authentication</label>
+                  <div class="space-y-2">
+                    <input type="text" x-model="config.authUser" placeholder="Username"
+                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                    <input type="password" x-model="config.authPass" placeholder="Password"
+                      class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                  </div>
+                </div>
+
+                <hr class="border-slate-800">
+
+                <!-- Custom Headers -->
+                <div class="space-y-3">
+                  <div class="flex justify-between items-center">
+                    <label class="font-semibold text-slate-200">Custom HTTP Headers</label>
+                    <button type="button" @click="addHeader()" class="text-xs text-emerald-400 hover:underline font-medium">+ Додати заголовок</button>
+                  </div>
+                  
+                  <div class="space-y-2">
+                    <template x-for="(h, idx) in config.headers" :key="idx">
+                      <div class="flex space-x-2">
+                        <input type="text" x-model="h.key" placeholder="Header Name"
+                          class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                        <input type="text" x-model="h.value" placeholder="Value"
+                          class="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none font-mono">
+                        <button type="button" @click="removeHeader(idx)" class="text-rose-400 hover:text-rose-300 p-1">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </template>
 
           </div>
 
           <div class="p-6 border-t border-slate-800">
-            <button @click="showSettings = false" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-xl transition">
+            <button @click="saveConfig(); showSettings = false" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-xl transition">
               Зберегти та закрити
             </button>
           </div>
@@ -1069,47 +1218,181 @@
       </div>
     </div>
 
-    <!-- DETAIL SLIDE-OVER PANEL -->
-    <div x-show="selectedDetail" x-cloak class="fixed inset-0 z-50 overflow-hidden">
-      <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" @click="selectedDetail = null"></div>
+    <!-- SIDE-BY-SIDE IMAGE QUALITY INSPECTOR MODAL -->
+    <div x-show="selectedImageComparison" x-cloak class="fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+      <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        
+        <div class="fixed inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity" @click="selectedImageComparison = null"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-      <div class="fixed inset-y-0 right-0 pl-10 max-w-full flex">
-        <div class="w-screen max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col">
+        <div class="inline-block align-bottom bg-slate-900 rounded-3xl border border-slate-800 text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
+          
+          <!-- Modal Header -->
+          <div class="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+            <div class="flex items-center space-x-3 truncate pr-4">
+              <span class="text-2xl">🖼️</span>
+              <div class="truncate">
+                <h3 class="text-base font-bold text-slate-100 flex items-center space-x-2">
+                  <span>Порівняльний Аналіз Якості (Original vs WebP)</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 font-mono border border-emerald-500/30" x-text="'Quality: ' + (config.webpQuality || 80) + '%'"></span>
+                </h3>
+                <p class="text-xs text-slate-400 font-mono truncate mt-0.5" x-text="selectedImageComparison?.url"></p>
+              </div>
+            </div>
+            
+            <button @click="selectedImageComparison = null" class="text-slate-400 hover:text-slate-200 p-2 rounded-lg bg-slate-800/60 hover:bg-slate-800 shrink-0">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Modal Body -->
+          <div class="p-6 space-y-6">
+            
+            <template x-if="selectedImageComparison?.isConverting">
+              <div class="py-16 text-center space-y-4">
+                <svg class="animate-spin h-10 w-10 text-emerald-500 mx-auto" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <div class="text-sm font-semibold text-slate-200">Конвертація зображення в WebP у реальному часі...</div>
+                <div class="text-xs text-slate-400 font-mono">Завантаження оригінального файлу та обробка компресором CGo/WebP (Quality: <span x-text="config.webpQuality || 80"></span>%)</div>
+              </div>
+            </template>
+
+            <template x-if="selectedImageComparison?.error">
+              <div class="bg-rose-950/30 border border-rose-800/50 p-6 rounded-2xl text-center space-y-2">
+                <div class="text-rose-400 font-bold text-base">⚠️ Помилка обробки зображення</div>
+                <p class="text-xs text-rose-300 font-mono" x-text="selectedImageComparison?.error"></p>
+              </div>
+            </template>
+
+            <template x-if="selectedImageComparison?.conversionResult">
+              <div class="space-y-6">
+                
+                <!-- KPI Comparison Cards Header -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div class="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-1">
+                    <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Оригінальний розмір</div>
+                    <div class="text-xl font-extrabold text-slate-200 font-mono" x-text="selectedImageComparison.conversionResult.originalFormatted"></div>
+                    <div class="text-[10px] text-slate-500 font-mono" x-text="selectedImageComparison.conversionResult.filename"></div>
+                  </div>
+
+                  <div class="bg-emerald-950/30 p-4 rounded-2xl border border-emerald-800/50 space-y-1">
+                    <div class="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">Конвертований WebP</div>
+                    <div class="text-xl font-extrabold text-emerald-400 font-mono" x-text="selectedImageComparison.conversionResult.optimizedFormatted"></div>
+                    <div class="text-[10px] text-emerald-300/80 font-mono">Якість: <span x-text="(config.webpQuality || 80) + '%'"></span></div>
+                  </div>
+
+                  <div class="bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/30 space-y-1">
+                    <div class="text-[11px] font-semibold text-emerald-300 uppercase tracking-wider">Реальна Економія</div>
+                    <div class="text-xl font-extrabold text-emerald-300 font-mono" x-text="'-' + selectedImageComparison.conversionResult.savingsFormatted + ' (' + selectedImageComparison.conversionResult.savingsPercent.toFixed(1) + '%)'"></div>
+                    <div class="text-[10px] text-emerald-400/80 font-mono">Розмір зменшено на <span x-text="selectedImageComparison.conversionResult.savingsPercent.toFixed(1) + '%'"></span></div>
+                  </div>
+                </div>
+
+                <!-- Stacked Row-by-Row Enriched Visual Comparison Display -->
+                <div class="flex flex-col space-y-8">
+                  
+                  <!-- Row 1: Original Image (Enlarged Full-Width Row) -->
+                  <div class="bg-slate-950 p-6 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                      <span class="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center space-x-2">
+                        <span class="w-3 h-3 rounded-full bg-rose-500 inline-block"></span>
+                        <span>🔴 Оригінальне Зображення (Original Image)</span>
+                      </span>
+                      <span class="px-3 py-1 rounded-lg text-xs font-mono bg-slate-800 text-slate-200 font-bold border border-slate-700" x-text="selectedImageComparison.conversionResult.originalFormatted"></span>
+                    </div>
+
+                    <div class="relative bg-slate-900/80 rounded-2xl overflow-auto min-h-[350px] max-h-[700px] flex items-center justify-center border border-slate-800 p-4 shadow-2xl">
+                      <img :src="selectedImageComparison.conversionResult.originalDataBase64 || selectedImageComparison.url"
+                        class="max-h-[660px] w-auto max-w-full object-contain rounded-lg shadow-2xl" alt="Original Image">
+                    </div>
+                  </div>
+
+                  <!-- Row 2: Converted WebP Image (Enlarged Full-Width Row) -->
+                  <div class="bg-slate-950 p-6 rounded-2xl border border-emerald-900/50 space-y-4 shadow-inner">
+                    <div class="flex items-center justify-between border-b border-emerald-900/40 pb-3">
+                      <span class="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center space-x-2">
+                        <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                        <span>🟢 WebP Оптимізована Версія (Quality: <span x-text="(config.webpQuality || 80) + '%'"></span>)</span>
+                      </span>
+                      <div class="flex items-center space-x-3">
+                        <span class="px-3 py-1 rounded-lg text-xs font-mono bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30" x-text="selectedImageComparison.conversionResult.optimizedFormatted"></span>
+                        <span class="px-3 py-1 rounded-lg text-xs font-mono bg-emerald-600 text-white font-extrabold shadow" x-text="'-' + selectedImageComparison.conversionResult.savingsPercent.toFixed(1) + '%'"></span>
+                      </div>
+                    </div>
+
+                    <div class="relative bg-slate-900/80 rounded-2xl overflow-auto min-h-[350px] max-h-[700px] flex items-center justify-center border border-emerald-900/50 p-4 shadow-2xl">
+                      <img :src="selectedImageComparison.conversionResult.optimizedWebPBase64"
+                        class="max-h-[660px] w-auto max-w-full object-contain rounded-lg shadow-2xl" alt="Converted WebP Image">
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            </template>
+
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="p-6 border-t border-slate-800 bg-slate-950/50 flex items-center justify-between">
+            <button @click="selectedImageComparison = null" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium py-2 px-5 rounded-xl text-xs transition">
+              Закрити
+            </button>
+
+            <template x-if="selectedImageComparison?.conversionResult">
+              <button @click="downloadSingleWebP(selectedImageComparison.url)"
+                class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-6 rounded-xl text-xs transition flex items-center space-x-2 shadow-lg">
+                <span>💾 Завантажити цей WebP (<span x-text="selectedImageComparison.conversionResult.filename"></span>)</span>
+              </button>
+            </template>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- DETAIL SLIDE-OVER PANEL -->
+    <div x-show="selectedDetail" x-cloak class="fixed inset-0 z-[60] overflow-hidden">
+      <!-- Backdrop must stay under the panel or it eats clicks on rescan/W3C buttons -->
+      <div class="absolute inset-0 z-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" @click="selectedDetail = null"></div>
+
+      <div class="relative z-10 ml-auto h-full w-screen max-w-xl flex pointer-events-auto">
+        <div class="w-full bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col h-full">
           
           <!-- Header with URL Link & Rescan Button -->
-          <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div class="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
             <div class="flex-1 pr-4 truncate">
               <h3 class="text-base font-bold text-slate-100">Детальний аналіз Web Vitals</h3>
-              <button @click="openUrlInBrowser(selectedDetail?.url)" class="text-xs text-emerald-400 hover:underline font-mono truncate block mt-0.5" title="Відкрити сторінку у браузері">
+              <button type="button" @click.stop="openUrlInBrowser(selectedDetail?.url)" class="text-xs text-emerald-400 hover:underline font-mono truncate block mt-0.5" title="Відкрити сторінку у браузері">
                 <span x-text="selectedDetail?.url"></span> ↗
               </button>
             </div>
             
             <div class="flex items-center space-x-2 shrink-0">
               <!-- Rescan Button inside Slide-over -->
-              <button @click="rescanSingle(selectedDetail)" :disabled="rescanLoadingMap[selectedDetail?.id]"
-                class="flex items-center space-x-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition">
-                <template x-if="!rescanLoadingMap[selectedDetail?.id]">
-                  <span class="flex items-center space-x-1">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                    </svg>
-                    <span>Пріоритетна перевірка 🔄</span>
-                  </span>
-                </template>
-                <template x-if="rescanLoadingMap[selectedDetail?.id]">
-                  <span class="flex items-center space-x-1 text-cyan-400">
-                    <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Сканування...</span>
-                  </span>
-                </template>
+              <button type="button" @click.stop.prevent="rescanSingle(selectedDetail)" :disabled="!!rescanLoadingMap[selectedDetail?.id]"
+                class="flex items-center space-x-1.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-50">
+                <span x-show="!rescanLoadingMap[selectedDetail?.id]" class="flex items-center space-x-1 pointer-events-none">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                  <span>Пересканувати сторінку 🔄</span>
+                </span>
+                <span x-show="!!rescanLoadingMap[selectedDetail?.id]" x-cloak class="flex items-center space-x-1 text-cyan-400 pointer-events-none">
+                  <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Сторінка...</span>
+                </span>
               </button>
 
-              <button @click="selectedDetail = null" class="text-slate-400 hover:text-slate-200 p-1">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <button type="button" @click.stop="selectedDetail = null" class="text-slate-400 hover:text-slate-200 p-1">
+                <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
               </button>
@@ -1145,6 +1428,43 @@
               </div>
             </div>
 
+            <!-- Cache Status Card (Plugin / Redis & Cloudflare) -->
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+              <div class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                <span>⚡ Стан Кешування (Cache Status)</span>
+                <span class="text-[10px] text-slate-500 font-mono">HTTP Headers</span>
+              </div>
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <!-- Plugin / Redis Cache -->
+                <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                  <div class="text-[11px] text-slate-400 font-medium">⚡ Plugin / Redis Cache</div>
+                  <div class="font-mono font-bold text-sm">
+                    <template x-if="selectedDetail?.pluginCacheStatus && selectedDetail?.pluginCacheStatus !== 'NONE'">
+                      <span :class="selectedDetail?.pluginCacheStatus === 'HIT' ? 'text-emerald-400' : (selectedDetail?.pluginCacheStatus === 'MISS' ? 'text-amber-400' : 'text-slate-300')"
+                        x-text="selectedDetail?.pluginCacheStatus"></span>
+                    </template>
+                    <template x-if="!selectedDetail?.pluginCacheStatus || selectedDetail?.pluginCacheStatus === 'NONE'">
+                      <span class="text-slate-500 font-normal text-xs">Не виявлено / NONE</span>
+                    </template>
+                  </div>
+                </div>
+
+                <!-- Cloudflare Cache -->
+                <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
+                  <div class="text-[11px] text-slate-400 font-medium">☁️ Cloudflare Cache</div>
+                  <div class="font-mono font-bold text-sm">
+                    <template x-if="selectedDetail?.cloudflareCacheStatus && selectedDetail?.cloudflareCacheStatus !== 'NONE'">
+                      <span :class="selectedDetail?.cloudflareCacheStatus === 'HIT' ? 'text-sky-400' : (selectedDetail?.cloudflareCacheStatus === 'MISS' ? 'text-amber-400' : 'text-indigo-300')"
+                        x-text="selectedDetail?.cloudflareCacheStatus"></span>
+                    </template>
+                    <template x-if="!selectedDetail?.cloudflareCacheStatus || selectedDetail?.cloudflareCacheStatus === 'NONE'">
+                      <span class="text-slate-500 font-normal text-xs">Не виявлено / NONE</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Official W3C HTML5 Validation Section -->
             <div class="space-y-3 pt-2">
               <div class="flex items-center justify-between">
@@ -1152,22 +1472,18 @@
                   <span>🌐 Офіційна W3C HTML5 Валідація</span>
                 </h4>
 
-                <button @click="validateW3C(selectedDetail)" :disabled="w3cLoadingMap[selectedDetail?.id]"
-                  class="flex items-center space-x-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 px-3 py-1 rounded-lg text-xs font-semibold transition">
-                  <template x-if="!w3cLoadingMap[selectedDetail?.id]">
-                    <span class="flex items-center space-x-1">
-                      <span>Перевірити W3C 🔄</span>
-                    </span>
-                  </template>
-                  <template x-if="w3cLoadingMap[selectedDetail?.id]">
-                    <span class="flex items-center space-x-1 text-indigo-400">
-                      <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>W3C Запит...</span>
-                    </span>
-                  </template>
+                <button type="button" @click.stop.prevent="validateW3C(selectedDetail)" :disabled="!!w3cLoadingMap[selectedDetail?.id]"
+                  class="flex items-center space-x-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 px-3 py-1 rounded-lg text-xs font-semibold transition disabled:opacity-50">
+                  <span x-show="!w3cLoadingMap[selectedDetail?.id]" class="flex items-center space-x-1 pointer-events-none">
+                    <span>Перевірити W3C 🔄</span>
+                  </span>
+                  <span x-show="!!w3cLoadingMap[selectedDetail?.id]" x-cloak class="flex items-center space-x-1 text-indigo-400 pointer-events-none">
+                    <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>W3C Запит...</span>
+                  </span>
                 </button>
               </div>
 

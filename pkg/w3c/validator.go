@@ -172,6 +172,8 @@ func fetchHTMLLocally(ctx context.Context, rawURL string) (string, error) {
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SpeedMap/1.0")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Pragma", "no-cache")
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
