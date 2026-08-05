@@ -173,6 +173,10 @@ export namespace config {
 	    sitemapUrl: string;
 	    concurrency: number;
 	    heavyImageThresholdKB: number;
+	    webpQuality: number;
+	    pngWebPRatio: number;
+	    jpgWebPRatio: number;
+	    gifWebPRatio: number;
 	    authUser: string;
 	    authPass: string;
 	    headers: CustomHeader[];
@@ -189,6 +193,10 @@ export namespace config {
 	        this.sitemapUrl = source["sitemapUrl"];
 	        this.concurrency = source["concurrency"];
 	        this.heavyImageThresholdKB = source["heavyImageThresholdKB"];
+	        this.webpQuality = source["webpQuality"];
+	        this.pngWebPRatio = source["pngWebPRatio"];
+	        this.jpgWebPRatio = source["jpgWebPRatio"];
+	        this.gifWebPRatio = source["gifWebPRatio"];
 	        this.authUser = source["authUser"];
 	        this.authPass = source["authPass"];
 	        this.headers = this.convertValues(source["headers"], CustomHeader);
@@ -263,6 +271,95 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.analytics = this.convertValues(source["analytics"], analytics.SiteAnalytics);
 	        this.comparison = this.convertValues(source["comparison"], history.RunComparison);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace optimizer {
+	
+	export class ConversionResult {
+	    url: string;
+	    filename: string;
+	    originalBytes: number;
+	    originalFormatted: string;
+	    optimizedBytes: number;
+	    optimizedFormatted: string;
+	    savingsBytes: number;
+	    savingsFormatted: string;
+	    savingsPercent: number;
+	    originalDataBase64: string;
+	    optimizedWebPBase64: string;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ConversionResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.filename = source["filename"];
+	        this.originalBytes = source["originalBytes"];
+	        this.originalFormatted = source["originalFormatted"];
+	        this.optimizedBytes = source["optimizedBytes"];
+	        this.optimizedFormatted = source["optimizedFormatted"];
+	        this.savingsBytes = source["savingsBytes"];
+	        this.savingsFormatted = source["savingsFormatted"];
+	        this.savingsPercent = source["savingsPercent"];
+	        this.originalDataBase64 = source["originalDataBase64"];
+	        this.optimizedWebPBase64 = source["optimizedWebPBase64"];
+	        this.error = source["error"];
+	    }
+	}
+
+}
+
+export namespace profiles {
+	
+	export class SiteProfile {
+	    id: string;
+	    name: string;
+	    sitemapUrl: string;
+	    config: config.ScanConfig;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	    // Go type: time
+	    lastScannedAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new SiteProfile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.sitemapUrl = source["sitemapUrl"];
+	        this.config = this.convertValues(source["config"], config.ScanConfig);
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	        this.lastScannedAt = this.convertValues(source["lastScannedAt"], null);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -519,6 +616,8 @@ export namespace scanner {
 	    id: number;
 	    url: string;
 	    statusCode: number;
+	    pluginCacheStatus: string;
+	    cloudflareCacheStatus: string;
 	    metrics: WebVitals;
 	    grades: DetailedGrades;
 	    diagnostics: PageDiagnostics;
@@ -536,6 +635,8 @@ export namespace scanner {
 	        this.id = source["id"];
 	        this.url = source["url"];
 	        this.statusCode = source["statusCode"];
+	        this.pluginCacheStatus = source["pluginCacheStatus"];
+	        this.cloudflareCacheStatus = source["cloudflareCacheStatus"];
 	        this.metrics = this.convertValues(source["metrics"], WebVitals);
 	        this.grades = this.convertValues(source["grades"], DetailedGrades);
 	        this.diagnostics = this.convertValues(source["diagnostics"], PageDiagnostics);

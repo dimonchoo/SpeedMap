@@ -16,8 +16,10 @@ function speedMapApp() {
       ],
       isMobile: true, // Default to Mobile Emulation as requested
       autoScroll: false, // Disabled by default as requested
+      soundEnabled: true, // Audio notifications toggle
       timeoutSec: 30
     },
+
 
     // UI state
     activeTab: 'pages', // 'pages' | 'analytics' | 'images'
@@ -51,6 +53,12 @@ function speedMapApp() {
     selectedDetail: null,
     rescanLoadingMap: {},
     w3cLoadingMap: {},
+    // WebKit/Wails: Audio.play() from scan:progress is not a user gesture → autoplay blocked.
+    // Unlock once on click (Start Scan / first interaction), then reuse elements.
+    audioUnlocked: false,
+    audioCtx: null,
+    pikaPageEl: null,
+    pikaFullEl: null,
 
     // Site Analytics & Comparison State
     siteAnalytics: null,
@@ -64,6 +72,197 @@ function speedMapApp() {
     isExportingReport: false,
     selectedImageComparison: null, // { url, conversionResult, isConverting, error }
     isBatchDownloadingZIP: false,
+
+    // Multi-Site Profiles State
+    siteProfiles: [],
+    activeProfileId: '',
+    profileSearchQuery: '',
+    showProfileDropdown: false,
+    showProfileModal: false,
+    editingProfile: {
+      id: '',
+      name: '',
+      sitemapUrl: '',
+      config: null
+    },
+
+    get activeProfile() {
+      if (!this.siteProfiles || this.siteProfiles.length === 0) return null;
+      return this.siteProfiles.find(p => p.id === this.activeProfileId) || this.siteProfiles[0];
+    },
+
+    get filteredSiteProfiles() {
+      if (!this.siteProfiles) return [];
+      if (!this.profileSearchQuery.trim()) return this.siteProfiles;
+      const q = this.profileSearchQuery.toLowerCase().trim();
+      return this.siteProfiles.filter(p => 
+        (p.name && p.name.toLowerCase().includes(q)) || 
+        (p.sitemapUrl && p.sitemapUrl.toLowerCase().includes(q))
+      );
+    },
+
+    async loadSiteProfiles() {
+      try {
+        let list = [];
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.ListSiteProfiles) {
+          list = await window.go.main.App.ListSiteProfiles();
+        }
+
+        if (!list || list.length === 0) {
+          const defaultUrl = this.config.sitemapUrl || this.sitemapInput || '';
+          const defaultName = defaultUrl ? defaultUrl.replace(/^https?:\/\//, '').split('/')[0] : 'Основний сайт';
+          
+          const defaultProfile = {
+            id: '',
+            name: defaultName,
+            sitemapUrl: defaultUrl,
+            config: { ...this.config }
+          };
+          
+          if (window.go && window.go.main && window.go.main.App && window.go.main.App.SaveSiteProfile) {
+            const saved = await window.go.main.App.SaveSiteProfile(defaultProfile);
+            if (saved) {
+              list = [saved];
+            }
+          } else {
+            list = [{ ...defaultProfile, id: 'site_default' }];
+          }
+        }
+
+        this.siteProfiles = list || [];
+        
+        const lastActiveId = localStorage.getItem('speedmap_active_profile_id');
+        const found = this.siteProfiles.find(p => p.id === lastActiveId);
+        if (found) {
+          this.applyProfile(found);
+        } else if (this.siteProfiles.length > 0) {
+          this.applyProfile(this.siteProfiles[0]);
+        }
+        console.log("[JS LOG] Loaded site profiles:", this.siteProfiles.length, "Active ID:", this.activeProfileId);
+      } catch (err) {
+        console.error("Failed to load site profiles:", err);
+      }
+    },
+
+    applyProfile(profile) {
+      if (!profile) return;
+      this.activeProfileId = profile.id;
+      localStorage.setItem('speedmap_active_profile_id', profile.id);
+      
+      if (profile.sitemapUrl) {
+        this.sitemapInput = profile.sitemapUrl;
+        this.config.sitemapUrl = profile.sitemapUrl;
+      }
+      if (profile.config) {
+        this.config = { ...this.config, ...profile.config };
+      }
+      this.saveConfig();
+    },
+
+    async selectProfile(profile) {
+      if (!profile) return;
+      this.applyProfile(profile);
+      this.showProfileDropdown = false;
+      this.addLog('info', `🌐 Переключено на сайт: ${profile.name} (${profile.sitemapUrl || 'Без sitemap'})`);
+      this.showToast('info', 'Сайт змінено 🌐', profile.name);
+
+      if (profile.sitemapUrl) {
+        await this.parseSitemap();
+      }
+    },
+
+    openCreateProfileModal() {
+      this.showProfileDropdown = false;
+      this.editingProfile = {
+        id: '',
+        name: '',
+        sitemapUrl: '',
+        config: { ...this.config }
+      };
+      this.showProfileModal = true;
+    },
+
+    openEditProfileModal(profile) {
+      this.showProfileDropdown = false;
+      this.editingProfile = {
+        id: profile.id,
+        name: profile.name,
+        sitemapUrl: profile.sitemapUrl,
+        config: profile.config ? JSON.parse(JSON.stringify(profile.config)) : { ...this.config }
+      };
+      this.showProfileModal = true;
+    },
+
+    async saveProfileFromModal() {
+      if (!this.editingProfile.name.trim() && !this.editingProfile.sitemapUrl.trim()) {
+        this.showToast('warning', 'Заповніть дані', 'Вкажіть назву сайту або URL sitemap');
+        return;
+      }
+
+      try {
+        if (!this.editingProfile.name.trim()) {
+          this.editingProfile.name = this.editingProfile.sitemapUrl.replace(/^https?:\/\//, '').split('/')[0] || 'Новий сайт';
+        }
+
+        let saved = null;
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.SaveSiteProfile) {
+          saved = await window.go.main.App.SaveSiteProfile(this.editingProfile);
+        } else {
+          saved = { ...this.editingProfile, id: this.editingProfile.id || ('site_' + Date.now()) };
+        }
+
+        this.showProfileModal = false;
+        await this.loadSiteProfiles();
+        if (saved) {
+          const fresh = this.siteProfiles.find(p => p.id === saved.id) || saved;
+          this.applyProfile(fresh);
+        }
+        this.showToast('success', 'Профіль збережено 🟢', this.editingProfile.name);
+        this.addLog('success', `Успішно збережено профіль сайту: ${this.editingProfile.name}`);
+      } catch (err) {
+        console.error("Failed to save profile:", err);
+        this.showToast('error', 'Помилка збереження', err.message);
+      }
+    },
+
+    async deleteProfile(profileId) {
+      const p = this.siteProfiles.find(item => item.id === profileId);
+      const name = p ? p.name : 'сайту';
+      if (!confirm(`Ви дійсно бажаєте видалити профіль "${name}"?`)) return;
+
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.DeleteSiteProfile) {
+          await window.go.main.App.DeleteSiteProfile(profileId);
+        }
+        
+        this.showToast('info', 'Профіль видалено', name);
+        this.addLog('info', `Видалено профіль сайту: ${name}`);
+        await this.loadSiteProfiles();
+      } catch (err) {
+        console.error("Failed to delete profile:", err);
+        this.showToast('error', 'Помилка видалення', err.message);
+      }
+    },
+
+    async saveCurrentConfigToActiveProfile() {
+      if (!this.activeProfile) return;
+      const updated = {
+        ...this.activeProfile,
+        sitemapUrl: this.sitemapInput || this.config.sitemapUrl,
+        config: { ...this.config }
+      };
+      
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.SaveSiteProfile) {
+          await window.go.main.App.SaveSiteProfile(updated);
+        }
+        await this.loadSiteProfiles();
+        this.showToast('success', 'Налаштування збережено 🟢', `Профіль "${updated.name}" оновлено`);
+        this.addLog('success', `Оновлено індивідуальні налаштування для профілю: ${updated.name}`);
+      } catch (err) {
+        console.error("Failed to save current config to active profile:", err);
+      }
+    },
 
     loadSavedConfig() {
       try {
@@ -93,7 +292,17 @@ function speedMapApp() {
     initApp() {
       console.log("[JS LOG] speedMapApp initialized.");
       this.loadSavedConfig();
+      this.loadSiteProfiles();
       this.addLog('info', 'SpeedMap додаток готовий до роботи.');
+
+      // Unlock WebAudio on first real click (needed for later scan-complete sounds)
+      const unlockOnce = () => {
+        this.unlockAudio();
+        window.removeEventListener('pointerdown', unlockOnce, true);
+        window.removeEventListener('keydown', unlockOnce, true);
+      };
+      window.addEventListener('pointerdown', unlockOnce, true);
+      window.addEventListener('keydown', unlockOnce, true);
 
       if (this.$watch) {
         this.$watch('config', () => {
@@ -126,8 +335,14 @@ function speedMapApp() {
 
           if (progress.isFinished) {
             this.isScanning = false;
-            this.showToast('success', 'Сканування завершено', `Всього перевірено ${this.scanResults.length} сторінок.`);
+            this.showToast('success', 'Сканування завершено ⚡', `Всього перевірено ${this.scanResults.length} сторінок.`);
             this.addLog('success', `Сканування завершено! Усього оброблено ${this.scanResults.length} сторінок.`);
+
+            if (this.totalToScan <= 3) {
+              this.playPikaPageSound();
+            } else {
+              this.playPikaFullSound();
+            }
             await this.updateAnalytics();
           }
         });
@@ -246,6 +461,9 @@ function speedMapApp() {
     async startScan() {
       if (this.selectedUrls.length === 0) return;
 
+      // Must unlock during the click that starts the scan — finish event is not a user gesture
+      await this.unlockAudio();
+
       this.isScanning = true;
       this.scanResults = [];
       this.siteAnalytics = null;
@@ -280,6 +498,7 @@ function speedMapApp() {
         return;
       }
       const pageId = target.id;
+      await this.unlockAudio();
       this.rescanLoadingMap = { ...this.rescanLoadingMap, [pageId]: true };
 
       this.addLog('info', `🔄 Пересканування однієї сторінки [${pageId}]: ${target.url}`);
@@ -312,7 +531,9 @@ function speedMapApp() {
           } else {
             this.addLog('success', `✅ Сторінку оновлено [${pageId}]: Status ${updatedResult.statusCode}, LCP ${updatedResult.grades?.lcp?.formatted || '-'}`);
             this.showToast('success', 'Сторінку оновлено', `Нові метрики для ${target.url}`);
+            this.playPikaPageSound();
           }
+
 
           await this.updateAnalytics();
         }
@@ -577,8 +798,154 @@ function speedMapApp() {
       }
     },
 
+    async unlockAudio() {
+      if (this.config.soundEnabled === false) return false;
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          if (!this.audioCtx) this.audioCtx = new AC();
+          if (this.audioCtx.state === 'suspended') {
+            await this.audioCtx.resume();
+          }
+        }
+
+        if (!this.pikaPageEl) {
+          this.pikaPageEl = new Audio('/pika-page.mp3');
+          this.pikaPageEl.preload = 'auto';
+        }
+        if (!this.pikaFullEl) {
+          this.pikaFullEl = new Audio('/pika-full.mp3');
+          this.pikaFullEl.preload = 'auto';
+        }
+
+        // Warm HTMLAudioElement during user gesture so later event-driven play() works in WebKit
+        if (!this.audioUnlocked) {
+          const warm = this.pikaPageEl;
+          const prevVol = warm.volume;
+          warm.volume = 0.001;
+          try {
+            await warm.play();
+            warm.pause();
+            warm.currentTime = 0;
+          } catch (err) {
+            console.warn("[JS LOG] Audio warm-up blocked:", err);
+          }
+          warm.volume = prevVol || 0.85;
+          this.audioUnlocked = true;
+          console.log("[JS LOG] Audio unlocked for scan notifications");
+        }
+        return true;
+      } catch (err) {
+        console.warn("[JS LOG] unlockAudio failed:", err);
+        return false;
+      }
+    },
+
+    async playPikaPageSound() {
+      if (this.config.soundEnabled === false) return;
+      // Prefer OS player: WebKitGTK often cannot decode MP3 (falls back to synth beep)
+      try {
+        if (window.go?.main?.App?.PlayNotificationSound) {
+          await window.go.main.App.PlayNotificationSound('page');
+          this.addLog('info', '⚡ Pikachu (page) через системний плеєр');
+          return;
+        }
+      } catch (err) {
+        console.warn("[JS LOG] native page sound failed:", err);
+      }
+      try {
+        await this.unlockAudio();
+        const el = this.pikaPageEl || new Audio('/pika-page.mp3');
+        this.pikaPageEl = el;
+        el.pause();
+        el.currentTime = 0;
+        el.volume = 0.85;
+        await el.play();
+        this.addLog('info', '⚡ Звук завершення (page) відтворено');
+      } catch (err) {
+        console.warn("[JS LOG] pika-page play failed:", err);
+        await this.playSynthPikaPi();
+      }
+    },
+
+    async playPikaFullSound() {
+      if (this.config.soundEnabled === false) return;
+      try {
+        if (window.go?.main?.App?.PlayNotificationSound) {
+          await window.go.main.App.PlayNotificationSound('full');
+          this.addLog('info', '⚡ Pikachu (full) через системний плеєр');
+          return;
+        }
+      } catch (err) {
+        console.warn("[JS LOG] native full sound failed:", err);
+      }
+      try {
+        await this.unlockAudio();
+        const el = this.pikaFullEl || new Audio('/pika-full.mp3');
+        this.pikaFullEl = el;
+        el.pause();
+        el.currentTime = 0;
+        el.volume = 0.90;
+        await el.play();
+        this.addLog('info', '⚡ Звук завершення (full) відтворено');
+      } catch (err) {
+        console.warn("[JS LOG] pika-full play failed:", err);
+        await this.playSynthPikaPi();
+      }
+    },
+
+    async playSynthPikaPi() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        if (!this.audioCtx) this.audioCtx = new AudioContext();
+        const ctx = this.audioCtx;
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(1046.50, ctx.currentTime);
+        osc1.frequency.exponentialRampToValueAtTime(1318.51, ctx.currentTime + 0.12);
+
+        gain1.gain.setValueAtTime(0.35, ctx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.14);
+
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+
+        osc1.start(ctx.currentTime);
+        osc1.stop(ctx.currentTime + 0.15);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(1567.98, ctx.currentTime + 0.15);
+        osc2.frequency.exponentialRampToValueAtTime(1879.47, ctx.currentTime + 0.28);
+
+        gain2.gain.setValueAtTime(0.0, ctx.currentTime + 0.14);
+        gain2.gain.setValueAtTime(0.4, ctx.currentTime + 0.15);
+        gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.38);
+
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+
+        osc2.start(ctx.currentTime + 0.15);
+        osc2.stop(ctx.currentTime + 0.40);
+        this.addLog('info', '⚡ Synth звук відтворено (fallback)');
+      } catch (err) {
+        console.warn("Could not play synth sound:", err);
+        this.addLog('warning', `Звук не відтворено: ${err.message || err}`);
+      }
+    },
+
+
+
     // Helpers
     badgeClass(status) {
+
       switch (status) {
         case 'good':
           return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';

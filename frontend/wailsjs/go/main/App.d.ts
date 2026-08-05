@@ -3,13 +3,25 @@
 import {config} from '../models';
 import {scanner} from '../models';
 import {main} from '../models';
+import {optimizer} from '../models';
+import {profiles} from '../models';
 import {w3c} from '../models';
 
 export function CancelScan():Promise<void>;
 
 export function ComputeSiteAnalytics(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<main.AnalyticsResult>;
 
+export function ConvertImageToWebP(arg1:string,arg2:config.ScanConfig):Promise<optimizer.ConversionResult>;
+
+export function DeleteSiteProfile(arg1:string):Promise<void>;
+
+export function DownloadOptimizedWebPZIP(arg1:Array<string>,arg2:config.ScanConfig):Promise<string>;
+
+export function DownloadSingleWebPImage(arg1:string,arg2:config.ScanConfig):Promise<string>;
+
 export function ExportImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
+
+export function ListSiteProfiles():Promise<Array<profiles.SiteProfile>>;
 
 export function OpenURL(arg1:string):Promise<void>;
 
@@ -18,6 +30,8 @@ export function ParseSitemap(arg1:string,arg2:config.ScanConfig):Promise<Array<s
 export function PreviewImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 
 export function RescanSingleURL(arg1:config.ScanConfig,arg2:string,arg3:number):Promise<scanner.PageResult>;
+
+export function SaveSiteProfile(arg1:profiles.SiteProfile):Promise<profiles.SiteProfile>;
 
 export function StartScan(arg1:config.ScanConfig,arg2:Array<string>):Promise<void>;
 

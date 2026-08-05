@@ -203,7 +203,7 @@ new Promise(async (resolve) => {
         data.diagnostics.slowestResources = slow;
     } catch (e) {}
 
-    // 5. Images Extraction & Diagnostics
+    // 5. Images Extraction & Diagnostics (Complete & Unlimited Extraction)
     try {
         const getImgFormat = (url) => {
             if (!url) return 'unknown';
@@ -218,24 +218,29 @@ new Promise(async (resolve) => {
         };
 
         const resources = performance.getEntriesByType('resource');
-        const imgElements = Array.from(document.querySelectorAll('img'));
+        const imageMap = new Map();
         const domImgMap = new Map();
+
+        // A. Extract DOM <img> attributes
+        const imgElements = Array.from(document.querySelectorAll('img'));
         imgElements.forEach(img => {
-            const src = img.currentSrc || img.src;
-            if (src) {
-                domImgMap.set(src, {
+            const src = img.currentSrc || img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src');
+            if (src && !src.startsWith('data:')) {
+                let fullUrl = src;
+                try { fullUrl = new URL(src, document.baseURI).href; } catch(e){}
+                domImgMap.set(fullUrl, {
                     width: img.naturalWidth || img.width || 0,
                     height: img.naturalHeight || img.height || 0,
-                    isLazy: img.getAttribute('loading') === 'lazy',
+                    isLazy: img.getAttribute('loading') === 'lazy' || !!img.getAttribute('data-src'),
                     alt: img.getAttribute('alt') || ''
                 });
             }
         });
 
-        const imageMap = new Map();
+        // B. Extract Network Performance Resources
         resources.forEach(r => {
-            const isImgType = r.initiatorType === 'img' || r.initiatorType === 'image' || r.initiatorType === 'css';
-            const isImgExt = /\.(jpg|jpeg|png|webp|avif|gif|svg|ico)(\?.*)?$/i.test(r.name);
+            const isImgType = r.initiatorType === 'img' || r.initiatorType === 'image' || r.initiatorType === 'css' || r.initiatorType === 'picture';
+            const isImgExt = /\.(jpg|jpeg|png|webp|avif|gif|svg|ico|bmp)(\?.*)?$/i.test(r.name);
             if (isImgType || isImgExt) {
                 const size = r.transferSize || r.encodedBodySize || r.decodedBodySize || 0;
                 const domInfo = domImgMap.get(r.name) || { width: 0, height: 0, isLazy: false, alt: '' };
@@ -255,29 +260,62 @@ new Promise(async (resolve) => {
             }
         });
 
-        // Also add DOM <img> elements that might not be in performance timing (e.g. data URLs or fast inline)
+        // C. Add DOM <img> elements not in performance timings
         imgElements.forEach(img => {
-            const src = img.currentSrc || img.src;
-            if (src && !imageMap.has(src) && !src.startsWith('data:')) {
-                imageMap.set(src, {
-                    url: src,
-                    transferSize: 0,
-                    encodedSize: 0,
-                    duration: 0,
-                    width: img.naturalWidth || img.width || 0,
-                    height: img.naturalHeight || img.height || 0,
-                    formattedSize: '0 B',
-                    format: getImgFormat(src),
-                    isLazy: img.getAttribute('loading') === 'lazy',
-                    alt: img.getAttribute('alt') || '',
-                    isLCP: data.diagnostics.lcpUrl === src
+            const src = img.currentSrc || img.src || img.getAttribute('data-src');
+            if (src && !src.startsWith('data:')) {
+                let fullUrl = src;
+                try { fullUrl = new URL(src, document.baseURI).href; } catch(e){}
+                if (!imageMap.has(fullUrl)) {
+                    imageMap.set(fullUrl, {
+                        url: fullUrl,
+                        transferSize: 0,
+                        encodedSize: 0,
+                        duration: 0,
+                        width: img.naturalWidth || img.width || 0,
+                        height: img.naturalHeight || img.height || 0,
+                        formattedSize: '0 B',
+                        format: getImgFormat(fullUrl),
+                        isLazy: img.getAttribute('loading') === 'lazy' || !!img.getAttribute('data-src'),
+                        alt: img.getAttribute('alt') || '',
+                        isLCP: data.diagnostics.lcpUrl === fullUrl
+                    });
+                }
+            }
+        });
+
+        // D. Extract <picture> <source srcset="..."> and <img srcset="...">
+        const pictureSources = Array.from(document.querySelectorAll('picture source, img[srcset]'));
+        pictureSources.forEach(source => {
+            const srcset = source.getAttribute('srcset') || source.getAttribute('data-srcset');
+            if (srcset) {
+                srcset.split(',').forEach(part => {
+                    const rawUrl = part.trim().split(/\s+/)[0];
+                    if (rawUrl && !rawUrl.startsWith('data:')) {
+                        let fullUrl = rawUrl;
+                        try { fullUrl = new URL(rawUrl, document.baseURI).href; } catch(e){}
+                        if (!imageMap.has(fullUrl)) {
+                            imageMap.set(fullUrl, {
+                                url: fullUrl,
+                                transferSize: 0,
+                                encodedSize: 0,
+                                duration: 0,
+                                width: 0,
+                                height: 0,
+                                formattedSize: '0 B',
+                                format: getImgFormat(fullUrl),
+                                isLazy: source.getAttribute('loading') === 'lazy' || !!source.getAttribute('data-srcset'),
+                                alt: '',
+                                isLCP: data.diagnostics.lcpUrl === fullUrl
+                            });
+                        }
+                    }
                 });
             }
         });
 
         const imageList = Array.from(imageMap.values())
-            .sort((a, b) => (b.transferSize - a.transferSize) || (b.duration - a.duration))
-            .slice(0, 15);
+            .sort((a, b) => (b.transferSize - a.transferSize) || (b.duration - a.duration));
 
         data.diagnostics.largestImages = imageList;
     } catch (e) {}

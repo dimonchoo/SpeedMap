@@ -10,8 +10,28 @@ export function ComputeSiteAnalytics(arg1, arg2, arg3) {
   return window['go']['main']['App']['ComputeSiteAnalytics'](arg1, arg2, arg3);
 }
 
+export function ConvertImageToWebP(arg1, arg2) {
+  return window['go']['main']['App']['ConvertImageToWebP'](arg1, arg2);
+}
+
+export function DeleteSiteProfile(arg1) {
+  return window['go']['main']['App']['DeleteSiteProfile'](arg1);
+}
+
+export function DownloadOptimizedWebPZIP(arg1, arg2) {
+  return window['go']['main']['App']['DownloadOptimizedWebPZIP'](arg1, arg2);
+}
+
+export function DownloadSingleWebPImage(arg1, arg2) {
+  return window['go']['main']['App']['DownloadSingleWebPImage'](arg1, arg2);
+}
+
 export function ExportImageComparisonHTML(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportImageComparisonHTML'](arg1, arg2, arg3);
+}
+
+export function ListSiteProfiles() {
+  return window['go']['main']['App']['ListSiteProfiles']();
 }
 
 export function OpenURL(arg1) {
@@ -28,6 +48,10 @@ export function PreviewImageComparisonHTML(arg1, arg2, arg3) {
 
 export function RescanSingleURL(arg1, arg2, arg3) {
   return window['go']['main']['App']['RescanSingleURL'](arg1, arg2, arg3);
+}
+
+export function SaveSiteProfile(arg1) {
+  return window['go']['main']['App']['SaveSiteProfile'](arg1);
 }
 
 export function StartScan(arg1, arg2) {

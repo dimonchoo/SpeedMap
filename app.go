@@ -2,16 +2,23 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"SpeedMap/pkg/analytics"
 	"SpeedMap/pkg/config"
 	"SpeedMap/pkg/history"
+	"SpeedMap/pkg/optimizer"
+	"SpeedMap/pkg/profiles"
 	"SpeedMap/pkg/scanner"
+
 	"SpeedMap/pkg/sitemap"
 	"SpeedMap/pkg/w3c"
 
@@ -247,4 +254,208 @@ func (a *App) ExportImageComparisonHTML(domain string, cfg config.ScanConfig, re
 	fmt.Printf("[GO LOG] Image comparison HTML saved to %s\n", savePath)
 	return savePath, nil
 }
+
+// ConvertImageToWebP encodes a single image to WebP with the configured quality setting
+func (a *App) ConvertImageToWebP(rawURL string, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {
+	fmt.Printf("[GO LOG] ConvertImageToWebP called for %s (quality=%.0f)\n", rawURL, cfg.NormalizedWebPQuality())
+	res, err := optimizer.ConvertImageURLToWebP(rawURL, cfg.NormalizedWebPQuality())
+	if err != nil {
+		fmt.Printf("[GO LOG] ConvertImageToWebP error: %v\n", err)
+		return nil, err
+	}
+	fmt.Printf("[GO LOG] ConvertImageToWebP success: %s -> %s (savings %.1f%%)\n", res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent)
+	return res, nil
+}
+
+// DownloadSingleWebPImage converts a single image to WebP and saves it via SaveFileDialog
+func (a *App) DownloadSingleWebPImage(rawURL string, cfg config.ScanConfig) (string, error) {
+	fmt.Printf("[GO LOG] DownloadSingleWebPImage called for %s\n", rawURL)
+	res, err := optimizer.ConvertImageURLToWebP(rawURL, cfg.NormalizedWebPQuality())
+	if err != nil {
+		return "", err
+	}
+
+	idx := strings.Index(res.OptimizedWebPBase64, ",")
+	if idx == -1 {
+		return "", fmt.Errorf("invalid base64 image data")
+	}
+	data, err := base64.StdEncoding.DecodeString(res.OptimizedWebPBase64[idx+1:])
+	if err != nil {
+		return "", fmt.Errorf("failed to decode base64: %w", err)
+	}
+
+	var savePath string
+	if a.ctx != nil {
+		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Зберегти WebP зображення",
+			DefaultFilename: res.Filename,
+			Filters: []runtime.FileFilter{
+				{DisplayName: "WebP Зображення (*.webp)", Pattern: "*.webp"},
+			},
+		})
+	}
+	if savePath == "" || err != nil {
+		savePath = res.Filename
+	}
+
+	if err := os.WriteFile(savePath, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+
+	fmt.Printf("[GO LOG] WebP image saved to %s\n", savePath)
+	return savePath, nil
+}
+
+// DownloadOptimizedWebPZIP batch converts multiple heavy images to WebP and saves a single .zip archive
+func (a *App) DownloadOptimizedWebPZIP(urls []string, cfg config.ScanConfig) (string, error) {
+	fmt.Printf("[GO LOG] DownloadOptimizedWebPZIP called for %d images\n", len(urls))
+	if len(urls) == 0 {
+		return "", fmt.Errorf("no image URLs provided")
+	}
+
+	type convertRes struct {
+		res *optimizer.ConversionResult
+		err error
+	}
+
+	ch := make(chan convertRes, len(urls))
+	var wg sync.WaitGroup
+
+	quality := cfg.NormalizedWebPQuality()
+	for _, rawURL := range urls {
+		wg.Add(1)
+		go func(u string) {
+			defer wg.Done()
+			res, err := optimizer.ConvertImageURLToWebP(u, quality)
+			ch <- convertRes{res: res, err: err}
+		}(rawURL)
+	}
+
+	wg.Wait()
+	close(ch)
+
+	var convertedList []*optimizer.ConversionResult
+	for item := range ch {
+		if item.err == nil && item.res != nil {
+			convertedList = append(convertedList, item.res)
+		}
+	}
+
+	if len(convertedList) == 0 {
+		return "", fmt.Errorf("failed to convert any images to WebP")
+	}
+
+	zipBytes, err := optimizer.CreateZIPArchive(convertedList)
+	if err != nil {
+		return "", fmt.Errorf("failed to build ZIP archive: %w", err)
+	}
+
+	var savePath string
+	if a.ctx != nil {
+		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Зберегти ZIP архів WebP зображень",
+			DefaultFilename: "optimized_images_webp.zip",
+			Filters: []runtime.FileFilter{
+				{DisplayName: "ZIP Архіви (*.zip)", Pattern: "*.zip"},
+			},
+		})
+	}
+	if savePath == "" || err != nil {
+		savePath = "optimized_images_webp.zip"
+	}
+
+	if err := os.WriteFile(savePath, zipBytes, 0644); err != nil {
+		return "", fmt.Errorf("failed to write ZIP file: %w", err)
+	}
+
+	fmt.Printf("[GO LOG] ZIP archive saved to %s (%d files, %d bytes)\n", savePath, len(convertedList), len(zipBytes))
+	return savePath, nil
+}
+
+// ListSiteProfiles fetches all persistent site profiles from ~/.speedmap/profiles.json
+func (a *App) ListSiteProfiles() ([]profiles.SiteProfile, error) {
+	fmt.Println("[GO LOG] ListSiteProfiles called")
+	list, err := profiles.ListProfiles()
+	if err != nil {
+		fmt.Printf("[GO LOG] ListSiteProfiles error: %v\n", err)
+		return nil, err
+	}
+	fmt.Printf("[GO LOG] ListSiteProfiles returned %d profiles\n", len(list))
+	return list, nil
+}
+
+// SaveSiteProfile creates or updates a persistent site profile in ~/.speedmap/profiles.json
+func (a *App) SaveSiteProfile(p profiles.SiteProfile) (*profiles.SiteProfile, error) {
+	fmt.Printf("[GO LOG] SaveSiteProfile called for '%s' (%s)\n", p.Name, p.SitemapURL)
+	saved, err := profiles.SaveProfile(p)
+	if err != nil {
+		fmt.Printf("[GO LOG] SaveSiteProfile error: %v\n", err)
+		return nil, err
+	}
+	fmt.Printf("[GO LOG] SaveSiteProfile success: ID=%s\n", saved.ID)
+	return saved, nil
+}
+
+// DeleteSiteProfile removes a site profile by ID
+func (a *App) DeleteSiteProfile(id string) error {
+	fmt.Printf("[GO LOG] DeleteSiteProfile called for ID=%s\n", id)
+	err := profiles.DeleteProfile(id)
+	if err != nil {
+		fmt.Printf("[GO LOG] DeleteSiteProfile error: %v\n", err)
+		return err
+	}
+	fmt.Printf("[GO LOG] DeleteSiteProfile success for ID=%s\n", id)
+	return nil
+}
+
+// PlayNotificationSound plays embedded Pikachu MP3 via OS player.
+// WebKitGTK often cannot decode MP3 in <audio>, so we play through Pulse/CoreAudio
+// (picked up by SonoBus monitor on Linux).
+// kind: "page" | "full"
+func (a *App) PlayNotificationSound(kind string) error {
+	file := "frontend/pika-page.mp3"
+	if kind == "full" {
+		file = "frontend/pika-full.mp3"
+	}
+
+	data, err := assets.ReadFile(file)
+	if err != nil {
+		fmt.Printf("[GO LOG] PlayNotificationSound read %s: %v\n", file, err)
+		return fmt.Errorf("sound asset missing: %w", err)
+	}
+
+	tmp, err := os.CreateTemp("", "speedmap-*-"+filepath.Base(file))
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	tmp.Close()
+
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("afplay"); err == nil {
+		cmd = exec.Command("afplay", tmpPath)
+	} else if _, err := exec.LookPath("ffplay"); err == nil {
+		cmd = exec.Command("ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", tmpPath)
+	} else if _, err := exec.LookPath("mpg123"); err == nil {
+		cmd = exec.Command("mpg123", "-q", tmpPath)
+	} else {
+		os.Remove(tmpPath)
+		return fmt.Errorf("no audio player found (afplay/ffplay/mpg123)")
+	}
+
+	fmt.Printf("[GO LOG] PlayNotificationSound kind=%s via %s\n", kind, cmd.Path)
+	go func() {
+		defer os.Remove(tmpPath)
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("[GO LOG] PlayNotificationSound error: %v\n", err)
+		}
+	}()
+	return nil
+}
+
 

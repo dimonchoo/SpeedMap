@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"SpeedMap/pkg/config"
 	"SpeedMap/pkg/scanner"
 )
 
@@ -74,27 +75,53 @@ type SiteAnalytics struct {
 
 type scannedCount = int
 
-func EstimateWebPSize(format string, originalBytes int64) int64 {
+func EstimateWebPSize(format string, originalBytes int64, cfg ...config.ScanConfig) int64 {
 	if originalBytes <= 0 {
 		return 0
 	}
 	f := strings.ToLower(format)
+
+	pngRatio := 0.30
+	jpgRatio := 0.60
+	gifRatio := 0.50
+
+	if len(cfg) > 0 {
+		pngRatio = cfg[0].NormalizedPngRatio()
+		jpgRatio = cfg[0].NormalizedJpgRatio()
+		gifRatio = cfg[0].NormalizedGifRatio()
+	}
+
 	switch f {
 	case "png":
-		return int64(float64(originalBytes) * 0.30)
+		return int64(float64(originalBytes) * pngRatio)
 	case "jpg", "jpeg":
-		return int64(float64(originalBytes) * 0.60)
+		return int64(float64(originalBytes) * jpgRatio)
 	case "gif":
-		return int64(float64(originalBytes) * 0.50)
+		return int64(float64(originalBytes) * gifRatio)
 	default:
 		return originalBytes
 	}
 }
 
-func ComputeSiteAnalytics(results []scanner.PageResult, heavyThresholdKB ...int) SiteAnalytics {
+func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) SiteAnalytics {
 	thresholdBytes := int64(100 * 1024)
-	if len(heavyThresholdKB) > 0 && heavyThresholdKB[0] > 0 {
-		thresholdBytes = int64(heavyThresholdKB[0]) * 1024
+	var activeConfig *config.ScanConfig
+
+	if len(cfg) > 0 {
+		switch v := cfg[0].(type) {
+		case config.ScanConfig:
+			activeConfig = &v
+			thresholdBytes = v.NormalizedHeavyThresholdBytes()
+		case *config.ScanConfig:
+			if v != nil {
+				activeConfig = v
+				thresholdBytes = v.NormalizedHeavyThresholdBytes()
+			}
+		case int:
+			if v > 0 {
+				thresholdBytes = int64(v) * 1024
+			}
+		}
 	}
 
 	total := len(results)
@@ -302,7 +329,12 @@ func ComputeSiteAnalytics(results []scanner.PageResult, heavyThresholdKB ...int)
 		}
 
 		// Calculate WebP compression estimate
-		estSize := EstimateWebPSize(img.Format, img.MaxTransferSize)
+		var estSize int64
+		if activeConfig != nil {
+			estSize = EstimateWebPSize(img.Format, img.MaxTransferSize, *activeConfig)
+		} else {
+			estSize = EstimateWebPSize(img.Format, img.MaxTransferSize)
+		}
 		img.EstimatedWebPSize = estSize
 		img.EstimatedWebPFormatted = formatBytes(estSize)
 		savings := img.MaxTransferSize - estSize
@@ -490,10 +522,16 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 			fmtBadgeClass = "color: #10b981; border: 1px solid rgba(16,185,129,0.3);"
 		}
 
+		// Escape URL quotes for JS function parameter
+		escapedURL := strings.ReplaceAll(img.URL, "'", "\\'")
+
 		rowsHTML.WriteString(fmt.Sprintf(`
 		<tr style="%s border-bottom: 1px solid #334155;">
 			<td style="padding: 12px; font-family: monospace; font-size: 12px;">%d</td>
-			<td style="padding: 12px; max-width: 320px; word-break: break-all;">
+			<td style="padding: 12px; text-align: center;">
+				<img src="%s" loading="lazy" style="height: 44px; max-width: 70px; object-fit: contain; border-radius: 6px; border: 1px solid #475569; background: #020617; cursor: pointer; transition: transform 0.2s;" onclick="openModal('%s', '%s', '%s', '%.1f%%')" title="Клацніть для порівняння якості" />
+			</td>
+			<td style="padding: 12px; max-width: 280px; word-break: break-all;">
 				<a href="%s" target="_blank" style="color: #e2e8f0; text-decoration: underline; font-family: monospace; font-size: 12px;">%s</a>
 				<div style="margin-top: 4px;">%s</div>
 			</td>
@@ -504,20 +542,24 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 			<td style="padding: 12px; text-align: center; color: #38bdf8; font-weight: bold; font-size: 12px;">%d стор.</td>
 			<td style="padding: 12px; text-align: right; color: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 13px;">%s</td>
 			<td style="padding: 12px; text-align: right; color: #10b981; font-weight: bold; font-family: monospace; font-size: 13px;">%s</td>
-			<td style="padding: 12px; text-align: right; color: #f43f5e; font-weight: bold; font-family: monospace; font-size: 13px;">-%s (%.1f%%)</td>
+			<td style="padding: 12px; text-align: right; color: #10b981; font-weight: bold; font-family: monospace; font-size: 13px;">-%s (%.1f%%)</td>
 			<td style="padding: 12px; text-align: center; font-size: 12px;">%s</td>
+			<td style="padding: 12px; text-align: center;">
+				<button onclick="openModal('%s', '%s', '%s', '%.1f%%')" style="background: #0284c7; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: bold; cursor: pointer;">👁️ Порівняти</button>
+			</td>
 		</tr>
-		`, heavyStyle, idx+1, img.URL, img.URL, lcpBadge, fmtBadgeClass, strings.ToUpper(img.Format), img.Width, img.Height, img.PageCount, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsFormatted, img.EstimatedSavingsPercent, lazyBadge))
+		`, heavyStyle, idx+1, img.URL, escapedURL, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsPercent, img.URL, img.URL, lcpBadge, fmtBadgeClass, strings.ToUpper(img.Format), img.Width, img.Height, img.PageCount, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsFormatted, img.EstimatedSavingsPercent, lazyBadge, escapedURL, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsPercent))
 	}
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="uk">
 <head>
 	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Звіт порівняння зображень (Original vs WebP) - %s</title>
 	<style>
 		body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; padding: 32px; margin: 0; }
-		.container { max-width: 1280px; margin: 0 auto; }
+		.container { max-width: 1380px; margin: 0 auto; }
 		.header { border-bottom: 1px solid #334155; padding-bottom: 24px; margin-bottom: 32px; }
 		.title { font-size: 28px; font-weight: 800; color: #38bdf8; margin: 0 0 8px 0; }
 		.subtitle { font-size: 14px; color: #94a3b8; margin: 0; }
@@ -527,12 +569,20 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 		.card-val { font-size: 24px; font-weight: 800; color: #f8fafc; }
 		table { width: 100%%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; border: 1px solid #334155; }
 		th { background: #090d16; color: #94a3b8; font-size: 11px; text-transform: uppercase; padding: 14px 12px; text-align: left; }
+		
+		/* Modal overlay styling */
+		.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(2, 6, 23, 0.88); backdrop-filter: blur(10px); z-index: 1000; justify-content: center; align-items: flex-start; padding: 32px 16px; overflow-y: auto; }
+		.modal-card { background: #0f172a; border: 1px solid #334155; border-radius: 24px; width: 100%%; max-width: 1150px; padding: 28px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); margin: auto; }
+		.modal-grid { display: flex; flex-direction: column; gap: 24px; margin-top: 24px; }
+		.modal-box { background: #020617; border: 1px solid #334155; border-radius: 16px; padding: 20px; text-align: center; }
+		.modal-box img { max-height: 600px; width: auto; max-width: 100%%; object-fit: contain; border-radius: 12px; }
+		.close-btn { background: #334155; color: white; border: none; padding: 8px 18px; border-radius: 10px; font-weight: bold; cursor: pointer; float: right; font-size: 13px; }
 	</style>
 </head>
 <body>
 	<div class="container">
 		<div class="header">
-			<h1 class="title">🖼️ Порівняльний аналіз зображень (SEOAEO-235)</h1>
+			<h1 class="title">🖼️ Порівняльний аналіз зображень (Original vs WebP)</h1>
 			<p class="subtitle">Звіт з оцінки обсягу зображень та потенціалу оптимізації для %s</p>
 		</div>
 
@@ -559,6 +609,7 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 			<thead>
 				<tr>
 					<th>#</th>
+					<th style="text-align: center;">Прев'ю</th>
 					<th>Зображення / URL</th>
 					<th style="text-align: center;">Формат</th>
 					<th style="text-align: center;">Роздільна здатність</th>
@@ -567,6 +618,7 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 					<th style="text-align: right;">Оцінка WebP</th>
 					<th style="text-align: right;">Економія (KB / %%)</th>
 					<th style="text-align: center;">Lazy Loading</th>
+					<th style="text-align: center;">Дії</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -574,6 +626,67 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 			</tbody>
 		</table>
 	</div>
+
+	<!-- Interactive Modal for HTML Report (Row-by-Row Stacked & Enlarged) -->
+	<div id="modalOverlay" class="modal-overlay" onclick="closeModal(event)">
+		<div class="modal-card" onclick="event.stopPropagation()">
+			<button class="close-btn" onclick="closeModal()">✕ Закрити</button>
+			<h2 style="margin: 0 0 4px 0; font-size: 20px; color: #38bdf8;">🖼️ Порівняльний Аналіз Зображення (Original vs WebP)</h2>
+			<div id="modalUrl" style="font-family: monospace; font-size: 12px; color: #94a3b8; word-break: break-all;"></div>
+
+			<div class="modal-grid">
+				<div class="modal-box">
+					<div style="font-size: 14px; font-weight: bold; color: #f8fafc; margin-bottom: 12px; text-align: left; border-bottom: 1px solid #1e293b; padding-bottom: 8px;">🔴 Оригінальне Зображення (<span id="modalOrigSize"></span>)</div>
+					<img id="modalOrigImg" src="" alt="Original Image">
+				</div>
+				<div class="modal-box" style="border-color: rgba(16,185,129,0.4);">
+					<div style="font-size: 14px; font-weight: bold; color: #10b981; margin-bottom: 12px; text-align: left; border-bottom: 1px solid #1e293b; padding-bottom: 8px;">🟢 WebP Оптимізована Оцінка (<span id="modalWebPSize"></span>, Економія: -<span id="modalSavings"></span>)</div>
+					<img id="modalWebPImg" src="" alt="WebP Preview">
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<script>
+		function openModal(url, origSize, webpSize, savings) {
+			document.getElementById('modalUrl').innerText = url;
+			document.getElementById('modalOrigSize').innerText = origSize;
+			document.getElementById('modalWebPSize').innerText = webpSize;
+			document.getElementById('modalSavings').innerText = savings;
+			document.getElementById('modalOrigImg').src = url;
+			document.getElementById('modalWebPImg').src = '';
+
+			// Convert image on-the-fly to real WebP base64 via HTML5 Canvas
+			var img = new Image();
+			img.crossOrigin = 'Anonymous';
+			img.onload = function() {
+				try {
+					var canvas = document.createElement('canvas');
+					canvas.width = img.naturalWidth || img.width;
+					canvas.height = img.naturalHeight || img.height;
+					var ctx = canvas.getContext('2d');
+					ctx.drawImage(img, 0, 0);
+					var webpDataUrl = canvas.toDataURL('image/webp', 0.80);
+					if (webpDataUrl && webpDataUrl.startsWith('data:image/webp')) {
+						document.getElementById('modalWebPImg').src = webpDataUrl;
+					} else {
+						document.getElementById('modalWebPImg').src = url;
+					}
+				} catch (e) {
+					document.getElementById('modalWebPImg').src = url;
+				}
+			};
+			img.onerror = function() {
+				document.getElementById('modalWebPImg').src = url;
+			};
+			img.src = url;
+
+			document.getElementById('modalOverlay').style.display = 'flex';
+		}
+		function closeModal() {
+			document.getElementById('modalOverlay').style.display = 'none';
+		}
+	</script>
 </body>
 </html>`, domain, domain, analytics.TotalImagePayloadFormatted, analytics.TotalImageCount, analytics.HeavyImagesCount, analytics.TotalWebPSavingsFormatted, rowsHTML.String())
 

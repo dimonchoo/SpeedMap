@@ -189,8 +189,8 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 						val := strings.ToUpper(fmt.Sprintf("%v", v))
 
 						// 1. Plugin / Redis Cache Header Detection
-						if lk == "x-lightweight-cache-status" || lk == "x-redis-cache" || lk == "x-cache-status" || lk == "x-cache" || lk == "x-page-cache" {
-							pluginCacheStatus = val
+						if status, ok := parsePluginCacheHeader(lk, val); ok {
+							pluginCacheStatus = status
 						}
 
 						// 2. Cloudflare Cache Header Detection
@@ -335,4 +335,30 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 	res.Recommendations = GenerateRecommendations(vitals, grades, diagnostics)
 
 	return res
+}
+
+// parsePluginCacheHeader maps known plugin/Redis cache response headers to a status string.
+// Legacy header x-lightweight-cache: yes means HIT.
+func parsePluginCacheHeader(headerName, rawValue string) (string, bool) {
+	lk := strings.ToLower(strings.TrimSpace(headerName))
+	val := strings.ToUpper(strings.TrimSpace(rawValue))
+	if val == "" {
+		return "", false
+	}
+
+	switch lk {
+	case "x-lightweight-cache":
+		// Old Lightweight Redis Cache variant: "yes" = served from cache
+		if val == "YES" {
+			return "HIT", true
+		}
+		if val == "NO" {
+			return "MISS", true
+		}
+		return val, true
+	case "x-lightweight-cache-status", "x-redis-cache", "x-cache-status", "x-cache", "x-page-cache":
+		return val, true
+	default:
+		return "", false
+	}
 }
