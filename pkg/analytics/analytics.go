@@ -50,6 +50,24 @@ type AggregatedFont struct {
 	PageURLs      []string `json:"pageUrls"`
 }
 
+// AggregatedIframe groups the same iframe src across scanned pages.
+// MissedCount = pages where iframe was in DOM but did not load during the scan window.
+type AggregatedIframe struct {
+	Src             string   `json:"src"`
+	Title           string   `json:"title"`
+	PageCount       int      `json:"pageCount"`
+	Pages           []string `json:"pages"`
+	Occurrences     int      `json:"occurrences"`
+	LoadedCount     int      `json:"loadedCount"`
+	MissedCount     int      `json:"missedCount"`
+	IsLazy          bool     `json:"isLazy"`
+	AvgDurationMs   float64  `json:"avgDurationMs"`
+	MaxTransferSize int64    `json:"maxTransferSize"`
+	FormattedSize   string   `json:"formattedSize"`
+	Width           int      `json:"width"`
+	Height          int      `json:"height"`
+}
+
 
 
 type SiteAnalytics struct {
@@ -64,6 +82,7 @@ type SiteAnalytics struct {
 	LargestImages          []AggregatedImage `json:"largestImages"`
 	AllImages              []AggregatedImage `json:"allImages"`
 	FontUsage              []AggregatedFont  `json:"fontUsage"`
+	Iframes                []AggregatedIframe `json:"iframes"`
 	GlobalFixes            []string          `json:"globalFixes"`
 
 	// Image Optimization Analytics (SEOAEO-235)
@@ -76,6 +95,11 @@ type SiteAnalytics struct {
 	TotalWebPSavingsBytes      int64          `json:"totalWebPSavingsBytes"`
 	TotalWebPSavingsFormatted  string         `json:"totalWebPSavingsFormatted"`
 	FormatBreakdown            map[string]int `json:"formatBreakdown"`
+
+	// Iframe audit
+	TotalIframeCount  int `json:"totalIframeCount"`
+	MissedIframeCount int `json:"missedIframeCount"`
+	LoadedIframeCount int `json:"loadedIframeCount"`
 }
 
 type scannedCount = int
@@ -152,6 +176,8 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 	resourceMap := make(map[string]*ResourceImpact)
 	imageMap := make(map[string]*AggregatedImage)
 	fontMap := make(map[string]*AggregatedFont)
+	iframeMap := make(map[string]*AggregatedIframe)
+	var totalMissedIframes, totalLoadedIframes int
 
 	for _, p := range results {
 		statusCounts[p.OverallStatus]++
@@ -280,6 +306,69 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 				}
 			}
 
+			// Aggregate iframes across pages
+			for _, frame := range p.Diagnostics.Iframes {
+				key := strings.TrimSpace(frame.Src)
+				if key == "" {
+					continue
+				}
+				if frame.LoadedDuringScan {
+					totalLoadedIframes++
+				} else {
+					totalMissedIframes++
+				}
+				if existing, found := iframeMap[key]; found {
+					existing.Occurrences++
+					existing.AvgDurationMs += frame.Duration
+					if frame.IsLazy {
+						existing.IsLazy = true
+					}
+					if frame.LoadedDuringScan {
+						existing.LoadedCount++
+					} else {
+						existing.MissedCount++
+					}
+					if frame.TransferSize > existing.MaxTransferSize {
+						existing.MaxTransferSize = frame.TransferSize
+						existing.FormattedSize = frame.FormattedSize
+						existing.Width = frame.Width
+						existing.Height = frame.Height
+					}
+					if existing.Title == "" && frame.Title != "" {
+						existing.Title = frame.Title
+					}
+					if p.URL != "" && !containsString(existing.Pages, p.URL) {
+						existing.Pages = append(existing.Pages, p.URL)
+						existing.PageCount = len(existing.Pages)
+					}
+				} else {
+					pages := []string{}
+					if p.URL != "" {
+						pages = append(pages, p.URL)
+					}
+					loaded, missed := 0, 0
+					if frame.LoadedDuringScan {
+						loaded = 1
+					} else {
+						missed = 1
+					}
+					iframeMap[key] = &AggregatedIframe{
+						Src:             key,
+						Title:           frame.Title,
+						PageCount:       len(pages),
+						Pages:           pages,
+						Occurrences:     1,
+						LoadedCount:     loaded,
+						MissedCount:     missed,
+						IsLazy:          frame.IsLazy,
+						AvgDurationMs:   frame.Duration,
+						MaxTransferSize: frame.TransferSize,
+						FormattedSize:   frame.FormattedSize,
+						Width:           frame.Width,
+						Height:          frame.Height,
+					}
+				}
+			}
 
 		}
 	}
@@ -407,6 +496,24 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		return fontList[i].Occurrences > fontList[j].Occurrences
 	})
 
+	var iframeList []AggregatedIframe
+	for _, frame := range iframeMap {
+		if frame.Occurrences > 0 {
+			frame.AvgDurationMs = math.Round(frame.AvgDurationMs/float64(frame.Occurrences)*100) / 100
+		}
+		if frame.FormattedSize == "" && frame.MaxTransferSize > 0 {
+			frame.FormattedSize = formatBytes(frame.MaxTransferSize)
+		} else if frame.FormattedSize == "" {
+			frame.FormattedSize = "н/д"
+		}
+		iframeList = append(iframeList, *frame)
+	}
+	sort.Slice(iframeList, func(i, j int) bool {
+		if iframeList[i].MissedCount != iframeList[j].MissedCount {
+			return iframeList[i].MissedCount > iframeList[j].MissedCount
+		}
+		return iframeList[i].PageCount > iframeList[j].PageCount
+	})
 
 	// Calculate Health Score (0 - 100)
 	goodCount := statusCounts["good"]
@@ -418,6 +525,9 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 
 	// Build Global Fixes Recommendations
 	fixes := generateGlobalFixes(avgMetrics, resourceList, topLargestImages, fontList, statusCounts, total)
+	if totalMissedIframes > 0 {
+		fixes = append(fixes, fmt.Sprintf("Виявлено %d iframe без мережевого timing під час load (lazy/below-fold). Перевірте вкладку «iframe» — %d унікальних src.", totalMissedIframes, len(iframeList)))
+	}
 
 	return SiteAnalytics{
 		TotalPages:                 total,
@@ -428,6 +538,7 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		LargestImages:              topLargestImages,
 		AllImages:                  allImages,
 		FontUsage:                  fontList,
+		Iframes:                    iframeList,
 		GlobalFixes:                fixes,
 		TotalImagePayloadBytes:     totalPayloadBytes,
 		TotalImagePayloadFormatted: formatBytes(totalPayloadBytes),
@@ -438,6 +549,9 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		TotalWebPSavingsBytes:      totalSavingsBytes,
 		TotalWebPSavingsFormatted:  formatBytes(totalSavingsBytes),
 		FormatBreakdown:            formatBreakdown,
+		TotalIframeCount:           len(iframeList),
+		MissedIframeCount:          totalMissedIframes,
+		LoadedIframeCount:          totalLoadedIframes,
 	}
 }
 

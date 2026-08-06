@@ -30,6 +30,10 @@ func TestComputeSiteAnalytics(t *testing.T) {
 				Fonts: []scanner.FontDetail{
 					{Family: "Inter", URL: "https://example.com/fonts/inter.woff2", Type: "woff2", TransferSize: 25000, Duration: 60},
 				},
+				Iframes: []scanner.IframeDetail{
+					{Src: "https://www.youtube.com/embed/abc", Title: "Video", Width: 560, Height: 315, LoadedDuringScan: true, Duration: 120},
+					{Src: "https://maps.example.com/embed", Title: "Map", Width: 600, Height: 400, IsLazy: true, LoadedDuringScan: false},
+				},
 			},
 		},
 		{
@@ -56,6 +60,9 @@ func TestComputeSiteAnalytics(t *testing.T) {
 				Fonts: []scanner.FontDetail{
 					{Family: "Inter", URL: "https://example.com/fonts/inter.woff2", Type: "woff2", TransferSize: 25000, Duration: 80},
 					{Family: "Roboto", URL: "https://example.com/fonts/roboto.woff2", Type: "woff2", TransferSize: 30000, Duration: 90},
+				},
+				Iframes: []scanner.IframeDetail{
+					{Src: "https://www.youtube.com/embed/abc", Title: "Video", Width: 560, Height: 315, LoadedDuringScan: false, IsLazy: true},
 				},
 			},
 		},
@@ -112,6 +119,19 @@ func TestComputeSiteAnalytics(t *testing.T) {
 	}
 	if analytics.FontUsage[0].Occurrences != 2 || analytics.FontUsage[0].Percentage != 100 {
 		t.Errorf("Expected Inter font occurrences=2, percentage=100%%, got %d (%.1f%%)", analytics.FontUsage[0].Occurrences, analytics.FontUsage[0].Percentage)
+	}
+
+	if analytics.TotalIframeCount != 2 {
+		t.Errorf("Expected TotalIframeCount = 2, got %d", analytics.TotalIframeCount)
+	}
+	if analytics.MissedIframeCount != 2 {
+		t.Errorf("Expected MissedIframeCount = 2, got %d", analytics.MissedIframeCount)
+	}
+	if analytics.LoadedIframeCount != 1 {
+		t.Errorf("Expected LoadedIframeCount = 1, got %d", analytics.LoadedIframeCount)
+	}
+	if len(analytics.Iframes) != 2 {
+		t.Fatalf("Expected 2 aggregated iframes, got %d", len(analytics.Iframes))
 	}
 
 	if len(analytics.GlobalFixes) == 0 {

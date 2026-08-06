@@ -71,6 +71,10 @@ function speedMapApp() {
     fontSortKey: 'pages',
     fontViewMode: 'by-page', // 'by-page' | 'by-font'
 
+    // Iframe Inspector Hub State
+    iframeSearchQuery: '',
+    iframeViewMode: 'by-page', // 'by-page' | 'by-src'
+
     // Image Optimization & Comparison Hub State (SEOAEO-235)
     imageSearchQuery: '',
     imageFilterTab: 'all', // 'all' | 'heavy' | 'non-webp' | 'missing-lazy' | 'png' | 'jpg'
@@ -86,6 +90,7 @@ function speedMapApp() {
     isExportingWPApply: false,
     showWPPathModal: false,
     wpPathInput: '/var/www/site',
+    wpApplyConfirmed: false,
 
 
     // Google Drive Cloud Integration State
@@ -894,6 +899,55 @@ function speedMapApp() {
       return list;
     },
 
+    get pageIframesList() {
+      if (!this.scanResults || this.scanResults.length === 0) return [];
+      let list = this.scanResults.map(p => {
+        const iframes = p.diagnostics?.iframes || [];
+        return {
+          id: p.id,
+          url: p.url,
+          iframeCount: iframes.length,
+          loadedCount: iframes.filter(f => f.loadedDuringScan).length,
+          missedCount: iframes.filter(f => !f.loadedDuringScan).length,
+          iframes
+        };
+      }).filter(item => item.iframeCount > 0);
+
+      if (this.iframeSearchQuery && this.iframeSearchQuery.trim()) {
+        const q = this.iframeSearchQuery.toLowerCase().trim();
+        list = list.filter(item => {
+          if (item.url && item.url.toLowerCase().includes(q)) return true;
+          return item.iframes.some(f =>
+            (f.src && f.src.toLowerCase().includes(q)) ||
+            (f.title && f.title.toLowerCase().includes(q))
+          );
+        });
+      }
+
+      return list;
+    },
+
+    get filteredIframes() {
+      if (!this.siteAnalytics || !this.siteAnalytics.iframes) return [];
+      let list = [...this.siteAnalytics.iframes];
+
+      if (this.iframeSearchQuery && this.iframeSearchQuery.trim()) {
+        const q = this.iframeSearchQuery.toLowerCase().trim();
+        list = list.filter(f =>
+          (f.src && f.src.toLowerCase().includes(q)) ||
+          (f.title && f.title.toLowerCase().includes(q)) ||
+          (f.pages && f.pages.some(p => p.toLowerCase().includes(q)))
+        );
+      }
+
+      list.sort((a, b) => {
+        if ((b.missedCount || 0) !== (a.missedCount || 0)) return (b.missedCount || 0) - (a.missedCount || 0);
+        return (b.pageCount || 0) - (a.pageCount || 0);
+      });
+
+      return list;
+    },
+
     async exportFontsCSV() {
       if (!this.scanResults || this.scanResults.length === 0) {
         this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
@@ -1127,7 +1181,7 @@ function speedMapApp() {
           const selected = await window.go.main.App.SelectDirectory("Виберіть папку сайту WordPress");
           if (selected) {
             this.wpPathInput = selected;
-            this.showToast('success', 'Папку вибрано 📁', selected);
+            this.showToast('success', 'Папку вибрано', selected);
           }
         }
       } catch (e) {
@@ -1140,6 +1194,7 @@ function speedMapApp() {
         this.showToast('warning', 'Немає скану', 'Спочатку проскануйте сайт.');
         return;
       }
+      this.wpApplyConfirmed = false;
       this.showWPPathModal = true;
     },
 
@@ -1149,18 +1204,29 @@ function speedMapApp() {
         this.showToast('info', 'Скасовано', 'Потрібен шлях до WordPress.');
         return;
       }
+      if (!this.wpApplyConfirmed) {
+        this.showToast('info', 'Підтвердіть', 'Поставте галочку підтвердження перед записом.');
+        return;
+      }
       this.showWPPathModal = false;
       const domain = this.config.sitemapUrl || this.sitemapInput || 'site';
       this.isExportingWPApply = true;
-      this.addLog('info', `🧩 Генерація WP-CLI WebP apply PHP (path=${wordpressPath})...`);
+      this.addLog('info', `WP apply: WebP + review ZIP + PHP → ${wordpressPath}...`);
       try {
         if (window.go?.main?.App?.ExportWordPressWebPApplyPHP) {
-          const savedPath = await window.go.main.App.ExportWordPressWebPApplyPHP(
+          const res = await window.go.main.App.ExportWordPressWebPApplyPHP(
             domain, this.config, this.scanResults, wordpressPath
           );
-          this.addLog('success', `🟢 WP apply PHP збережено: ${savedPath}`);
-          this.addLog('info', `На оточенні: wp eval-file <file>.php --path=${wordpressPath}`);
-          this.showToast('success', 'WP apply PHP готовий', savedPath);
+          const count = res.webpCount ?? res.WebPCount ?? 0;
+          const applyPHP = res.applyPHP || res.ApplyPHP || '';
+          const reviewZIP = res.reviewZIP || res.ReviewZIP || '';
+          const rollbackPHP = res.rollbackPHP || res.RollbackPHP || '';
+          this.addLog('success', `WP apply: ${count} WebP записано`);
+          this.addLog('info', `Apply PHP: ${applyPHP}`);
+          this.addLog('info', `Review ZIP: ${reviewZIP}`);
+          this.addLog('info', `Rollback: ${rollbackPHP}`);
+          this.addLog('info', `На оточенні: wp eval-file ${applyPHP} --path=${wordpressPath}`);
+          this.showToast('success', `${count} WebP + ZIP + PHP`, reviewZIP || applyPHP);
         } else {
           throw new Error('ExportWordPressWebPApplyPHP method not available');
         }

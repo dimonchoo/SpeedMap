@@ -54,6 +54,23 @@ type FontDetail struct {
 	Duration     float64 `json:"duration"`     // ms
 }
 
+// IframeDetail is a DOM <iframe> seen during page load collection.
+// LoadedDuringScan=false means iframe was in DOM but had no network timing
+// in the observation window (lazy / below-fold / deferred) — i.e. "missed".
+type IframeDetail struct {
+	Src              string  `json:"src"`
+	Title            string  `json:"title"`
+	Width            int     `json:"width"`
+	Height           int     `json:"height"`
+	IsLazy           bool    `json:"isLazy"`
+	LoadedDuringScan bool    `json:"loadedDuringScan"`
+	InViewport       bool    `json:"inViewport"`
+	Sandbox          bool    `json:"sandbox"`
+	Duration         float64 `json:"duration"`     // ms
+	TransferSize     int64   `json:"transferSize"` // bytes
+	FormattedSize    string  `json:"formattedSize"`
+}
+
 type CategoryDiagnostic struct {
 	Category string   `json:"category"` // "ttfb", "fcp", "lcp", "cls", "tbt"
 	Title    string   `json:"title"`
@@ -79,6 +96,7 @@ type PageDiagnostics struct {
 	SlowestResources    []ResourceTiming               `json:"slowestResources"`
 	LargestImages       []ImageDetail                  `json:"largestImages"`
 	Fonts               []FontDetail                   `json:"fonts"`
+	Iframes             []IframeDetail                 `json:"iframes"`
 	Categories          map[string]CategoryDiagnostic `json:"categories"`
 	W3C                 interface{}                    `json:"w3c,omitempty"`
 }

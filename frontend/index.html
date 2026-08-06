@@ -93,46 +93,44 @@
               <span class="px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 text-[10px]" x-text="siteAnalytics.fontUsage.length"></span>
             </template>
           </button>
+
+          <button @click="activeTab = 'iframes'; updateAnalytics()"
+            :class="activeTab === 'iframes' ? 'bg-slate-800 text-rose-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
+            <span>⧉ iframe</span>
+            <template x-if="siteAnalytics && siteAnalytics.totalIframeCount > 0">
+              <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="siteAnalytics.totalIframeCount"></span>
+            </template>
+          </button>
         </nav>
       </div>
 
-      <div class="flex items-center space-x-3">
-        <!-- Activity Log Drawer Toggle Button -->
+      <div class="flex items-center space-x-2">
+        <!-- Activity Log: icon only -->
         <button @click="showLogDrawer = true"
-          class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg transition text-xs font-medium relative">
-          <span class="text-amber-400">📋</span>
-          <span>Лог подій</span>
+          class="relative flex items-center justify-center w-9 h-9 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 border border-slate-700 rounded-lg transition"
+          title="Лог подій">
+          <span class="text-amber-400 text-base">📋</span>
           <template x-if="activityLogs.length > 0">
-            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
           </template>
         </button>
 
-        <!-- Active Settings Badges -->
+        <!-- Device mode: icon only -->
+        <button type="button" @click="showSettings = true"
+          class="flex items-center justify-center w-9 h-9 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition text-base"
+          :title="config.isMobile ? 'Mobile (375×812)' : 'Desktop (1920×1080)'">
+          <span x-text="config.isMobile ? '📱' : '🖥️'"></span>
+        </button>
 
-        <div class="hidden md:flex items-center space-x-3 text-xs bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-300">
-          <div class="flex items-center space-x-1.5">
-            <span class="text-slate-400">Потоки:</span>
-            <span class="font-semibold text-emerald-400" x-text="config.concurrency"></span>
-          </div>
-          <span class="text-slate-700">|</span>
-          <div class="flex items-center space-x-1.5">
-            <span class="text-slate-400">Пристрій:</span>
-            <span class="font-semibold text-cyan-400" x-text="config.isMobile ? 'Mobile 📱' : 'Desktop 🖥️'"></span>
-          </div>
-          <template x-if="config.authUser">
-            <div class="flex items-center space-x-1.5 border-l border-slate-800 pl-3">
-              <span class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-semibold">Basic Auth</span>
-            </div>
-          </template>
-        </div>
-
-        <!-- Open Settings Modal Button -->
-        <button @click="showSettings = true" class="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-700 px-3.5 py-1.5 rounded-lg transition text-sm font-medium">
+        <!-- Settings: icon only -->
+        <button @click="showSettings = true"
+          class="flex items-center justify-center w-9 h-9 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-700 rounded-lg transition"
+          title="Налаштування">
           <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
           </svg>
-          <span>Налаштування</span>
         </button>
       </div>
     </header>
@@ -474,6 +472,11 @@
                               <template x-if="!item.diagnostics?.fonts || item.diagnostics?.fonts.length === 0">
                                 <span class="text-[10px] text-slate-500 italic">🔤 системні шрифти</span>
                               </template>
+                              <template x-if="item.diagnostics?.iframes && item.diagnostics.iframes.length > 0">
+                                <span class="px-1.5 py-0.2 rounded text-[10px] bg-rose-950/80 text-rose-200 border border-rose-800/60 font-semibold"
+                                  :title="item.diagnostics.iframes.filter(f => !f.loadedDuringScan).length + ' пропущено під час load'"
+                                  x-text="'⧉ ' + item.diagnostics.iframes.length + ' iframe' + (item.diagnostics.iframes.filter(f => !f.loadedDuringScan).length ? ' · ' + item.diagnostics.iframes.filter(f => !f.loadedDuringScan).length + ' missed' : '')"></span>
+                              </template>
                             </div>
                           </div>
                         </td>
@@ -752,7 +755,7 @@
                     <div class="space-y-2">
                       <template x-for="fix in siteAnalytics.globalFixes" :key="fix">
                         <div class="bg-slate-950/60 p-4 rounded-xl border border-emerald-500/30 text-xs text-slate-200 leading-relaxed flex items-start space-x-3 shadow-sm">
-                          <span class="text-emerald-400 text-lg leading-none shrink-0">🚀</span>
+                          <span class="text-emerald-400 text-lg leading-none shrink-0">•</span>
                           <span x-text="fix"></span>
                         </div>
                       </template>
@@ -1306,6 +1309,138 @@
               </div>
             </template>
 
+          </div>
+        </template>
+
+        <!-- IFRAMES HUB -->
+        <template x-if="activeTab === 'iframes'">
+          <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div class="bg-slate-950/80 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+                <div class="space-y-1">
+                  <h2 class="text-lg font-bold text-slate-100 flex items-center space-x-2">
+                    <span class="text-rose-400 text-xl">⧉</span>
+                    <span>Інспектор iframe</span>
+                  </h2>
+                  <p class="text-xs text-slate-400">Де iframe на сторінках, що встигли завантажитись під час load, і скільки пропущено (lazy / below-fold)</p>
+                </div>
+                <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                  <button @click="iframeViewMode = 'by-page'"
+                    :class="iframeViewMode === 'by-page' ? 'bg-slate-800 text-rose-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                    class="px-3 py-1.5 rounded-lg transition">📄 За сторінками</button>
+                  <button @click="iframeViewMode = 'by-src'"
+                    :class="iframeViewMode === 'by-src' ? 'bg-slate-800 text-rose-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                    class="px-3 py-1.5 rounded-lg transition">⧉ За src (агреговано)</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                  <div class="text-slate-500 uppercase tracking-wider text-[10px] font-bold">Унікальних</div>
+                  <div class="text-xl font-extrabold text-slate-100 font-mono" x-text="siteAnalytics?.totalIframeCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-emerald-800/40">
+                  <div class="text-emerald-500/80 uppercase tracking-wider text-[10px] font-bold">Завантажено</div>
+                  <div class="text-xl font-extrabold text-emerald-300 font-mono" x-text="siteAnalytics?.loadedIframeCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-rose-800/40">
+                  <div class="text-rose-500/80 uppercase tracking-wider text-[10px] font-bold">Пропущено</div>
+                  <div class="text-xl font-extrabold text-rose-300 font-mono" x-text="siteAnalytics?.missedIframeCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                  <div class="text-slate-500 uppercase tracking-wider text-[10px] font-bold">Сторінок з iframe</div>
+                  <div class="text-xl font-extrabold text-slate-100 font-mono" x-text="pageIframesList.filter(p => p.iframeCount > 0).length"></div>
+                </div>
+              </div>
+
+              <div class="relative max-w-md">
+                <input type="text" x-model="iframeSearchQuery" placeholder="Пошук за src / title / URL сторінки..."
+                  class="w-full bg-slate-900 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500">
+                <span class="absolute left-3 top-2.5 text-slate-500">🔍</span>
+              </div>
+            </div>
+
+            <template x-if="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0">
+              <div class="p-12 text-center bg-slate-950/40 rounded-2xl border border-slate-800/80 space-y-3">
+                <span class="text-4xl block">⧉</span>
+                <h3 class="text-sm font-bold text-slate-300">iframe не виявлено</h3>
+                <p class="text-xs text-slate-500 max-w-md mx-auto">Після сканування тут з’явиться список iframe по сторінках і скільки не встигли завантажитись під час load.</p>
+              </div>
+            </template>
+
+            <template x-if="iframeViewMode === 'by-page'">
+              <div class="space-y-4">
+                <template x-for="item in pageIframesList" :key="item.id">
+                  <div class="bg-slate-950/90 rounded-2xl border border-slate-800/90 p-4 space-y-3 shadow-xl">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                      <a :href="item.url" target="_blank" class="font-mono font-bold text-xs text-slate-100 hover:text-emerald-400 underline truncate" x-text="item.url"></a>
+                      <div class="flex items-center gap-2 shrink-0 text-[10px] font-mono">
+                        <span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30" x-text="item.iframeCount + ' iframe'"></span>
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25" x-text="item.loadedCount + ' loaded'"></span>
+                        <span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25" x-show="item.missedCount > 0" x-text="item.missedCount + ' missed'"></span>
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <template x-for="f in item.iframes" :key="f.src + f.title">
+                        <div class="bg-slate-900/90 p-3 rounded-xl border text-xs space-y-2"
+                          :class="f.loadedDuringScan ? 'border-slate-800' : 'border-amber-500/40'">
+                          <div class="flex items-start justify-between gap-2">
+                            <div class="truncate font-mono text-slate-200" :title="f.src" x-text="f.src || '(empty src)'"></div>
+                            <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+                              :class="f.loadedDuringScan ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'"
+                              x-text="f.loadedDuringScan ? 'loaded' : 'missed'"></span>
+                          </div>
+                          <div class="flex flex-wrap gap-2 text-[10px] text-slate-400 font-mono">
+                            <span x-show="f.title" x-text="'title: ' + f.title"></span>
+                            <span x-text="(f.width || 0) + '×' + (f.height || 0)"></span>
+                            <span x-show="f.isLazy">lazy</span>
+                            <span x-show="f.inViewport">viewport</span>
+                            <span x-show="f.sandbox">sandbox</span>
+                            <span x-show="f.loadedDuringScan" x-text="(f.duration || 0) + ' ms'"></span>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <template x-if="iframeViewMode === 'by-src'">
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <template x-for="frame in filteredIframes" :key="frame.src">
+                  <div class="bg-slate-950/90 rounded-2xl border border-slate-800 p-4 space-y-3 text-xs">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="space-y-1 min-w-0">
+                        <div class="font-mono text-slate-100 truncate" :title="frame.src" x-text="frame.src"></div>
+                        <div class="text-slate-500" x-show="frame.title" x-text="frame.title"></div>
+                      </div>
+                      <span class="shrink-0 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono"
+                        x-text="frame.pageCount + ' pg'"></span>
+                    </div>
+                    <div class="flex flex-wrap gap-2 font-mono text-[10px]">
+                      <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300" x-text="'loaded ' + (frame.loadedCount || 0)"></span>
+                      <span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300" x-text="'missed ' + (frame.missedCount || 0)"></span>
+                      <span class="text-slate-400" x-text="(frame.width || 0) + '×' + (frame.height || 0)"></span>
+                      <span class="text-slate-400" x-show="frame.isLazy">lazy</span>
+                      <span class="text-slate-400" x-text="(frame.avgDurationMs || 0) + ' ms avg'"></span>
+                    </div>
+                    <template x-if="frame.pages && frame.pages.length > 0">
+                      <div x-data="{ open: false }" class="pt-2 border-t border-slate-800/60 space-y-1">
+                        <button @click="open = !open" class="text-[11px] text-slate-400 hover:text-rose-300 font-semibold">
+                          <span x-text="open ? '▲ Сховати сторінки' : '▼ Сторінки (' + frame.pages.length + ')'"></span>
+                        </button>
+                        <div x-show="open" x-cloak class="max-h-28 overflow-y-auto space-y-1 bg-slate-900/90 p-2 rounded-xl border border-slate-800 font-mono text-[10px]">
+                          <template x-for="pageUrl in frame.pages" :key="pageUrl">
+                            <a :href="pageUrl" target="_blank" class="block text-slate-300 hover:text-emerald-400 truncate underline" x-text="pageUrl"></a>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
           </div>
         </template>
 
@@ -2047,6 +2182,37 @@
               </div>
             </template>
 
+            <!-- Iframes on this page -->
+            <template x-if="selectedDetail?.diagnostics?.iframes && selectedDetail.diagnostics.iframes.length > 0">
+              <div class="bg-slate-950/80 p-4 rounded-xl border border-rose-500/30 space-y-3">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-rose-400 uppercase tracking-wider">⧉ iframe на сторінці</span>
+                  <span class="font-mono text-slate-400"
+                    x-text="selectedDetail.diagnostics.iframes.length + ' · missed ' + selectedDetail.diagnostics.iframes.filter(f => !f.loadedDuringScan).length"></span>
+                </div>
+                <div class="space-y-2 max-h-56 overflow-y-auto">
+                  <template x-for="(f, idx) in selectedDetail.diagnostics.iframes" :key="idx">
+                    <div class="bg-slate-900 p-2.5 rounded-lg border text-[11px] font-mono space-y-1"
+                      :class="f.loadedDuringScan ? 'border-slate-800' : 'border-amber-500/40'">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="truncate text-slate-200" :title="f.src" x-text="f.src || '(empty)'"></span>
+                        <span class="shrink-0 uppercase text-[10px] font-bold"
+                          :class="f.loadedDuringScan ? 'text-emerald-400' : 'text-amber-400'"
+                          x-text="f.loadedDuringScan ? 'loaded' : 'missed'"></span>
+                      </div>
+                      <div class="text-slate-500 flex flex-wrap gap-2">
+                        <span x-show="f.title" x-text="f.title"></span>
+                        <span x-text="(f.width||0)+'×'+(f.height||0)"></span>
+                        <span x-show="f.isLazy">lazy</span>
+                        <span x-show="f.inViewport">viewport</span>
+                        <span x-show="f.loadedDuringScan" x-text="(f.duration||0)+' ms'"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+
             <!-- Categorized Core Web Vitals Audit (All 5 Categories) -->
             <template x-if="selectedDetail?.diagnostics?.categories">
               <div class="space-y-3">
@@ -2219,16 +2385,21 @@
         
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
           <div class="flex items-center space-x-2">
-            <span class="text-emerald-400 text-xl">🧩</span>
-            <h3 class="text-base font-bold">Вибір шляху до WordPress</h3>
+            <h3 class="text-base font-bold">Шлях до WordPress</h3>
           </div>
           <button @click="showWPPathModal = false" class="text-slate-400 hover:text-slate-200 text-lg">✕</button>
         </div>
 
         <div class="space-y-3 text-xs">
           <p class="text-slate-300 leading-relaxed">
-            Вкажіть шлях до кореню WordPress на сервері або виберіть папку на вашому комп'ютері. Цей шлях буде використано для команди:
-            <code class="block mt-1 bg-slate-950 p-2 rounded text-emerald-400 font-mono">wp eval-file &lt;file&gt;.php --path=&lt;шлях&gt;</code>
+            Один шлях: важкі WebP у <code class="text-emerald-400">wp-content/uploads</code>,
+            review ZIP (orig + webp + compare.html) і PHP apply/rollback.
+            Старі файли не видаляються. На оточенні після рев’ю:
+            <code class="block mt-1 bg-slate-950 p-2 rounded text-emerald-400 font-mono">wp eval-file &lt;apply&gt;.php --path=&lt;шлях&gt;</code>
+          </p>
+          <p class="text-slate-400" x-show="siteAnalytics && siteAnalytics.heavyImagesCount">
+            Heavy images у скані:
+            <span class="text-emerald-300 font-mono" x-text="siteAnalytics.heavyImagesCount"></span>
           </p>
 
           <!-- Input + Native Browse Button -->
@@ -2240,7 +2411,7 @@
               
               <button @click="pickWPFolderOnLocal()" type="button"
                 class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl font-semibold flex items-center space-x-1 shrink-0 transition">
-                <span>📁 Оглянути</span>
+                <span>Оглянути</span>
               </button>
             </div>
           </div>
@@ -2254,14 +2425,25 @@
               <button @click="wpPathInput = '/public_html'" type="button" class="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-slate-300">/public_html</button>
             </div>
           </div>
+
+          <label class="flex items-start space-x-2 pt-2 cursor-pointer">
+            <input type="checkbox" x-model="wpApplyConfirmed"
+              class="mt-0.5 rounded border-slate-600 bg-slate-950 text-emerald-500 focus:ring-emerald-500">
+            <span class="text-slate-300 leading-relaxed">
+              Підтверджую: записати WebP у uploads, review ZIP і PHP (apply + rollback) у цей шлях.
+              Apply у БД запускаю окремо після рев’ю ZIP.
+            </span>
+          </label>
         </div>
 
         <div class="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
           <button @click="showWPPathModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium text-xs transition">
             Скасувати
           </button>
-          <button @click="confirmExportWPApply()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-lg transition">
-            🚀 Згенерувати WP apply
+          <button @click="confirmExportWPApply()" :disabled="!wpApplyConfirmed || isExportingWPApply"
+            :class="(!wpApplyConfirmed || isExportingWPApply) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-emerald-500'"
+            class="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-lg transition">
+            Згенерувати
           </button>
         </div>
 

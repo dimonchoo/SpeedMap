@@ -51,8 +51,13 @@ func FormatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %s", val, sizes[i])
 }
 
-// ConvertImageURLToWebP downloads the image at rawURL and encodes it to WebP at specified quality (1-100)
+// ConvertImageURLToWebP downloads the image at rawURL and encodes it to WebP at specified quality (1-100).
 func ConvertImageURLToWebP(rawURL string, quality float32) (*ConversionResult, error) {
+	return ConvertImageURLToWebPAuth(rawURL, quality, "", "")
+}
+
+// ConvertImageURLToWebPAuth is ConvertImageURLToWebP with optional HTTP Basic Auth (empty user = no auth).
+func ConvertImageURLToWebPAuth(rawURL string, quality float32, user, pass string) (*ConversionResult, error) {
 	if quality <= 0 || quality > 100 {
 		quality = 80
 	}
@@ -63,6 +68,9 @@ func ConvertImageURLToWebP(rawURL string, quality float32) (*ConversionResult, e
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("User-Agent", "SpeedMap-Optimizer/1.0")
+	if user != "" {
+		req.SetBasicAuth(user, pass)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

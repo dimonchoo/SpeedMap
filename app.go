@@ -265,7 +265,7 @@ func (a *App) ExportImageComparisonHTML(domain string, cfg config.ScanConfig, re
 // ConvertImageToWebP encodes a single image to WebP with the configured quality setting
 func (a *App) ConvertImageToWebP(rawURL string, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {
 	fmt.Printf("[GO LOG] ConvertImageToWebP called for %s (quality=%.0f)\n", rawURL, cfg.NormalizedWebPQuality())
-	res, err := optimizer.ConvertImageURLToWebP(rawURL, cfg.NormalizedWebPQuality())
+	res, err := optimizer.ConvertImageURLToWebPAuth(rawURL, cfg.NormalizedWebPQuality(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
 		fmt.Printf("[GO LOG] ConvertImageToWebP error: %v\n", err)
 		return nil, err
@@ -277,7 +277,7 @@ func (a *App) ConvertImageToWebP(rawURL string, cfg config.ScanConfig) (*optimiz
 // DownloadSingleWebPImage converts a single image to WebP and saves it via SaveFileDialog
 func (a *App) DownloadSingleWebPImage(rawURL string, cfg config.ScanConfig) (string, error) {
 	fmt.Printf("[GO LOG] DownloadSingleWebPImage called for %s\n", rawURL)
-	res, err := optimizer.ConvertImageURLToWebP(rawURL, cfg.NormalizedWebPQuality())
+	res, err := optimizer.ConvertImageURLToWebPAuth(rawURL, cfg.NormalizedWebPQuality(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
 		return "", err
 	}
@@ -329,11 +329,12 @@ func (a *App) DownloadOptimizedWebPZIP(urls []string, cfg config.ScanConfig) (st
 	var wg sync.WaitGroup
 
 	quality := cfg.NormalizedWebPQuality()
+	authUser, authPass := cfg.AuthUser, cfg.AuthPass
 	for _, rawURL := range urls {
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
-			res, err := optimizer.ConvertImageURLToWebP(u, quality)
+			res, err := optimizer.ConvertImageURLToWebPAuth(u, quality, authUser, authPass)
 			ch <- convertRes{res: res, err: err}
 		}(rawURL)
 	}
@@ -379,40 +380,58 @@ func (a *App) DownloadOptimizedWebPZIP(urls []string, cfg config.ScanConfig) (st
 	return savePath, nil
 }
 
-// ExportWordPressWebPApplyPHP builds a single WP-CLI eval-file script (manifest + apply logic).
-// SpeedMap does not deploy — user places the file on env and runs:
-//   wp eval-file … --path=<wordpressPath>
-func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, results []scanner.PageResult, wordpressPath string) (string, error) {
-	fmt.Printf("[GO LOG] ExportWordPressWebPApplyPHP called for %s (%d pages, path=%s)\n", domain, len(results), wordpressPath)
+// ExportWordPressWebPApplyPHP converts heavy images to WebP under wordpressPath/uploads,
+// writes apply + rollback PHP, and a review ZIP (orig + webp + compare.html) for task handoff.
+func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, results []scanner.PageResult, wordpressPath string) (*wpexport.ExportResult, error) {
+	wpPath := strings.TrimSpace(wordpressPath)
+	fmt.Printf("[GO LOG] ExportWordPressWebPApplyPHP called for %s (%d pages, path=%s)\n", domain, len(results), wpPath)
+
 	site := analytics.ComputeSiteAnalytics(results, cfg.HeavyImageThresholdKB)
-	php, err := wpexport.BuildApplyPHP(domain, cfg, site.AllImages, wordpressPath)
+	heavy := wpexport.CollectHeavyImages(site.AllImages)
+	if len(heavy) == 0 {
+		return nil, fmt.Errorf("no heavy convertible images in scan")
+	}
+
+	written, n, err := wpexport.WriteWebPFiles(wpPath, heavy, cfg.NormalizedWebPQuality(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
-		return "", err
+		return nil, err
+	}
+
+	manifestImgs := wpexport.ManifestImagesFromWritten(written)
+	php, err := wpexport.BuildApplyPHPFromManifest(domain, cfg, wpPath, manifestImgs)
+	if err != nil {
+		return nil, err
 	}
 
 	stamp := time.Now().Format("20060102-150405")
-	defaultName := fmt.Sprintf("speedmap-webp-apply-%s.php", stamp)
-
-	var savePath string
-	if a.ctx != nil {
-		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-			Title:           "Зберегти WP WebP apply PHP",
-			DefaultFilename: defaultName,
-			Filters: []runtime.FileFilter{
-				{DisplayName: "PHP (*.php)", Pattern: "*.php"},
-			},
-		})
-	}
-	if savePath == "" || err != nil {
-		savePath = defaultName
+	applyPath := filepath.Join(wpPath, fmt.Sprintf("speedmap-webp-apply-%s.php", stamp))
+	if err := os.WriteFile(applyPath, []byte(php), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write apply PHP: %w", err)
 	}
 
-	if err := os.WriteFile(savePath, []byte(php), 0644); err != nil {
-		return "", fmt.Errorf("failed to write PHP: %w", err)
+	rollbackPath := filepath.Join(wpPath, fmt.Sprintf("speedmap-webp-rollback-%s.php", stamp))
+	if err := os.WriteFile(rollbackPath, []byte(wpexport.BuildRollbackPHP(wpPath)), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write rollback PHP: %w", err)
 	}
 
-	fmt.Printf("[GO LOG] WP WebP apply PHP saved to %s (%d bytes)\n", savePath, len(php))
-	return savePath, nil
+	zipBytes, err := wpexport.BuildReviewZIP(domain, written)
+	if err != nil {
+		return nil, err
+	}
+	zipPath := filepath.Join(wpPath, fmt.Sprintf("speedmap-webp-review-%s.zip", stamp))
+	if err := os.WriteFile(zipPath, zipBytes, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write review ZIP: %w", err)
+	}
+
+	out := &wpexport.ExportResult{
+		ApplyPHP:      applyPath,
+		RollbackPHP:   rollbackPath,
+		ReviewZIP:     zipPath,
+		WebPCount:     n,
+		WordPressPath: wpPath,
+	}
+	fmt.Printf("[GO LOG] WP WebP export: %d WebP + apply=%s zip=%s\n", n, applyPath, zipPath)
+	return out, nil
 }
 
 // ListSiteProfiles fetches all persistent site profiles from ~/.speedmap/profiles.json

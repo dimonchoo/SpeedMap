@@ -59,3 +59,38 @@ func TestConvertImageURLToWebP(t *testing.T) {
 		t.Errorf("expected non-empty zip bytes")
 	}
 }
+
+func TestConvertImageURLToWebPAuth(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	for x := 0; x < 10; x++ {
+		for y := 0; y < 10; y++ {
+			img.Set(x, y, color.RGBA{R: 0, G: 255, B: 0, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "uat" || pass != "secret" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(buf.Bytes())
+	}))
+	defer ts.Close()
+
+	if _, err := ConvertImageURLToWebP(ts.URL+"/a.png", 80); err == nil {
+		t.Fatal("expected error without auth")
+	}
+	res, err := ConvertImageURLToWebPAuth(ts.URL+"/a.png", 80, "uat", "secret")
+	if err != nil {
+		t.Fatalf("with auth: %v", err)
+	}
+	if res.OptimizedBytes == 0 {
+		t.Fatal("expected webp bytes")
+	}
+}

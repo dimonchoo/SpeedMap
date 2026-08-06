@@ -1,20 +1,22 @@
 <?php
 /**
- * SpeedMap WebP apply script (WP-CLI eval-file)
+ * SpeedMap WebP apply script (WP-CLI eval-file) — DB only
  *
- * Place this file on the environment (repo / deploy — SpeedMap does not deploy),
- * then run:
+ * WebP files are written by SpeedMap into wp-content/uploads before you run this.
+ * Place this PHP next to the WP root (or anywhere), then:
  *   wp eval-file this-file.php --path={{WORDPRESS_PATH}}
  *
  * What it does:
- *   1) Reads embedded manifest (prod image URLs + page URLs from SpeedMap scan)
- *   2) Downloads each image from production
- *   3) Converts to WebP (Imagick → GD → cwebp)
- *   4) Writes under wp-content/uploads
- *   5) Updates attachment meta + URL search-replace
- *   6) Writes JSON report + QA HTML checklist for testers
+ *   1) Reads embedded manifest (webpRel + old URLs + pages from SpeedMap scan)
+ *   2) Verifies each .webp already exists under uploads
+ *   3) Writes backup JSON (old meta/URLs) BEFORE mutating
+ *   4) Updates attachment file pointer + mime (keeps old files on disk; keeps title/alt/caption)
+ *   5) URL search-replace
+ *   6) Writes JSON report + QA HTML checklist
  *
- * Requires: WP-CLI, outbound HTTPS to image hosts, Imagick/GD WebP or cwebp.
+ * Rollback: wp eval-file speedmap-webp-rollback-….php --path=…
+ *
+ * Requires: WP-CLI. Does NOT download or convert images. Does NOT delete originals.
  */
 if ( ! defined( 'ABSPATH' ) ) {
 	fwrite( STDERR, "Run via: wp eval-file this-file.php --path={{WORDPRESS_PATH}}\n" );
@@ -94,11 +96,22 @@ function speedmap_find_attachment_id( $basename, $path_hint ) {
 				return (int) $pid;
 			}
 		}
+		// Also match when attached file is already webp with same stem
+		$hint_stem = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $hint_base );
+		foreach ( $rows as $pid ) {
+			$file = get_post_meta( (int) $pid, '_wp_attached_file', true );
+			if ( ! $file ) {
+				continue;
+			}
+			$file_stem = preg_replace( '/\.[a-zA-Z0-9]+$/', '', speedmap_strip_size_suffix( $file ) );
+			if ( $file_stem === $hint_stem ) {
+				return (int) $pid;
+			}
+		}
 	}
 	if ( count( $rows ) > 1 ) {
 		return 0; // ambiguous
 	}
-	// GUID fallback
 	$guid_like = '%' . $wpdb->esc_like( $basename );
 	$guid_ids  = $wpdb->get_col(
 		$wpdb->prepare(
@@ -112,89 +125,19 @@ function speedmap_find_attachment_id( $basename, $path_hint ) {
 	return 0;
 }
 
-function speedmap_convert_to_webp( $src_path, $dest_path, $quality ) {
-	if ( class_exists( 'Imagick' ) ) {
-		try {
-			$img = new Imagick( $src_path );
-			if ( method_exists( $img, 'setImageFormat' ) ) {
-				$img->setImageFormat( 'webp' );
-			}
-			if ( method_exists( $img, 'setImageCompressionQuality' ) ) {
-				$img->setImageCompressionQuality( $quality );
-			}
-			$ok = $img->writeImage( $dest_path );
-			$img->clear();
-			$img->destroy();
-			if ( $ok && file_exists( $dest_path ) ) {
-				return true;
-			}
-		} catch ( Exception $e ) {
-			// fall through
-		}
-	}
-
-	$info = @getimagesize( $src_path );
-	if ( $info && function_exists( 'imagewebp' ) ) {
-		$im = null;
-		switch ( $info[2] ) {
-			case IMAGETYPE_JPEG:
-				$im = imagecreatefromjpeg( $src_path );
-				break;
-			case IMAGETYPE_PNG:
-				$im = imagecreatefrompng( $src_path );
-				if ( $im ) {
-					imagepalettetotruecolor( $im );
-					imagealphablending( $im, true );
-					imagesavealpha( $im, true );
-				}
-				break;
-			case IMAGETYPE_GIF:
-				$im = imagecreatefromgif( $src_path );
-				break;
-			case IMAGETYPE_WEBP:
-				if ( function_exists( 'imagecreatefromwebp' ) ) {
-					$im = imagecreatefromwebp( $src_path );
-				}
-				break;
-		}
-		if ( $im ) {
-			$ok = imagewebp( $im, $dest_path, $quality );
-			imagedestroy( $im );
-			if ( $ok && file_exists( $dest_path ) ) {
-				return true;
-			}
-		}
-	}
-
-	$cwebp = trim( (string) shell_exec( 'command -v cwebp 2>/dev/null' ) );
-	if ( $cwebp !== '' ) {
-		$cmd = escapeshellcmd( $cwebp ) . ' -q ' . (int) $quality . ' ' . escapeshellarg( $src_path ) . ' -o ' . escapeshellarg( $dest_path ) . ' 2>/dev/null';
-		exec( $cmd, $out, $code );
-		if ( $code === 0 && file_exists( $dest_path ) ) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
 function speedmap_replace_urls( $old_url, $new_url ) {
 	global $wpdb;
 	if ( ! $old_url || ! $new_url || $old_url === $new_url ) {
 		return 0;
 	}
 	$n = 0;
-	// posts
 	$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->posts} SET post_content = REPLACE(post_content, %s, %s)", $old_url, $new_url ) );
 	$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->posts} SET guid = REPLACE(guid, %s, %s)", $old_url, $new_url ) );
-	// postmeta (may break some serialized blobs; prefer exact URL strings)
 	$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->postmeta} SET meta_value = REPLACE(meta_value, %s, %s)", $old_url, $new_url ) );
 	return $n;
 }
 
-WP_CLI::log( sprintf( 'SpeedMap WebP apply: %d images, quality=%d, path=%s', count( $SPEEDMAP_MANIFEST['images'] ), $quality, $wp_path ) );
-
-foreach ( $SPEEDMAP_MANIFEST['images'] as $item ) {
+function speedmap_resolve_item( $item, $uploads ) {
 	$row = array(
 		'sourceUrl'    => isset( $item['sourceUrl'] ) ? $item['sourceUrl'] : '',
 		'pages'        => isset( $item['pages'] ) && is_array( $item['pages'] ) ? $item['pages'] : array(),
@@ -204,86 +147,111 @@ foreach ( $SPEEDMAP_MANIFEST['images'] as $item ) {
 		'oldUrl'       => '',
 		'newUrl'       => '',
 		'webpRel'      => '',
+		'pathHint'     => '',
+		'basename'     => '',
+		'destAbs'      => '',
 	);
 
 	$source = $row['sourceUrl'];
 	if ( ! $source ) {
 		$row['reason'] = 'empty sourceUrl';
-		$report['items'][] = $row;
-		continue;
+		return $row;
 	}
 
 	$path_hint = isset( $item['pathHint'] ) ? $item['pathHint'] : speedmap_path_hint_from_url( $source );
 	$basename  = isset( $item['basename'] ) ? $item['basename'] : basename( parse_url( $source, PHP_URL_PATH ) );
 	$basename  = speedmap_strip_size_suffix( $basename );
-	$name_no_ext = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $basename );
-	$webp_name   = $name_no_ext . '.webp';
+	$row['pathHint'] = $path_hint;
+	$row['basename'] = $basename;
 
-	$att_id = speedmap_find_attachment_id( $basename, $path_hint );
-	$row['attachmentId'] = $att_id;
-
-	if ( ! $att_id ) {
-		$row['reason'] = 'attachment not found (will still try file write)';
-	}
-
-	$tmp = download_url( $source, 60 );
-	if ( is_wp_error( $tmp ) ) {
-		$row['reason'] = 'download failed: ' . $tmp->get_error_message();
-		$report['items'][] = $row;
-		WP_CLI::warning( $source . ' — ' . $row['reason'] );
-		continue;
-	}
-
-	$rel_dir = '';
-	if ( $att_id ) {
-		$attached = get_post_meta( $att_id, '_wp_attached_file', true );
-		if ( $attached ) {
-			$rel_dir = trailingslashit( dirname( $attached ) );
-			if ( $rel_dir === './' ) {
-				$rel_dir = '';
-			}
-		}
-	}
-	if ( $rel_dir === '' && $path_hint ) {
-		$rel_dir = trailingslashit( dirname( $path_hint ) );
-		if ( $rel_dir === './' ) {
+	$webp_rel = isset( $item['webpRel'] ) ? ltrim( str_replace( '\\', '/', $item['webpRel'] ), '/' ) : '';
+	if ( $webp_rel === '' ) {
+		$name_no_ext = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $basename );
+		$rel_dir     = $path_hint ? trailingslashit( dirname( $path_hint ) ) : '';
+		if ( $rel_dir === './' || $rel_dir === '/' ) {
 			$rel_dir = '';
 		}
-	}
-	if ( $rel_dir === '' || $rel_dir === '/' ) {
-		$rel_dir = trailingslashit( gmdate( 'Y/m' ) );
+		$webp_rel = $rel_dir . $name_no_ext . '.webp';
 	}
 
-	$dest_rel  = $rel_dir . $webp_name;
-	$dest_abs  = trailingslashit( $uploads['basedir'] ) . $dest_rel;
-	$dest_dir  = dirname( $dest_abs );
-	if ( ! wp_mkdir_p( $dest_dir ) ) {
-		@unlink( $tmp );
-		$row['reason'] = 'cannot create dir ' . $dest_dir;
-		$report['items'][] = $row;
-		continue;
+	$dest_abs = trailingslashit( $uploads['basedir'] ) . $webp_rel;
+	$row['webpRel'] = $webp_rel;
+	$row['destAbs'] = $dest_abs;
+	$row['newUrl']  = trailingslashit( $uploads['baseurl'] ) . $webp_rel;
+	$row['oldUrl']  = $source;
+
+	if ( ! file_exists( $dest_abs ) ) {
+		$row['reason'] = 'webp missing on disk (export from SpeedMap first): ' . $webp_rel;
+		return $row;
 	}
 
-	$ok = speedmap_convert_to_webp( $tmp, $dest_abs, $quality );
-	@unlink( $tmp );
-	if ( ! $ok ) {
-		$row['reason'] = 'webp convert failed (need Imagick/GD WebP or cwebp)';
-		$report['items'][] = $row;
-		WP_CLI::warning( $source . ' — ' . $row['reason'] );
-		continue;
-	}
-
-	$row['webpRel'] = $dest_rel;
-	$new_url = trailingslashit( $uploads['baseurl'] ) . str_replace( '\\', '/', $dest_rel );
-	$row['newUrl'] = $new_url;
-	$row['oldUrl'] = $source;
-
+	$att_id              = speedmap_find_attachment_id( $basename, $path_hint );
+	$row['attachmentId'] = $att_id;
 	if ( $att_id ) {
 		$old_url = wp_get_attachment_url( $att_id );
 		if ( $old_url ) {
 			$row['oldUrl'] = $old_url;
 		}
-		update_post_meta( $att_id, '_wp_attached_file', $dest_rel );
+	}
+	$row['status'] = 'pending';
+	$row['reason'] = '';
+	return $row;
+}
+
+WP_CLI::log( sprintf( 'SpeedMap WebP DB apply: %d images, path=%s', count( $SPEEDMAP_MANIFEST['images'] ), $wp_path ) );
+
+// Pass 1: resolve + snapshot backup (before any mutation)
+$resolved = array();
+$backup   = array(
+	'domain'        => isset( $SPEEDMAP_MANIFEST['domain'] ) ? $SPEEDMAP_MANIFEST['domain'] : '',
+	'wordpressPath' => $wp_path,
+	'createdAt'     => gmdate( 'c' ),
+	'items'         => array(),
+);
+
+foreach ( $SPEEDMAP_MANIFEST['images'] as $item ) {
+	$row = speedmap_resolve_item( $item, $uploads );
+	$resolved[] = $row;
+	if ( $row['status'] !== 'pending' || ! $row['attachmentId'] ) {
+		continue;
+	}
+	$att_id = $row['attachmentId'];
+	$backup['items'][] = array(
+		'attachmentId'      => $att_id,
+		'oldAttachedFile'   => get_post_meta( $att_id, '_wp_attached_file', true ),
+		'oldMime'           => get_post_mime_type( $att_id ),
+		'oldUrl'            => $row['oldUrl'],
+		'newUrl'            => $row['newUrl'],
+		'webpRel'           => $row['webpRel'],
+		'title'             => get_the_title( $att_id ),
+		'alt'               => get_post_meta( $att_id, '_wp_attachment_image_alt', true ),
+		'caption'           => get_post_field( 'post_excerpt', $att_id ),
+		'oldAttachmentMeta' => wp_get_attachment_metadata( $att_id ),
+	);
+}
+
+$stamp = gmdate( 'Ymd-His' );
+$backup_path = trailingslashit( $uploads['basedir'] ) . 'speedmap-webp-backup-' . $stamp . '.json';
+file_put_contents( $backup_path, wp_json_encode( $backup, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
+$report['backup'] = $backup_path;
+WP_CLI::log( 'Backup written: ' . $backup_path . ' (' . count( $backup['items'] ) . ' attachments)' );
+
+// Pass 2: mutate (keep old files on disk; preserve title/alt/caption)
+foreach ( $resolved as $row ) {
+	if ( $row['status'] !== 'pending' ) {
+		$report['items'][] = $row;
+		WP_CLI::warning( $row['sourceUrl'] . ' — ' . $row['reason'] );
+		continue;
+	}
+
+	$att_id   = $row['attachmentId'];
+	$dest_abs = $row['destAbs'];
+	$webp_rel = $row['webpRel'];
+	$new_url  = $row['newUrl'];
+
+	if ( $att_id ) {
+		// Title / alt / caption intentionally untouched (same attachment).
+		update_post_meta( $att_id, '_wp_attached_file', $webp_rel );
 		wp_update_post(
 			array(
 				'ID'             => $att_id,
@@ -309,14 +277,14 @@ foreach ( $SPEEDMAP_MANIFEST['images'] as $item ) {
 		$row['reason'] = '';
 	} else {
 		$row['status'] = 'file_only';
-		$row['reason'] = 'wrote webp but no unique attachment match';
+		$row['reason'] = 'webp on disk but no unique attachment match (old files kept)';
 	}
 
+	unset( $row['destAbs'] );
 	$report['items'][] = $row;
-	WP_CLI::log( sprintf( '[%s] %s → %s', $row['status'], $row['oldUrl'], $row['newUrl'] ? $row['newUrl'] : $dest_rel ) );
+	WP_CLI::log( sprintf( '[%s] %s → %s', $row['status'], $row['oldUrl'], $row['newUrl'] ? $row['newUrl'] : $webp_rel ) );
 }
 
-$stamp = gmdate( 'Ymd-His' );
 $report_path = trailingslashit( $uploads['basedir'] ) . 'speedmap-webp-report-' . $stamp . '.json';
 file_put_contents( $report_path, wp_json_encode( $report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
 
@@ -339,7 +307,7 @@ foreach ( $report['items'] as $it ) {
 	}
 }
 
-WP_CLI::success( sprintf( 'Done. applied=%d file_only=%d failed=%d json=%s qa=%s', $ok, $file_only, $fail, $report_path, $qa_path ) );
+WP_CLI::success( sprintf( 'Done. applied=%d file_only=%d failed=%d backup=%s json=%s qa=%s', $ok, $file_only, $fail, $backup_path, $report_path, $qa_path ) );
 echo wp_json_encode( $report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n";
 
 /**
@@ -376,8 +344,9 @@ function speedmap_build_qa_html( $report ) {
 		. '<h1>' . $title . '</h1>'
 		. '<p>Applied at: ' . $esc( isset( $report['appliedAt'] ) ? $report['appliedAt'] : '' )
 		. ' · WP path: <code>' . $esc( isset( $report['wordpressPath'] ) ? $report['wordpressPath'] : '' ) . '</code>'
-		. ' · Quality: ' . $esc( isset( $report['quality'] ) ? $report['quality'] : '' ) . '</p>'
-		. '<p>Open each <strong>Pages</strong> URL and confirm the image loads as WebP (new URL). Compare old vs new.</p>'
+		. ' · Quality: ' . $esc( isset( $report['quality'] ) ? $report['quality'] : '' )
+		. ' · Backup: <code>' . $esc( isset( $report['backup'] ) ? $report['backup'] : '' ) . '</code></p>'
+		. '<p>Open each <strong>Pages</strong> URL and confirm the image loads as WebP (new URL). Compare old vs new. Old files remain on disk for rollback.</p>'
 		. '<table><thead><tr><th>Status</th><th>Old URL</th><th>New URL</th><th>Pages (spot-check)</th><th>Notes</th></tr></thead><tbody>'
 		. $rows
 		. '</tbody></table></body></html>';

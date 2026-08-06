@@ -32,6 +32,7 @@ new Promise(async (resolve) => {
             slowestResources: [],
             largestImages: [],
             fonts: [],
+            iframes: [],
             categories: {}
         }
     };
@@ -373,6 +374,75 @@ new Promise(async (resolve) => {
         }
 
         data.diagnostics.fonts = Array.from(fontMap.values()).slice(0, 8);
+    } catch (e) {}
+
+    // 7. Iframe Extraction (DOM + network timing → detect "missed" during load)
+    try {
+        const resources = performance.getEntriesByType('resource');
+        const timingByUrl = new Map();
+        resources.forEach(r => {
+            const isIframe = r.initiatorType === 'iframe' || r.initiatorType === 'subdocument';
+            if (isIframe) {
+                timingByUrl.set(r.name, {
+                    duration: Math.round(r.duration || 0),
+                    transferSize: r.transferSize || r.encodedBodySize || 0
+                });
+            }
+        });
+
+        const iframeList = [];
+        Array.from(document.querySelectorAll('iframe')).forEach((el, idx) => {
+            const rawSrc = el.getAttribute('src') || el.src || el.getAttribute('data-src') || '';
+            let fullUrl = '';
+            if (rawSrc && !rawSrc.startsWith('data:') && !rawSrc.startsWith('javascript:')) {
+                try { fullUrl = new URL(rawSrc, document.baseURI).href; } catch (e) { fullUrl = rawSrc; }
+            }
+
+            let duration = 0;
+            let transferSize = 0;
+            let loadedDuringScan = false;
+            if (fullUrl) {
+                let timing = timingByUrl.get(fullUrl);
+                if (!timing) {
+                    const match = resources.find(r => r.name === fullUrl || (fullUrl && r.name.indexOf(fullUrl.split('?')[0]) === 0));
+                    if (match) {
+                        timing = {
+                            duration: Math.round(match.duration || 0),
+                            transferSize: match.transferSize || match.encodedBodySize || 0
+                        };
+                    }
+                }
+                if (timing) {
+                    duration = timing.duration;
+                    transferSize = timing.transferSize;
+                    loadedDuringScan = true;
+                }
+            }
+
+            let inViewport = false;
+            try {
+                const rect = el.getBoundingClientRect();
+                inViewport = rect.top < (window.innerHeight || 0) && rect.bottom > 0 &&
+                    rect.left < (window.innerWidth || 0) && rect.right > 0 &&
+                    rect.width > 0 && rect.height > 0;
+            } catch (e) {}
+
+            iframeList.push({
+                src: fullUrl || (rawSrc ? rawSrc : ('(empty-src#' + idx + ')')),
+                title: el.getAttribute('title') || el.getAttribute('name') || el.id || '',
+                width: parseInt(el.getAttribute('width'), 10) || Math.round(el.getBoundingClientRect().width) || 0,
+                height: parseInt(el.getAttribute('height'), 10) || Math.round(el.getBoundingClientRect().height) || 0,
+                isLazy: el.getAttribute('loading') === 'lazy' || !!el.getAttribute('data-src'),
+                loadedDuringScan: loadedDuringScan,
+                inViewport: inViewport,
+                sandbox: el.hasAttribute('sandbox'),
+                duration: duration,
+                transferSize: transferSize,
+                formattedSize: formatBytes(transferSize)
+            });
+        });
+
+        data.diagnostics.iframes = iframeList;
     } catch (e) {}
 
     // 1.0s observation window

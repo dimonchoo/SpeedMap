@@ -28,6 +28,42 @@ export namespace analytics {
 	        this.pageUrls = source["pageUrls"];
 	    }
 	}
+	export class AggregatedIframe {
+	    src: string;
+	    title: string;
+	    pageCount: number;
+	    pages: string[];
+	    occurrences: number;
+	    loadedCount: number;
+	    missedCount: number;
+	    isLazy: boolean;
+	    avgDurationMs: number;
+	    maxTransferSize: number;
+	    formattedSize: string;
+	    width: number;
+	    height: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AggregatedIframe(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.src = source["src"];
+	        this.title = source["title"];
+	        this.pageCount = source["pageCount"];
+	        this.pages = source["pages"];
+	        this.occurrences = source["occurrences"];
+	        this.loadedCount = source["loadedCount"];
+	        this.missedCount = source["missedCount"];
+	        this.isLazy = source["isLazy"];
+	        this.avgDurationMs = source["avgDurationMs"];
+	        this.maxTransferSize = source["maxTransferSize"];
+	        this.formattedSize = source["formattedSize"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	    }
+	}
 	export class AggregatedImage {
 	    url: string;
 	    maxTransferSize: number;
@@ -101,6 +137,7 @@ export namespace analytics {
 	    largestImages: AggregatedImage[];
 	    allImages: AggregatedImage[];
 	    fontUsage: AggregatedFont[];
+	    iframes: AggregatedIframe[];
 	    globalFixes: string[];
 	    totalImagePayloadBytes: number;
 	    totalImagePayloadFormatted: string;
@@ -111,6 +148,9 @@ export namespace analytics {
 	    totalWebPSavingsBytes: number;
 	    totalWebPSavingsFormatted: string;
 	    formatBreakdown: Record<string, number>;
+	    totalIframeCount: number;
+	    missedIframeCount: number;
+	    loadedIframeCount: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new SiteAnalytics(source);
@@ -126,6 +166,7 @@ export namespace analytics {
 	        this.largestImages = this.convertValues(source["largestImages"], AggregatedImage);
 	        this.allImages = this.convertValues(source["allImages"], AggregatedImage);
 	        this.fontUsage = this.convertValues(source["fontUsage"], AggregatedFont);
+	        this.iframes = this.convertValues(source["iframes"], AggregatedIframe);
 	        this.globalFixes = source["globalFixes"];
 	        this.totalImagePayloadBytes = source["totalImagePayloadBytes"];
 	        this.totalImagePayloadFormatted = source["totalImagePayloadFormatted"];
@@ -136,6 +177,9 @@ export namespace analytics {
 	        this.totalWebPSavingsBytes = source["totalWebPSavingsBytes"];
 	        this.totalWebPSavingsFormatted = source["totalWebPSavingsFormatted"];
 	        this.formatBreakdown = source["formatBreakdown"];
+	        this.totalIframeCount = source["totalIframeCount"];
+	        this.missedIframeCount = source["missedIframeCount"];
+	        this.loadedIframeCount = source["loadedIframeCount"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -514,6 +558,38 @@ export namespace scanner {
 	        this.duration = source["duration"];
 	    }
 	}
+	export class IframeDetail {
+	    src: string;
+	    title: string;
+	    width: number;
+	    height: number;
+	    isLazy: boolean;
+	    loadedDuringScan: boolean;
+	    inViewport: boolean;
+	    sandbox: boolean;
+	    duration: number;
+	    transferSize: number;
+	    formattedSize: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new IframeDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.src = source["src"];
+	        this.title = source["title"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.isLazy = source["isLazy"];
+	        this.loadedDuringScan = source["loadedDuringScan"];
+	        this.inViewport = source["inViewport"];
+	        this.sandbox = source["sandbox"];
+	        this.duration = source["duration"];
+	        this.transferSize = source["transferSize"];
+	        this.formattedSize = source["formattedSize"];
+	    }
+	}
 	export class ImageDetail {
 	    url: string;
 	    transferSize: number;
@@ -579,6 +655,7 @@ export namespace scanner {
 	    slowestResources: ResourceTiming[];
 	    largestImages: ImageDetail[];
 	    fonts: FontDetail[];
+	    iframes: IframeDetail[];
 	    categories: Record<string, CategoryDiagnostic>;
 	    w3c?: any;
 	
@@ -603,6 +680,7 @@ export namespace scanner {
 	        this.slowestResources = this.convertValues(source["slowestResources"], ResourceTiming);
 	        this.largestImages = this.convertValues(source["largestImages"], ImageDetail);
 	        this.fonts = this.convertValues(source["fonts"], FontDetail);
+	        this.iframes = this.convertValues(source["iframes"], IframeDetail);
 	        this.categories = this.convertValues(source["categories"], CategoryDiagnostic, true);
 	        this.w3c = source["w3c"];
 	    }
@@ -772,6 +850,31 @@ export namespace w3c {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace wpexport {
+	
+	export class ExportResult {
+	    applyPHP: string;
+	    rollbackPHP: string;
+	    reviewZIP: string;
+	    webpCount: number;
+	    wordpressPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.applyPHP = source["applyPHP"];
+	        this.rollbackPHP = source["rollbackPHP"];
+	        this.reviewZIP = source["reviewZIP"];
+	        this.webpCount = source["webpCount"];
+	        this.wordpressPath = source["wordpressPath"];
+	    }
 	}
 
 }

@@ -4,6 +4,7 @@ import {config} from '../models';
 import {scanner} from '../models';
 import {main} from '../models';
 import {optimizer} from '../models';
+import {wpexport} from '../models';
 import {profiles} from '../models';
 import {cloud} from '../models';
 import {w3c} from '../models';
@@ -28,7 +29,7 @@ export function ExportFontsJSON(arg1:string):Promise<string>;
 
 export function ExportImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 
-export function ExportWordPressWebPApplyPHP(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>,arg4:string):Promise<string>;
+export function ExportWordPressWebPApplyPHP(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>,arg4:string):Promise<wpexport.ExportResult>;
 
 export function GetGDriveCredentials():Promise<Record<string, string>>;
 
