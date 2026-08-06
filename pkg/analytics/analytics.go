@@ -252,8 +252,8 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 				if existing, found := fontMap[key]; found {
 					existing.Occurrences++
 					existing.AvgDurationMs += font.Duration
-					if font.TransferSize > 0 {
-						existing.TransferSize += font.TransferSize
+					if font.TransferSize > existing.TransferSize {
+						existing.TransferSize = font.TransferSize
 					}
 					if existing.URL == "" && font.URL != "" {
 						existing.URL = font.URL
@@ -263,6 +263,7 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 						existing.PageURLs = append(existing.PageURLs, p.URL)
 					}
 				} else {
+
 					var initialURLs []string
 					if p.URL != "" {
 						initialURLs = append(initialURLs, p.URL)
