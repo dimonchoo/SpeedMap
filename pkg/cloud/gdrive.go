@@ -15,9 +15,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
+
 
 
 // Default SpeedMap Public OAuth Client Credentials for Google Drive
@@ -122,12 +124,20 @@ func (m *GDriveManager) Disconnect() error {
 
 // StartAuthFlow launches HTTP server on port 8585 and opens browser for Google OAuth
 func (m *GDriveManager) StartAuthFlow(clientID, clientSecret string) (string, error) {
-	if clientID == "" {
-		clientID = DefaultClientID
+	clientID = strings.TrimSpace(clientID)
+	clientSecret = strings.TrimSpace(clientSecret)
+
+	if clientID == "" && m.tokenData != nil {
+		clientID = m.tokenData.ClientID
 	}
-	if clientSecret == "" {
-		clientSecret = DefaultClientSecret
+	if clientSecret == "" && m.tokenData != nil {
+		clientSecret = m.tokenData.ClientSecret
 	}
+
+	if clientID == "" || clientSecret == "" {
+		return "", fmt.Errorf("Вкажіть ваш Google OAuth Client ID та Client Secret у Налаштуваннях.")
+	}
+
 
 	listener, err := net.Listen("tcp", "127.0.0.1:8585")
 	if err != nil {

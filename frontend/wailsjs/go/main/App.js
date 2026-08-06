@@ -82,8 +82,8 @@ export function SelectDirectory(arg1) {
   return window['go']['main']['App']['SelectDirectory'](arg1);
 }
 
-export function StartGDriveAuth() {
-  return window['go']['main']['App']['StartGDriveAuth']();
+export function StartGDriveAuth(arg1, arg2) {
+  return window['go']['main']['App']['StartGDriveAuth'](arg1, arg2);
 }
 
 export function StartScan(arg1, arg2) {

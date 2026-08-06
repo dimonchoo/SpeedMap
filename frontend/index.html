@@ -1374,16 +1374,34 @@
 
                   <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
                     <p>
-                      Підключивши Google Drive через авторизацію OAuth2, ви зможете за 1 секунду надсилати звіти аудитів (CSV, JSON, HTML) у вашу особисту папку <code class="bg-slate-900 px-1.5 py-0.5 rounded text-amber-300 font-mono">SpeedMap Reports</code> та миттєво отримувати публічні посилання для клієнтів.
+                      Для підключення вашого Google Drive вкажіть ваш **Client ID** та **Client Secret** з вашої консолі Google Cloud:
                     </p>
 
-                    <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800/80 space-y-1.5 font-sans">
-                      <div class="font-semibold text-slate-200 text-[11px] uppercase tracking-wider">Переваги підключення:</div>
-                      <ul class="list-disc list-inside space-y-1 text-slate-400 text-xs">
-                        <li>Жодних файлів ключів JSON — вхід за 1 клік через браузер</li>
-                        <li>Автоматичне копіювання посилання у буфер обміну 📋</li>
-                        <li>Файли зберігаються у вашому особистому або корпоративному Drive</li>
-                      </ul>
+                    <!-- Credentials Inputs -->
+                    <template x-if="!gdriveStatus.connected">
+                      <div class="space-y-3 p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+                        <div class="space-y-1">
+                          <label class="block font-semibold text-slate-200 text-xs">Google OAuth Client ID:</label>
+                          <input type="text" x-model="gdriveClientID" placeholder="xxxxxx.apps.googleusercontent.com"
+                            class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500">
+                        </div>
+
+                        <div class="space-y-1">
+                          <label class="block font-semibold text-slate-200 text-xs">Google OAuth Client Secret:</label>
+                          <input type="password" x-model="gdriveClientSecret" placeholder="GOCSPX-xxxxxx"
+                            class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500">
+                        </div>
+                      </div>
+                    </template>
+
+                    <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800/80 space-y-1.5 font-sans text-[11px] text-slate-400">
+                      <div class="font-semibold text-slate-200 uppercase tracking-wider">Як отримати ключі (2 хвилини):</div>
+                      <ol class="list-decimal list-inside space-y-1">
+                        <li>Зайдіть у <a @click.prevent="openUrlInBrowser('https://console.cloud.google.com/apis/credentials')" href="#" class="text-cyan-400 hover:underline">Google Cloud Console Credentials ↗</a></li>
+                        <li>Натисніть <strong>Create Credentials -> OAuth client ID</strong> (тип Desktop app)</li>
+                        <li>У Redirect URI вкажіть: <code class="text-amber-300 font-mono">http://127.0.0.1:8585/callback</code></li>
+                        <li>Скопіюйте Client ID та Client Secret у поля вище й натисніть «Авторизувати»!</li>
+                      </ol>
                     </div>
                   </div>
 

@@ -92,6 +92,8 @@ function speedMapApp() {
     gdriveStatus: { connected: false, email: '' },
     isConnectingGDrive: false,
     isUploadingGDrive: false,
+    gdriveClientID: '',
+    gdriveClientSecret: '',
 
     // Multi-Site Profiles State
     siteProfiles: [],
@@ -135,11 +137,18 @@ function speedMapApp() {
     },
 
     async connectGDrive() {
+      if (!this.gdriveClientID.trim() || !this.gdriveClientSecret.trim()) {
+        this.showToast('warning', 'Введіть ключі', 'Введіть Google Client ID та Client Secret.');
+        return;
+      }
       this.isConnectingGDrive = true;
       this.showToast('info', 'Google Drive', 'Відкриваємо браузер для авторизації Google...');
       try {
         if (window.go?.main?.App?.StartGDriveAuth) {
-          const email = await window.go.main.App.StartGDriveAuth();
+          const email = await window.go.main.App.StartGDriveAuth(
+            this.gdriveClientID.trim(),
+            this.gdriveClientSecret.trim()
+          );
           if (email) {
             this.gdriveStatus = { connected: true, email: email };
             this.showToast('success', 'Успішно підключено 🟢', email);

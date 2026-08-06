@@ -555,12 +555,13 @@ func (a *App) SelectDirectory(title string) (string, error) {
 }
 
 // StartGDriveAuth starts Google OAuth2 browser flow
-func (a *App) StartGDriveAuth() (string, error) {
+func (a *App) StartGDriveAuth(clientID, clientSecret string) (string, error) {
 	if a.gdriveManager == nil {
 		a.gdriveManager = cloud.NewGDriveManager()
 	}
-	return a.gdriveManager.StartAuthFlow("", "")
+	return a.gdriveManager.StartAuthFlow(clientID, clientSecret)
 }
+
 
 // GetGDriveStatus returns connection status and user email
 func (a *App) GetGDriveStatus() map[string]interface{} {

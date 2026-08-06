@@ -48,7 +48,7 @@ export function SaveSiteProfile(arg1:profiles.SiteProfile):Promise<profiles.Site
 
 export function SelectDirectory(arg1:string):Promise<string>;
 
-export function StartGDriveAuth():Promise<string>;
+export function StartGDriveAuth(arg1:string,arg2:string):Promise<string>;
 
 export function StartScan(arg1:config.ScanConfig,arg2:Array<string>):Promise<void>;
 
