@@ -39,15 +39,17 @@ type AggregatedImage struct {
 }
 
 type AggregatedFont struct {
-	Family        string  `json:"family"`
-	URL           string  `json:"url"`
-	Type          string  `json:"type"`
-	Occurrences   int     `json:"occurrences"`   // how many pages use this font
-	Percentage    float64 `json:"percentage"`    // % of total scanned pages
-	AvgDurationMs float64 `json:"avgDurationMs"` // ms
-	TransferSize  int64   `json:"transferSize"`
-	FormattedSize string  `json:"formattedSize"`
+	Family        string   `json:"family"`
+	URL           string   `json:"url"`
+	Type          string   `json:"type"`
+	Occurrences   int      `json:"occurrences"`   // how many pages use this font
+	Percentage    float64  `json:"percentage"`    // % of total scanned pages
+	AvgDurationMs float64  `json:"avgDurationMs"` // ms
+	TransferSize  int64    `json:"transferSize"`
+	FormattedSize string   `json:"formattedSize"`
+	PageURLs      []string `json:"pageUrls"`
 }
+
 
 
 type SiteAnalytics struct {
@@ -257,7 +259,14 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 						existing.URL = font.URL
 						existing.Type = font.Type
 					}
+					if p.URL != "" && !containsString(existing.PageURLs, p.URL) {
+						existing.PageURLs = append(existing.PageURLs, p.URL)
+					}
 				} else {
+					var initialURLs []string
+					if p.URL != "" {
+						initialURLs = append(initialURLs, p.URL)
+					}
 					fontMap[key] = &AggregatedFont{
 						Family:        fam,
 						URL:           font.URL,
@@ -265,9 +274,11 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 						Occurrences:   1,
 						AvgDurationMs: font.Duration,
 						TransferSize:  font.TransferSize,
+						PageURLs:      initialURLs,
 					}
 				}
 			}
+
 
 		}
 	}
@@ -720,4 +731,13 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 </html>`, domain, domain, analytics.TotalImagePayloadFormatted, analytics.TotalImageCount, analytics.HeavyImagesCount, analytics.TotalWebPSavingsFormatted, rowsHTML.String())
 
 	return html
+}
+
+func containsString(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
 }

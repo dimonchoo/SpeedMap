@@ -9,6 +9,7 @@ export namespace analytics {
 	    avgDurationMs: number;
 	    transferSize: number;
 	    formattedSize: string;
+	    pageUrls: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new AggregatedFont(source);
@@ -24,6 +25,7 @@ export namespace analytics {
 	        this.avgDurationMs = source["avgDurationMs"];
 	        this.transferSize = source["transferSize"];
 	        this.formattedSize = source["formattedSize"];
+	        this.pageUrls = source["pageUrls"];
 	    }
 	}
 	export class AggregatedImage {

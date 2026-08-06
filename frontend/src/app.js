@@ -750,12 +750,13 @@ function speedMapApp() {
         this.showToast('warning', 'Відсутні дані', 'Немає даних про шрифти для експорту.');
         return;
       }
-      let csv = "Font Family,Format,Occurrences,Page Coverage %,Avg Load Duration (ms),Formatted Size,Direct Asset URL\n";
+      let csv = "Font Family,Format,Occurrences,Page Coverage %,Avg Load Duration (ms),Formatted Size,Direct Asset URL,Page URLs List\n";
       this.siteAnalytics.fontUsage.forEach(f => {
         const family = `"${(f.family || '').replace(/"/g, '""')}"`;
         const type = `"${(f.type || '').replace(/"/g, '""')}"`;
-        const url = `"${(f.url || '').replace(/"/g, '""')}"`;
-        csv += `${family},${type},${f.occurrences || 0},${f.percentage || 0},${f.avgDurationMs || 0},"${f.formattedSize || ''}",${url}\n`;
+        const fontUrl = `"${(f.url || '').replace(/"/g, '""')}"`;
+        const pageUrlsList = `"${(f.pageUrls || []).join('; ').replace(/"/g, '""')}"`;
+        csv += `${family},${type},${f.occurrences || 0},${f.percentage || 0},${f.avgDurationMs || 0},"${f.formattedSize || ''}",${fontUrl},${pageUrlsList}\n`;
       });
 
       try {
@@ -763,7 +764,7 @@ function speedMapApp() {
           const filePath = await window.go.main.App.ExportFontsCSV(csv);
           if (filePath) {
             this.showToast('success', 'CSV збережено 🟢', filePath);
-            this.addLog('success', `Експортовано CSV звіт шрифтів: ${filePath}`);
+            this.addLog('success', `Експортовано CSV звіт шрифтів з URL сторінок: ${filePath}`);
             return;
           }
         }
@@ -781,6 +782,7 @@ function speedMapApp() {
       document.body.removeChild(link);
       this.showToast('success', 'CSV завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
+
 
     async exportFontsJSON() {
       if (!this.siteAnalytics || !this.siteAnalytics.fontUsage || this.siteAnalytics.fontUsage.length === 0) {
