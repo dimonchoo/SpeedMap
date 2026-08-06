@@ -173,6 +173,7 @@ function speedMapApp() {
       }
       if (!this.gdriveStatus.connected) {
         this.showToast('warning', 'Не підключено', 'Спочатку підключіть Google Drive у Налаштуваннях.');
+        this.settingsTab = 'cloud';
         this.showSettings = true;
         return;
       }
