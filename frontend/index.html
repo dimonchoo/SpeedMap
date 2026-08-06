@@ -415,6 +415,7 @@
                       <th class="py-3 px-3 text-right">LCP</th>
                       <th class="py-3 px-3 text-right">CLS</th>
                       <th class="py-3 px-3 text-right">TBT</th>
+                      <th class="py-3 px-3 text-center">ШРИФТИ</th>
                       <th class="py-3 px-6 text-center">Дії</th>
                     </tr>
                   </thead>
@@ -1807,15 +1808,44 @@
               </div>
             </template>
 
-            <!-- Page Fonts Section -->
+            <!-- Page Fonts Section (Upgraded Cards) -->
             <template x-if="selectedDetail?.diagnostics?.fonts && selectedDetail?.diagnostics?.fonts.length > 0">
               <div class="space-y-3">
-                <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider">🔤 Шрифти сторінки</h4>
-                <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+                <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
+                  <span>🔤 Шрифти сторінки</span>
+                  <span class="text-amber-400 font-mono" x-text="'(' + selectedDetail.diagnostics.fonts.length + ')'"></span>
+                </h4>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <template x-for="f in selectedDetail?.diagnostics?.fonts" :key="f.family">
-                    <div class="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between">
-                      <span class="font-sans font-bold text-slate-200 truncate pr-2" x-text="f.family"></span>
-                      <span class="px-1.5 py-0.5 rounded text-[10px] uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0" x-text="f.type || 'font'"></span>
+                    <div class="bg-slate-950/90 rounded-xl border border-slate-800 overflow-hidden flex flex-col justify-between space-y-2 p-3">
+                      <!-- Top part: Icon, Family Name & Format -->
+                      <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center space-x-2 truncate">
+                            <span class="text-amber-400 font-bold">🔤</span>
+                            <span class="font-sans font-bold text-slate-100 truncate" :title="f.family" x-text="f.family"></span>
+                          </div>
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0" x-text="f.type || 'font'"></span>
+                        </div>
+
+                        <!-- Live Font Preview -->
+                        <div class="p-2 bg-slate-900/90 rounded-lg border border-slate-800/80 font-sans">
+                          <div class="text-slate-200 text-xs font-medium truncate" :style="'font-family: ' + f.family + ', sans-serif'">
+                            Aa Bb Cc 123 • Typo Preview
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Bottom part: Duration & URL -->
+                      <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                        <span>Завантаження: <strong class="text-slate-200" x-text="f.duration ? (f.duration + 'ms') : '0ms'"></strong></span>
+                        <template x-if="f.url">
+                          <button @click="copyFontUrl(f.url)" class="text-amber-400 hover:text-amber-300 underline font-sans text-[10px]">
+                            📋 Скопіювати URL
+                          </button>
+                        </template>
+                      </div>
                     </div>
                   </template>
                 </div>
