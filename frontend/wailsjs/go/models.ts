@@ -7,6 +7,7 @@ export namespace analytics {
 	    occurrences: number;
 	    percentage: number;
 	    avgDurationMs: number;
+	    transferSize: number;
 	    formattedSize: string;
 	
 	    static createFrom(source: any = {}) {
@@ -21,6 +22,7 @@ export namespace analytics {
 	        this.occurrences = source["occurrences"];
 	        this.percentage = source["percentage"];
 	        this.avgDurationMs = source["avgDurationMs"];
+	        this.transferSize = source["transferSize"];
 	        this.formattedSize = source["formattedSize"];
 	    }
 	}

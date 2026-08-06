@@ -45,8 +45,10 @@ type AggregatedFont struct {
 	Occurrences   int     `json:"occurrences"`   // how many pages use this font
 	Percentage    float64 `json:"percentage"`    // % of total scanned pages
 	AvgDurationMs float64 `json:"avgDurationMs"` // ms
+	TransferSize  int64   `json:"transferSize"`
 	FormattedSize string  `json:"formattedSize"`
 }
+
 
 type SiteAnalytics struct {
 	TotalPages  scannedCount `json:"totalPages"`
@@ -247,6 +249,9 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 				if existing, found := fontMap[key]; found {
 					existing.Occurrences++
 					existing.AvgDurationMs += font.Duration
+					if font.TransferSize > 0 {
+						existing.TransferSize += font.TransferSize
+					}
 					if existing.URL == "" && font.URL != "" {
 						existing.URL = font.URL
 						existing.Type = font.Type
@@ -258,8 +263,10 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 						Type:          font.Type,
 						Occurrences:   1,
 						AvgDurationMs: font.Duration,
+						TransferSize:  font.TransferSize,
 					}
 				}
+
 			}
 		}
 	}
@@ -375,6 +382,11 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 			font.AvgDurationMs = math.Round((font.AvgDurationMs/float64(font.Occurrences))*100) / 100
 			font.Percentage = math.Round((float64(font.Occurrences)/float64(total)*100)*10) / 10
 		}
+		if font.TransferSize > 0 {
+			font.FormattedSize = formatBytes(font.TransferSize)
+		} else {
+			font.FormattedSize = "н/д"
+		}
 		fontList = append(fontList, *font)
 	}
 
@@ -382,9 +394,6 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		return fontList[i].Occurrences > fontList[j].Occurrences
 	})
 
-	if len(fontList) > 8 {
-		fontList = fontList[:8]
-	}
 
 	// Calculate Health Score (0 - 100)
 	goodCount := statusCounts["good"]

@@ -65,6 +65,11 @@ function speedMapApp() {
     runComparison: null,
     isComputingAnalytics: false,
 
+    // Font Inspector Hub State
+    fontSearchQuery: '',
+    fontFilterTab: 'all',
+    fontSortKey: 'pages',
+
     // Image Optimization & Comparison Hub State (SEOAEO-235)
     imageSearchQuery: '',
     imageFilterTab: 'all', // 'all' | 'heavy' | 'non-webp' | 'missing-lazy' | 'png' | 'jpg'
@@ -713,6 +718,40 @@ function speedMapApp() {
       });
 
       this.filteredImages = list;
+    },
+
+    get filteredFonts() {
+      if (!this.siteAnalytics || !this.siteAnalytics.fontUsage) return [];
+      let list = [...this.siteAnalytics.fontUsage];
+
+      if (this.fontSearchQuery && this.fontSearchQuery.trim()) {
+        const q = this.fontSearchQuery.toLowerCase().trim();
+        list = list.filter(f => (f.family && f.family.toLowerCase().includes(q)) || (f.type && f.type.toLowerCase().includes(q)) || (f.url && f.url.toLowerCase().includes(q)));
+      }
+
+      if (this.fontFilterTab !== 'all') {
+        const target = this.fontFilterTab.toLowerCase();
+        list = list.filter(f => f.type && f.type.toLowerCase().includes(target));
+      }
+
+      const sortKey = this.fontSortKey;
+      list.sort((a, b) => {
+        if (sortKey === 'pages') return (b.occurrences || 0) - (a.occurrences || 0);
+        if (sortKey === 'duration') return (b.avgDurationMs || 0) - (a.avgDurationMs || 0);
+        if (sortKey === 'size') return (b.transferSize || 0) - (a.transferSize || 0);
+        return 0;
+      });
+
+      return list;
+    },
+
+    copyFontUrl(url) {
+      if (!url) return;
+      navigator.clipboard.writeText(url).then(() => {
+        this.showToast('success', 'URL скопійовано 📋', url);
+      }).catch(err => {
+        console.error('Failed to copy font URL:', err);
+      });
     },
 
     get paginatedImages() {
