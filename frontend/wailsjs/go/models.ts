@@ -30,6 +30,7 @@ export namespace analytics {
 	    formattedSize: string;
 	    avgDurationMs: number;
 	    pageCount: number;
+	    pages: string[];
 	    width: number;
 	    height: number;
 	    format: string;
@@ -53,6 +54,7 @@ export namespace analytics {
 	        this.formattedSize = source["formattedSize"];
 	        this.avgDurationMs = source["avgDurationMs"];
 	        this.pageCount = source["pageCount"];
+	        this.pages = source["pages"];
 	        this.width = source["width"];
 	        this.height = source["height"];
 	        this.format = source["format"];

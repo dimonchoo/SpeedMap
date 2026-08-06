@@ -23,18 +23,19 @@ type AggregatedImage struct {
 	MaxTransferSize           int64   `json:"maxTransferSize"` // bytes
 	FormattedSize             string  `json:"formattedSize"`   // e.g. "1.2 MB"
 	AvgDurationMs             float64 `json:"avgDurationMs"`   // ms
-	PageCount                 int     `json:"pageCount"`       // how many pages use this image
-	Width                     int     `json:"width"`
-	Height                    int     `json:"height"`
-	Format                    string  `json:"format"` // png, jpg, webp, svg, avif, gif
-	IsHeavy                   bool    `json:"isHeavy"` // > 100 KB
-	IsLazy                    bool    `json:"isLazy"`
-	IsLCP                     bool    `json:"isLCP"`
-	EstimatedWebPSize         int64   `json:"estimatedWebPSize"`
-	EstimatedWebPFormatted    string  `json:"estimatedWebPFormatted"`
-	EstimatedSavingsBytes     int64   `json:"estimatedSavingsBytes"`
-	EstimatedSavingsFormatted string  `json:"estimatedSavingsFormatted"`
-	EstimatedSavingsPercent   float64 `json:"estimatedSavingsPercent"`
+	PageCount                 int      `json:"pageCount"` // how many pages use this image
+	Pages                     []string `json:"pages"`     // page URLs where this image was seen
+	Width                     int      `json:"width"`
+	Height                    int      `json:"height"`
+	Format                    string   `json:"format"` // png, jpg, webp, svg, avif, gif
+	IsHeavy                   bool     `json:"isHeavy"` // > 100 KB
+	IsLazy                    bool     `json:"isLazy"`
+	IsLCP                     bool     `json:"isLCP"`
+	EstimatedWebPSize         int64    `json:"estimatedWebPSize"`
+	EstimatedWebPFormatted    string   `json:"estimatedWebPFormatted"`
+	EstimatedSavingsBytes     int64    `json:"estimatedSavingsBytes"`
+	EstimatedSavingsFormatted string   `json:"estimatedSavingsFormatted"`
+	EstimatedSavingsPercent   float64  `json:"estimatedSavingsPercent"`
 }
 
 type AggregatedFont struct {
@@ -196,7 +197,9 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 				}
 				key := img.URL
 				if existing, found := imageMap[key]; found {
-					existing.PageCount++
+					if appendUniquePage(existing, p.URL) {
+						existing.PageCount = len(existing.Pages)
+					}
 					existing.AvgDurationMs += img.Duration
 					if img.IsLazy {
 						existing.IsLazy = true
@@ -218,18 +221,20 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 					if fmtStr == "" {
 						fmtStr = detectFormatFromURL(img.URL)
 					}
-					imageMap[key] = &AggregatedImage{
+					agg := &AggregatedImage{
 						URL:             img.URL,
 						MaxTransferSize: img.TransferSize,
 						FormattedSize:   img.FormattedSize,
 						AvgDurationMs:   img.Duration,
-						PageCount:       1,
 						Width:           img.Width,
 						Height:          img.Height,
 						Format:          fmtStr,
 						IsLazy:          img.IsLazy,
 						IsLCP:           img.IsLCP,
 					}
+					appendUniquePage(agg, p.URL)
+					agg.PageCount = len(agg.Pages)
+					imageMap[key] = agg
 				}
 			}
 
@@ -465,6 +470,20 @@ func generateGlobalFixes(avg map[string]float64, topRes []ResourceImpact, images
 	}
 
 	return fixes
+}
+
+// appendUniquePage adds pageURL to img.Pages if not already present. Returns true when added.
+func appendUniquePage(img *AggregatedImage, pageURL string) bool {
+	if img == nil || pageURL == "" {
+		return false
+	}
+	for _, u := range img.Pages {
+		if u == pageURL {
+			return false
+		}
+	}
+	img.Pages = append(img.Pages, pageURL)
+	return true
 }
 
 func detectFormatFromURL(rawURL string) string {

@@ -90,10 +90,13 @@ func (s *Scanner) ScanURLs(urls []string, onProgress func(progress ScanProgress)
 	allocCtx, allocCancel := chromedp.NewExecAllocator(s.ctx, opts...)
 	defer allocCancel() // Guarantees Chrome process tree termination upon function exit
 
-	// Pre-warm Chrome browser process
-	warmCtx, warmCancel := chromedp.NewContext(allocCtx)
-	_ = chromedp.Run(warmCtx)
-	warmCancel()
+	// Master Browser Context: keeps a SINGLE Chrome browser process running throughout the entire scan session.
+	// Worker goroutines open lightweight tabs (CDP Targets) inside this single Chrome instance instead of relaunching Chrome for every URL.
+	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
+	if err := chromedp.Run(browserCtx); err != nil {
+		return nil, fmt.Errorf("failed to start master Chrome instance: %w", err)
+	}
+	defer browserCancel() // Gracefully shuts down Chrome process tree when scan batch completes
 
 	var wg sync.WaitGroup
 	var processedCount int32
@@ -108,8 +111,8 @@ func (s *Scanner) ScanURLs(urls []string, onProgress func(progress ScanProgress)
 					return
 				}
 
-				// Continuously scan URL in a lightweight tab context
-				res := s.scanWithContext(allocCtx, item.index+1, item.url, false)
+				// Continuously scan URL in a lightweight tab target inside the single master Chrome browser
+				res := s.scanWithContext(browserCtx, item.index+1, item.url, false)
 				results[item.index] = res
 
 				currentCount := atomic.AddInt32(&processedCount, 1)
@@ -131,6 +134,7 @@ func (s *Scanner) ScanURLs(urls []string, onProgress func(progress ScanProgress)
 	wg.Wait()
 	return results, nil
 }
+
 
 // ScanSingleURL executes an on-demand single URL scan with immediate Chrome teardown.
 // Cache is disabled so re-checks after site edits see fresh HTML (not Chrome/HTTP cache).

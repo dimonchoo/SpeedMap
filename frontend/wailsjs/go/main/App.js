@@ -30,6 +30,10 @@ export function ExportImageComparisonHTML(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportImageComparisonHTML'](arg1, arg2, arg3);
 }
 
+export function ExportWordPressWebPApplyPHP(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ExportWordPressWebPApplyPHP'](arg1, arg2, arg3, arg4);
+}
+
 export function ListSiteProfiles() {
   return window['go']['main']['App']['ListSiteProfiles']();
 }
@@ -40,6 +44,10 @@ export function OpenURL(arg1) {
 
 export function ParseSitemap(arg1, arg2) {
   return window['go']['main']['App']['ParseSitemap'](arg1, arg2);
+}
+
+export function PlayNotificationSound(arg1) {
+  return window['go']['main']['App']['PlayNotificationSound'](arg1);
 }
 
 export function PreviewImageComparisonHTML(arg1, arg2, arg3) {

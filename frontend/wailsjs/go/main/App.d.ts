@@ -21,11 +21,15 @@ export function DownloadSingleWebPImage(arg1:string,arg2:config.ScanConfig):Prom
 
 export function ExportImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 
+export function ExportWordPressWebPApplyPHP(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>,arg4:string):Promise<string>;
+
 export function ListSiteProfiles():Promise<Array<profiles.SiteProfile>>;
 
 export function OpenURL(arg1:string):Promise<void>;
 
 export function ParseSitemap(arg1:string,arg2:config.ScanConfig):Promise<Array<string>>;
+
+export function PlayNotificationSound(arg1:string):Promise<void>;
 
 export function PreviewImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 

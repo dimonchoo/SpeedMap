@@ -93,6 +93,15 @@ func TestComputeSiteAnalytics(t *testing.T) {
 	if analytics.LargestImages[1].PageCount != 2 {
 		t.Errorf("Expected hero.jpg page count = 2, got %d", analytics.LargestImages[1].PageCount)
 	}
+	if len(analytics.LargestImages[1].Pages) != 2 {
+		t.Fatalf("Expected hero.jpg on 2 pages, got %v", analytics.LargestImages[1].Pages)
+	}
+	wantPages := map[string]bool{"https://example.com/page1": true, "https://example.com/page2": true}
+	for _, pg := range analytics.LargestImages[1].Pages {
+		if !wantPages[pg] {
+			t.Errorf("unexpected page %s", pg)
+		}
+	}
 
 	// Check Font Usage
 	if len(analytics.FontUsage) != 2 {

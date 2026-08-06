@@ -69,9 +69,16 @@ function speedMapApp() {
     imageSearchQuery: '',
     imageFilterTab: 'all', // 'all' | 'heavy' | 'non-webp' | 'missing-lazy' | 'png' | 'jpg'
     imageSortKey: 'size', // 'size' | 'savings' | 'duration' | 'pages'
+    imagePage: 1,
+    imagePerPage: 50,
+    filteredImages: [],
     isExportingReport: false,
+
+
     selectedImageComparison: null, // { url, conversionResult, isConverting, error }
-    isBatchDownloadingZIP: false,
+	isBatchDownloadingZIP: false,
+    isExportingWPApply: false,
+
 
     // Multi-Site Profiles State
     siteProfiles: [],
@@ -177,7 +184,7 @@ function speedMapApp() {
         id: '',
         name: '',
         sitemapUrl: '',
-        config: { ...this.config }
+        config: JSON.parse(JSON.stringify(this.config))
       };
       this.showProfileModal = true;
     },
@@ -188,10 +195,22 @@ function speedMapApp() {
         id: profile.id,
         name: profile.name,
         sitemapUrl: profile.sitemapUrl,
-        config: profile.config ? JSON.parse(JSON.stringify(profile.config)) : { ...this.config }
+        config: profile.config ? JSON.parse(JSON.stringify(profile.config)) : JSON.parse(JSON.stringify(this.config))
       };
       this.showProfileModal = true;
     },
+
+    addHeaderToEditingProfile() {
+      if (!this.editingProfile.config) return;
+      if (!this.editingProfile.config.headers) this.editingProfile.config.headers = [];
+      this.editingProfile.config.headers.push({ key: '', value: '' });
+    },
+
+    removeHeaderFromEditingProfile(idx) {
+      if (!this.editingProfile.config || !this.editingProfile.config.headers) return;
+      this.editingProfile.config.headers.splice(idx, 1);
+    },
+
 
     async saveProfileFromModal() {
       if (!this.editingProfile.name.trim() && !this.editingProfile.sitemapUrl.trim()) {
@@ -239,7 +258,7 @@ function speedMapApp() {
         this.addLog('info', `Видалено профіль сайту: ${name}`);
         await this.loadSiteProfiles();
       } catch (err) {
-        console.error("Failed to delete profile:", err);
+        console.error('Failed to delete profile:', err);
         this.showToast('error', 'Помилка видалення', err.message);
       }
     },
@@ -256,9 +275,11 @@ function speedMapApp() {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.SaveSiteProfile) {
           await window.go.main.App.SaveSiteProfile(updated);
         }
-        await this.loadSiteProfiles();
-        this.showToast('success', 'Налаштування збережено 🟢', `Профіль "${updated.name}" оновлено`);
-        this.addLog('success', `Оновлено індивідуальні налаштування для профілю: ${updated.name}`);
+        // Update local active profile reference without triggering IPC reload loop
+        const idx = this.siteProfiles.findIndex(p => p.id === updated.id);
+        if (idx >= 0) {
+          this.siteProfiles[idx] = updated;
+        }
       } catch (err) {
         console.error("Failed to save current config to active profile:", err);
       }
@@ -283,7 +304,9 @@ function speedMapApp() {
     saveConfig() {
       try {
         localStorage.setItem('speedmap_config_v1', JSON.stringify(this.config));
-        console.log("[JS LOG] Saved config to localStorage.");
+        if (this.activeProfile) {
+          this.saveCurrentConfigToActiveProfile();
+        }
       } catch (err) {
         console.error("Failed to save config:", err);
       }
@@ -305,10 +328,17 @@ function speedMapApp() {
       window.addEventListener('keydown', unlockOnce, true);
 
       if (this.$watch) {
-        this.$watch('config', () => {
-          this.saveConfig();
-        }, { deep: true });
+        this.$watch('imageSearchQuery', () => { this.imagePage = 1; this.updateFilteredImages(); });
+        this.$watch('imageFilterTab', () => { this.imagePage = 1; this.updateFilteredImages(); });
+        this.$watch('imageSortKey', () => { this.imagePage = 1; this.updateFilteredImages(); });
+        this.$watch('activeTab', (tab) => {
+          if (tab === 'images') {
+            this.imagePage = 1;
+            this.updateFilteredImages();
+          }
+        });
       }
+
 
       // Listen to Wails scan progress events
       if (window.runtime && window.runtime.EventsOn) {
@@ -381,8 +411,10 @@ function speedMapApp() {
           if (res) {
             this.siteAnalytics = res.analytics;
             this.runComparison = res.comparison;
+            this.updateFilteredImages();
             this.addLog('info', `Оновлено загальну статистику сайту: Health Score = ${this.siteAnalytics.healthScore}%`);
           }
+
         }
       } catch (err) {
         console.error("Failed to compute analytics:", err);
@@ -642,14 +674,18 @@ function speedMapApp() {
       return this.scanResults.filter(r => r.overallStatus === this.statusFilter);
     },
 
-    get filteredImages() {
-      if (!this.siteAnalytics || !this.siteAnalytics.allImages) return [];
-      let list = [...this.siteAnalytics.allImages];
+    updateFilteredImages() {
+      if (!this.siteAnalytics || !this.siteAnalytics.allImages) {
+        this.filteredImages = [];
+        return;
+      }
+
+      let list = this.siteAnalytics.allImages;
 
       // Text search filter
-      if (this.imageSearchQuery.trim()) {
+      if (this.imageSearchQuery && this.imageSearchQuery.trim()) {
         const q = this.imageSearchQuery.toLowerCase().trim();
-        list = list.filter(img => img.url.toLowerCase().includes(q) || (img.format && img.format.toLowerCase().includes(q)));
+        list = list.filter(img => (img.url && img.url.toLowerCase().includes(q)) || (img.format && img.format.toLowerCase().includes(q)));
       }
 
       // Filter tabs
@@ -665,17 +701,33 @@ function speedMapApp() {
         list = list.filter(img => img.format === 'jpg' || img.format === 'jpeg');
       }
 
-      // Sorting
+      // Sorting (shallow copy to prevent mutating raw analytics array)
+      list = [...list];
+      const sortKey = this.imageSortKey;
       list.sort((a, b) => {
-        if (this.imageSortKey === 'size') return b.maxTransferSize - a.maxTransferSize;
-        if (this.imageSortKey === 'savings') return b.estimatedSavingsBytes - a.estimatedSavingsBytes;
-        if (this.imageSortKey === 'duration') return b.avgDurationMs - a.avgDurationMs;
-        if (this.imageSortKey === 'pages') return b.pageCount - a.pageCount;
+        if (sortKey === 'size') return (b.maxTransferSize || 0) - (a.maxTransferSize || 0);
+        if (sortKey === 'savings') return (b.estimatedSavingsBytes || 0) - (a.estimatedSavingsBytes || 0);
+        if (sortKey === 'duration') return (b.avgDurationMs || 0) - (a.avgDurationMs || 0);
+        if (sortKey === 'pages') return (b.pageCount || 0) - (a.pageCount || 0);
         return 0;
       });
 
-      return list;
+      this.filteredImages = list;
     },
+
+    get paginatedImages() {
+      const list = this.filteredImages || [];
+      const start = (this.imagePage - 1) * (this.imagePerPage || 50);
+      return list.slice(start, start + (this.imagePerPage || 50));
+    },
+
+    get totalImagePages() {
+      const len = this.filteredImages ? this.filteredImages.length : 0;
+      return Math.ceil(len / (this.imagePerPage || 50)) || 1;
+    },
+
+
+
 
     async previewImageReport() {
       if (!this.scanResults || this.scanResults.length === 0) {
@@ -795,6 +847,42 @@ function speedMapApp() {
         this.showToast('error', 'Помилка пакетної компресії', err.message);
       } finally {
         this.isBatchDownloadingZIP = false;
+      }
+    },
+
+    async exportWordPressWebPApply() {
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Немає скану', 'Спочатку проскануйте сайт.');
+        return;
+      }
+      const wordpressPath = (window.prompt(
+        'Шлях до WordPress на сервері (для wp eval-file --path=…)',
+        '/var/www/site'
+      ) || '').trim();
+      if (!wordpressPath) {
+        this.showToast('info', 'Скасовано', 'Потрібен шлях до WordPress.');
+        return;
+      }
+      const domain = this.config.sitemapUrl || this.sitemapInput || 'site';
+      this.isExportingWPApply = true;
+      this.addLog('info', `🧩 Генерація WP-CLI WebP apply PHP (path=${wordpressPath})...`);
+      try {
+        if (window.go?.main?.App?.ExportWordPressWebPApplyPHP) {
+          const savedPath = await window.go.main.App.ExportWordPressWebPApplyPHP(
+            domain, this.config, this.scanResults, wordpressPath
+          );
+          this.addLog('success', `🟢 WP apply PHP збережено: ${savedPath}`);
+          this.addLog('info', `На оточенні: wp eval-file <file>.php --path=${wordpressPath}`);
+          this.showToast('success', 'WP apply PHP готовий', savedPath);
+        } else {
+          throw new Error('ExportWordPressWebPApplyPHP method not available');
+        }
+      } catch (err) {
+        console.error('Failed to export WP apply PHP:', err);
+        this.addLog('error', `Помилка WP apply PHP: ${err.message}`);
+        this.showToast('error', 'Помилка WP apply PHP', err.message);
+      } finally {
+        this.isExportingWPApply = false;
       }
     },
 

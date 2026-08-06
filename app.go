@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"SpeedMap/pkg/analytics"
 	"SpeedMap/pkg/config"
@@ -18,9 +19,9 @@ import (
 	"SpeedMap/pkg/optimizer"
 	"SpeedMap/pkg/profiles"
 	"SpeedMap/pkg/scanner"
-
 	"SpeedMap/pkg/sitemap"
 	"SpeedMap/pkg/w3c"
+	"SpeedMap/pkg/wpexport"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -369,6 +370,42 @@ func (a *App) DownloadOptimizedWebPZIP(urls []string, cfg config.ScanConfig) (st
 	}
 
 	fmt.Printf("[GO LOG] ZIP archive saved to %s (%d files, %d bytes)\n", savePath, len(convertedList), len(zipBytes))
+	return savePath, nil
+}
+
+// ExportWordPressWebPApplyPHP builds a single WP-CLI eval-file script (manifest + apply logic).
+// SpeedMap does not deploy — user places the file on env and runs:
+//   wp eval-file … --path=<wordpressPath>
+func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, results []scanner.PageResult, wordpressPath string) (string, error) {
+	fmt.Printf("[GO LOG] ExportWordPressWebPApplyPHP called for %s (%d pages, path=%s)\n", domain, len(results), wordpressPath)
+	site := analytics.ComputeSiteAnalytics(results, cfg.HeavyImageThresholdKB)
+	php, err := wpexport.BuildApplyPHP(domain, cfg, site.AllImages, wordpressPath)
+	if err != nil {
+		return "", err
+	}
+
+	stamp := time.Now().Format("20060102-150405")
+	defaultName := fmt.Sprintf("speedmap-webp-apply-%s.php", stamp)
+
+	var savePath string
+	if a.ctx != nil {
+		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Зберегти WP WebP apply PHP",
+			DefaultFilename: defaultName,
+			Filters: []runtime.FileFilter{
+				{DisplayName: "PHP (*.php)", Pattern: "*.php"},
+			},
+		})
+	}
+	if savePath == "" || err != nil {
+		savePath = defaultName
+	}
+
+	if err := os.WriteFile(savePath, []byte(php), 0644); err != nil {
+		return "", fmt.Errorf("failed to write PHP: %w", err)
+	}
+
+	fmt.Printf("[GO LOG] WP WebP apply PHP saved to %s (%d bytes)\n", savePath, len(php))
 	return savePath, nil
 }
 
