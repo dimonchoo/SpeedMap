@@ -69,6 +69,7 @@ function speedMapApp() {
     fontSearchQuery: '',
     fontFilterTab: 'all',
     fontSortKey: 'pages',
+    fontViewMode: 'by-page', // 'by-page' | 'by-font'
 
     // Image Optimization & Comparison Hub State (SEOAEO-235)
     imageSearchQuery: '',
@@ -817,6 +818,29 @@ function speedMapApp() {
       this.filteredImages = list;
     },
 
+    get pageFontsList() {
+      if (!this.scanResults || this.scanResults.length === 0) return [];
+      let list = this.scanResults.map(p => {
+        const fonts = p.diagnostics?.fonts || [];
+        return {
+          id: p.id,
+          url: p.url,
+          fontCount: fonts.length,
+          fonts: fonts
+        };
+      });
+
+      if (this.fontSearchQuery && this.fontSearchQuery.trim()) {
+        const q = this.fontSearchQuery.toLowerCase().trim();
+        list = list.filter(item => {
+          if (item.url && item.url.toLowerCase().includes(q)) return true;
+          return item.fonts.some(f => (f.family && f.family.toLowerCase().includes(q)) || (f.type && f.type.toLowerCase().includes(q)));
+        });
+      }
+
+      return list;
+    },
+
     get filteredFonts() {
       if (!this.siteAnalytics || !this.siteAnalytics.fontUsage) return [];
       let list = [...this.siteAnalytics.fontUsage];
@@ -843,25 +867,32 @@ function speedMapApp() {
     },
 
     async exportFontsCSV() {
-      if (!this.siteAnalytics || !this.siteAnalytics.fontUsage || this.siteAnalytics.fontUsage.length === 0) {
-        this.showToast('warning', 'Відсутні дані', 'Немає даних про шрифти для експорту.');
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
         return;
       }
-      let csv = "Font Family,Format,Occurrences,Page Coverage %,Avg Load Duration (ms),Formatted Size,Direct Asset URL,Page URLs List\n";
-      this.siteAnalytics.fontUsage.forEach(f => {
-        const family = `"${(f.family || '').replace(/"/g, '""')}"`;
-        const type = `"${(f.type || '').replace(/"/g, '""')}"`;
-        const fontUrl = `"${(f.url || '').replace(/"/g, '""')}"`;
-        const pageUrlsList = `"${(f.pageUrls || []).join('; ').replace(/"/g, '""')}"`;
-        csv += `${family},${type},${f.occurrences || 0},${f.percentage || 0},${f.avgDurationMs || 0},"${f.formattedSize || ''}",${fontUrl},${pageUrlsList}\n`;
+      let csv = "Page URL,Font Family,Format,Load Duration (ms),Direct Asset URL\n";
+      this.scanResults.forEach(p => {
+        const pageUrl = `"${(p.url || '').replace(/"/g, '""')}"`;
+        const fonts = p.diagnostics?.fonts || [];
+        if (fonts.length === 0) {
+          csv += `${pageUrl},"System Font / None","none",0,""\n`;
+        } else {
+          fonts.forEach(f => {
+            const family = `"${(f.family || '').replace(/"/g, '""')}"`;
+            const type = `"${(f.type || '').replace(/"/g, '""')}"`;
+            const fontUrl = `"${(f.url || '').replace(/"/g, '""')}"`;
+            csv += `${pageUrl},${family},${type},${f.duration || 0},${fontUrl}\n`;
+          });
+        }
       });
 
       try {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.ExportFontsCSV) {
           const filePath = await window.go.main.App.ExportFontsCSV(csv);
           if (filePath) {
-            this.showToast('success', 'CSV збережено 🟢', filePath);
-            this.addLog('success', `Експортовано CSV звіт шрифтів з URL сторінок: ${filePath}`);
+            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath);
+            this.addLog('success', `Експортовано посторінковий CSV звіт шрифтів: ${filePath}`);
             return;
           }
         }
@@ -873,7 +904,7 @@ function speedMapApp() {
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `speedmap_fonts_report_${Date.now()}.csv`);
+      link.setAttribute('download', `speedmap_page_fonts_report_${Date.now()}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -882,18 +913,24 @@ function speedMapApp() {
 
 
     async exportFontsJSON() {
-      if (!this.siteAnalytics || !this.siteAnalytics.fontUsage || this.siteAnalytics.fontUsage.length === 0) {
-        this.showToast('warning', 'Відсутні дані', 'Немає даних про шрифти для експорту.');
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
         return;
       }
-      const jsonStr = JSON.stringify(this.siteAnalytics.fontUsage, null, 2);
+      const pageFontsData = this.scanResults.map(p => ({
+        pageUrl: p.url,
+        fontCount: (p.diagnostics?.fonts || []).length,
+        fonts: p.diagnostics?.fonts || []
+      }));
+
+      const jsonStr = JSON.stringify(pageFontsData, null, 2);
 
       try {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.ExportFontsJSON) {
           const filePath = await window.go.main.App.ExportFontsJSON(jsonStr);
           if (filePath) {
-            this.showToast('success', 'JSON збережено 🟢', filePath);
-            this.addLog('success', `Експортовано JSON звіт шрифтів: ${filePath}`);
+            this.showToast('success', 'Посторінковий JSON збережено 🟢', filePath);
+            this.addLog('success', `Експортовано посторінковий JSON звіт шрифтів: ${filePath}`);
             return;
           }
         }
@@ -901,11 +938,10 @@ function speedMapApp() {
         console.warn("Native JSON save dialog fallback:", e);
       }
 
-      // Browser fallback (saves to ~/Downloads)
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
       const link = document.createElement('a');
       link.setAttribute('href', dataStr);
-      link.setAttribute('download', `speedmap_fonts_report_${Date.now()}.json`);
+      link.setAttribute('download', `speedmap_page_fonts_report_${Date.now()}.json`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

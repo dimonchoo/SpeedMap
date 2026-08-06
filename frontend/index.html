@@ -1091,7 +1091,21 @@
                     <span class="text-amber-400 text-xl">🔤</span>
                     <span>Інспектор Шрифтів Сайту (Font Hub)</span>
                   </h2>
-                  <p class="text-xs text-slate-400">Повний аналіз гарнітур, типографіки, обсягу та часу завантаження веб-шрифтів</p>
+                  <p class="text-xs text-slate-400">Повний посторінковий аналіз гарнітур, типографіки та часу завантаження</p>
+                </div>
+
+                <!-- View Mode Toggle: Page-by-Page vs By-Font-Family -->
+                <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                  <button @click="fontViewMode = 'by-page'"
+                    :class="fontViewMode === 'by-page' ? 'bg-slate-800 text-amber-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                    class="px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5">
+                    <span>📄 За сторінками (Посторінковий розріз)</span>
+                  </button>
+                  <button @click="fontViewMode = 'by-font'"
+                    :class="fontViewMode === 'by-font' ? 'bg-slate-800 text-amber-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                    class="px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5">
+                    <span>🔤 За гарнітурами (Агреговано)</span>
+                  </button>
                 </div>
 
                 <!-- Export Action Buttons -->
