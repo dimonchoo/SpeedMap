@@ -242,10 +242,11 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 
 			// Aggregate fonts across pages
 			for _, font := range p.Diagnostics.Fonts {
-				if font.Family == "" {
+				fam := strings.TrimSpace(font.Family)
+				if fam == "" {
 					continue
 				}
-				key := font.Family
+				key := strings.ToLower(fam)
 				if existing, found := fontMap[key]; found {
 					existing.Occurrences++
 					existing.AvgDurationMs += font.Duration
@@ -258,7 +259,7 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 					}
 				} else {
 					fontMap[key] = &AggregatedFont{
-						Family:        font.Family,
+						Family:        fam,
 						URL:           font.URL,
 						Type:          font.Type,
 						Occurrences:   1,
@@ -266,8 +267,8 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 						TransferSize:  font.TransferSize,
 					}
 				}
-
 			}
+
 		}
 	}
 
