@@ -46,6 +46,10 @@ export function ExportWordPressWebPApplyPHP(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ExportWordPressWebPApplyPHP'](arg1, arg2, arg3, arg4);
 }
 
+export function GetGDriveCredentials() {
+  return window['go']['main']['App']['GetGDriveCredentials']();
+}
+
 export function GetGDriveStatus() {
   return window['go']['main']['App']['GetGDriveStatus']();
 }
@@ -72,6 +76,10 @@ export function PreviewImageComparisonHTML(arg1, arg2, arg3) {
 
 export function RescanSingleURL(arg1, arg2, arg3) {
   return window['go']['main']['App']['RescanSingleURL'](arg1, arg2, arg3);
+}
+
+export function SaveGDriveCredentials(arg1, arg2) {
+  return window['go']['main']['App']['SaveGDriveCredentials'](arg1, arg2);
 }
 
 export function SaveSiteProfile(arg1) {

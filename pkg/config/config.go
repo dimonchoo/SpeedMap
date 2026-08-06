@@ -19,7 +19,10 @@ type ScanConfig struct {
 	IsMobile              bool           `json:"isMobile"`
 	AutoScroll            bool           `json:"autoScroll"` // Disabled by default
 	TimeoutSec            int            `json:"timeoutSec"`
+	GDriveClientID        string         `json:"gdriveClientID"`
+	GDriveClientSecret    string         `json:"gdriveClientSecret"`
 }
+
 
 func (c *ScanConfig) NormalizedConcurrency() int {
 	if c.Concurrency < 1 {

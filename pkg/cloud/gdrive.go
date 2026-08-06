@@ -99,7 +99,38 @@ func (m *GDriveManager) SaveToken(t *TokenData) error {
 	return os.WriteFile(m.tokenFile, data, 0600)
 }
 
+func (m *GDriveManager) SaveCredentials(clientID, clientSecret string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.tokenData == nil {
+		m.tokenData = &TokenData{}
+	}
+	m.tokenData.ClientID = strings.TrimSpace(clientID)
+	m.tokenData.ClientSecret = strings.TrimSpace(clientSecret)
+
+	data, err := json.MarshalIndent(m.tokenData, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(m.tokenFile, data, 0600)
+}
+
+func (m *GDriveManager) GetCredentials() map[string]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	res := map[string]string{
+		"clientID":     "",
+		"clientSecret": "",
+	}
+	if m.tokenData != nil {
+		res["clientID"] = m.tokenData.ClientID
+		res["clientSecret"] = m.tokenData.ClientSecret
+	}
+	return res
+}
+
 func (m *GDriveManager) IsConnected() bool {
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.tokenData != nil && (m.tokenData.RefreshToken != "" || m.tokenData.AccessToken != "")

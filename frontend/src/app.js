@@ -131,6 +131,13 @@ function speedMapApp() {
             this.gdriveStatus = res;
           }
         }
+        if (window.go?.main?.App?.GetGDriveCredentials) {
+          const creds = await window.go.main.App.GetGDriveCredentials();
+          if (creds) {
+            if (creds.clientID) this.gdriveClientID = creds.clientID;
+            if (creds.clientSecret) this.gdriveClientSecret = creds.clientSecret;
+          }
+        }
       } catch (e) {
         console.error("GDrive status check error:", e);
       }
@@ -144,6 +151,12 @@ function speedMapApp() {
       this.isConnectingGDrive = true;
       this.showToast('info', 'Google Drive', 'Відкриваємо браузер для авторизації Google...');
       try {
+        if (window.go?.main?.App?.SaveGDriveCredentials) {
+          await window.go.main.App.SaveGDriveCredentials(
+            this.gdriveClientID.trim(),
+            this.gdriveClientSecret.trim()
+          );
+        }
         if (window.go?.main?.App?.StartGDriveAuth) {
           const email = await window.go.main.App.StartGDriveAuth(
             this.gdriveClientID.trim(),
@@ -162,6 +175,7 @@ function speedMapApp() {
         this.isConnectingGDrive = false;
       }
     },
+
 
     async disconnectGDrive() {
       try {
@@ -416,6 +430,9 @@ function speedMapApp() {
     saveConfig() {
       try {
         localStorage.setItem('speedmap_config_v1', JSON.stringify(this.config));
+        if (this.gdriveClientID && this.gdriveClientSecret && window.go?.main?.App?.SaveGDriveCredentials) {
+          window.go.main.App.SaveGDriveCredentials(this.gdriveClientID.trim(), this.gdriveClientSecret.trim());
+        }
         if (this.activeProfile) {
           this.saveCurrentConfigToActiveProfile();
         }
@@ -423,6 +440,7 @@ function speedMapApp() {
         console.error("Failed to save config:", err);
       }
     },
+
 
     initApp() {
       console.log("[JS LOG] speedMapApp initialized.");

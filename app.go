@@ -590,6 +590,23 @@ func (a *App) UploadFileToGDrive(filePath string, folderName string) (*cloud.Dri
 	return a.gdriveManager.UploadFile(filePath, folderName)
 }
 
+// SaveGDriveCredentials saves Client ID & Secret
+func (a *App) SaveGDriveCredentials(clientID, clientSecret string) error {
+	if a.gdriveManager == nil {
+		a.gdriveManager = cloud.NewGDriveManager()
+	}
+	return a.gdriveManager.SaveCredentials(clientID, clientSecret)
+}
+
+// GetGDriveCredentials gets saved Client ID & Secret
+func (a *App) GetGDriveCredentials() map[string]string {
+	if a.gdriveManager == nil {
+		a.gdriveManager = cloud.NewGDriveManager()
+	}
+	return a.gdriveManager.GetCredentials()
+}
+
+
 
 
 

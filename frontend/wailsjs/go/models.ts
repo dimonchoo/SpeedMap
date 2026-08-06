@@ -212,6 +212,8 @@ export namespace config {
 	    isMobile: boolean;
 	    autoScroll: boolean;
 	    timeoutSec: number;
+	    gdriveClientID: string;
+	    gdriveClientSecret: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanConfig(source);
@@ -232,6 +234,8 @@ export namespace config {
 	        this.isMobile = source["isMobile"];
 	        this.autoScroll = source["autoScroll"];
 	        this.timeoutSec = source["timeoutSec"];
+	        this.gdriveClientID = source["gdriveClientID"];
+	        this.gdriveClientSecret = source["gdriveClientSecret"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

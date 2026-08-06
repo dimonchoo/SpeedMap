@@ -30,6 +30,8 @@ export function ExportImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg
 
 export function ExportWordPressWebPApplyPHP(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>,arg4:string):Promise<string>;
 
+export function GetGDriveCredentials():Promise<Record<string, string>>;
+
 export function GetGDriveStatus():Promise<Record<string, any>>;
 
 export function ListSiteProfiles():Promise<Array<profiles.SiteProfile>>;
@@ -43,6 +45,8 @@ export function PlayNotificationSound(arg1:string):Promise<void>;
 export function PreviewImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 
 export function RescanSingleURL(arg1:config.ScanConfig,arg2:string,arg3:number):Promise<scanner.PageResult>;
+
+export function SaveGDriveCredentials(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSiteProfile(arg1:profiles.SiteProfile):Promise<profiles.SiteProfile>;
 
