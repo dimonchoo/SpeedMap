@@ -1395,14 +1395,16 @@
                     </template>
 
                     <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800/80 space-y-1.5 font-sans text-[11px] text-slate-400">
-                      <div class="font-semibold text-slate-200 uppercase tracking-wider">Як отримати ключі (2 хвилини):</div>
-                      <ol class="list-decimal list-inside space-y-1">
-                        <li>Зайдіть у <a @click.prevent="openUrlInBrowser('https://console.cloud.google.com/apis/credentials')" href="#" class="text-cyan-400 hover:underline">Google Cloud Console Credentials ↗</a></li>
-                        <li>Натисніть <strong>Create Credentials -> OAuth client ID</strong> (тип Desktop app)</li>
-                        <li>У Redirect URI вкажіть: <code class="text-amber-300 font-mono">http://127.0.0.1:8585/callback</code></li>
-                        <li>Скопіюйте Client ID та Client Secret у поля вище й натисніть «Авторизувати»!</li>
+                      <div class="font-semibold text-slate-200 uppercase tracking-wider">Де знайти Redirect URI у Google Cloud Console:</div>
+                      <ol class="list-decimal list-inside space-y-1.5">
+                        <li>Відкрийте <a @click.prevent="openUrlInBrowser('https://console.cloud.google.com/apis/credentials')" href="#" class="text-cyan-400 hover:underline font-bold">Google Cloud Credentials ↗</a></li>
+                        <li>Натисніть <strong>Create Credentials ➔ OAuth client ID</strong> (обрати <em>Web application</em> або <em>Desktop app</em>)</li>
+                        <li>У формі знайдіть секцію <strong>"Authorized redirect URIs"</strong> (Авторизовані URI перенаправлення)</li>
+                        <li>Натисніть <strong>"+ ADD URI"</strong> та вставте: <code class="text-amber-300 font-mono bg-slate-950 px-1.5 py-0.5 rounded select-all">http://127.0.0.1:8585/callback</code></li>
+                        <li>Збережіть, скопіюйте <strong>Client ID</strong> та <strong>Client Secret</strong> у поля вище й натисніть «Авторизувати»!</li>
                       </ol>
                     </div>
+
                   </div>
 
                   <!-- Connect / Disconnect Action Buttons -->
