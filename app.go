@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"SpeedMap/pkg/analytics"
+	"SpeedMap/pkg/cloud"
 	"SpeedMap/pkg/config"
 	"SpeedMap/pkg/history"
 	"SpeedMap/pkg/optimizer"
@@ -40,12 +41,17 @@ type App struct {
 	reportServerMu    sync.Mutex
 	reportServerPort  int
 	currentReportHTML string
+
+	gdriveManager *cloud.GDriveManager
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
-	return &App{}
+	return &App{
+		gdriveManager: cloud.NewGDriveManager(),
+	}
 }
+
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
@@ -547,6 +553,42 @@ func (a *App) SelectDirectory(title string) (string, error) {
 	}
 	return dir, nil
 }
+
+// StartGDriveAuth starts Google OAuth2 browser flow
+func (a *App) StartGDriveAuth() (string, error) {
+	if a.gdriveManager == nil {
+		a.gdriveManager = cloud.NewGDriveManager()
+	}
+	return a.gdriveManager.StartAuthFlow("", "")
+}
+
+// GetGDriveStatus returns connection status and user email
+func (a *App) GetGDriveStatus() map[string]interface{} {
+	if a.gdriveManager == nil {
+		a.gdriveManager = cloud.NewGDriveManager()
+	}
+	return map[string]interface{}{
+		"connected": a.gdriveManager.IsConnected(),
+		"email":     a.gdriveManager.GetUserEmail(),
+	}
+}
+
+// DisconnectGDrive removes saved OAuth token
+func (a *App) DisconnectGDrive() error {
+	if a.gdriveManager == nil {
+		return nil
+	}
+	return a.gdriveManager.Disconnect()
+}
+
+// UploadFileToGDrive uploads a given local file to Google Drive and returns public link
+func (a *App) UploadFileToGDrive(filePath string, folderName string) (*cloud.DriveUploadResult, error) {
+	if a.gdriveManager == nil {
+		a.gdriveManager = cloud.NewGDriveManager()
+	}
+	return a.gdriveManager.UploadFile(filePath, folderName)
+}
+
 
 
 

@@ -159,6 +159,29 @@ export namespace analytics {
 
 }
 
+export namespace cloud {
+	
+	export class DriveUploadResult {
+	    fileId: string;
+	    fileName: string;
+	    webViewLink: string;
+	    webContentLink: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DriveUploadResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fileId = source["fileId"];
+	        this.fileName = source["fileName"];
+	        this.webViewLink = source["webViewLink"];
+	        this.webContentLink = source["webContentLink"];
+	    }
+	}
+
+}
+
 export namespace config {
 	
 	export class CustomHeader {

@@ -5,6 +5,7 @@ import {scanner} from '../models';
 import {main} from '../models';
 import {optimizer} from '../models';
 import {profiles} from '../models';
+import {cloud} from '../models';
 import {w3c} from '../models';
 
 export function CancelScan():Promise<void>;
@@ -14,6 +15,8 @@ export function ComputeSiteAnalytics(arg1:string,arg2:config.ScanConfig,arg3:Arr
 export function ConvertImageToWebP(arg1:string,arg2:config.ScanConfig):Promise<optimizer.ConversionResult>;
 
 export function DeleteSiteProfile(arg1:string):Promise<void>;
+
+export function DisconnectGDrive():Promise<void>;
 
 export function DownloadOptimizedWebPZIP(arg1:Array<string>,arg2:config.ScanConfig):Promise<string>;
 
@@ -26,6 +29,8 @@ export function ExportFontsJSON(arg1:string):Promise<string>;
 export function ExportImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 
 export function ExportWordPressWebPApplyPHP(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>,arg4:string):Promise<string>;
+
+export function GetGDriveStatus():Promise<Record<string, any>>;
 
 export function ListSiteProfiles():Promise<Array<profiles.SiteProfile>>;
 
@@ -43,6 +48,10 @@ export function SaveSiteProfile(arg1:profiles.SiteProfile):Promise<profiles.Site
 
 export function SelectDirectory(arg1:string):Promise<string>;
 
+export function StartGDriveAuth():Promise<string>;
+
 export function StartScan(arg1:config.ScanConfig,arg2:Array<string>):Promise<void>;
+
+export function UploadFileToGDrive(arg1:string,arg2:string):Promise<cloud.DriveUploadResult>;
 
 export function ValidateW3C(arg1:string):Promise<w3c.W3CReport>;

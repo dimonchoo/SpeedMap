@@ -87,6 +87,11 @@ function speedMapApp() {
     wpPathInput: '/var/www/site',
 
 
+    // Google Drive Cloud Integration State
+    gdriveStatus: { connected: false, email: '' },
+    isConnectingGDrive: false,
+    isUploadingGDrive: false,
+
     // Multi-Site Profiles State
     siteProfiles: [],
     activeProfileId: '',
@@ -113,6 +118,93 @@ function speedMapApp() {
         (p.name && p.name.toLowerCase().includes(q)) || 
         (p.sitemapUrl && p.sitemapUrl.toLowerCase().includes(q))
       );
+    },
+
+    async checkGDriveStatus() {
+      try {
+        if (window.go?.main?.App?.GetGDriveStatus) {
+          const res = await window.go.main.App.GetGDriveStatus();
+          if (res) {
+            this.gdriveStatus = res;
+          }
+        }
+      } catch (e) {
+        console.error("GDrive status check error:", e);
+      }
+    },
+
+    async connectGDrive() {
+      this.isConnectingGDrive = true;
+      this.showToast('info', 'Google Drive', 'Відкриваємо браузер для авторизації Google...');
+      try {
+        if (window.go?.main?.App?.StartGDriveAuth) {
+          const email = await window.go.main.App.StartGDriveAuth();
+          if (email) {
+            this.gdriveStatus = { connected: true, email: email };
+            this.showToast('success', 'Успішно підключено 🟢', email);
+            this.addLog('success', `Google Drive авторизовано: ${email}`);
+          }
+        }
+      } catch (err) {
+        console.error("GDrive Auth Error:", err);
+        this.showToast('error', 'Помилка авторизації', err.message || err);
+      } finally {
+        this.isConnectingGDrive = false;
+      }
+    },
+
+    async disconnectGDrive() {
+      try {
+        if (window.go?.main?.App?.DisconnectGDrive) {
+          await window.go.main.App.DisconnectGDrive();
+          this.gdriveStatus = { connected: false, email: '' };
+          this.showToast('info', 'Відключено', 'Google Drive відключено.');
+        }
+      } catch (e) {
+        console.error("GDrive disconnect error:", e);
+      }
+    },
+
+    async uploadFontsToGDrive() {
+      if (!this.siteAnalytics || !this.siteAnalytics.fontUsage || this.siteAnalytics.fontUsage.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку виконайте сканування сторінок.');
+        return;
+      }
+      if (!this.gdriveStatus.connected) {
+        this.showToast('warning', 'Не підключено', 'Спочатку підключіть Google Drive у Налаштуваннях.');
+        this.showSettings = true;
+        return;
+      }
+
+      this.isUploadingGDrive = true;
+      this.showToast('info', 'Вивантаження ☁️', 'Надсилаємо звіт у Google Drive...');
+      try {
+        let csv = "Font Family,Format,Occurrences,Page Coverage %,Avg Load Duration (ms),Formatted Size,Direct Asset URL,Page URLs List\n";
+        this.siteAnalytics.fontUsage.forEach(f => {
+          const family = `"${(f.family || '').replace(/"/g, '""')}"`;
+          const type = `"${(f.type || '').replace(/"/g, '""')}"`;
+          const fontUrl = `"${(f.url || '').replace(/"/g, '""')}"`;
+          const pageUrlsList = `"${(f.pageUrls || []).join('; ').replace(/"/g, '""')}"`;
+          csv += `${family},${type},${f.occurrences || 0},${f.percentage || 0},${f.avgDurationMs || 0},"${f.formattedSize || ''}",${fontUrl},${pageUrlsList}\n`;
+        });
+
+        // Save temporary local CSV file first
+        const tempPath = await window.go.main.App.ExportFontsCSV(csv);
+        if (tempPath && window.go.main.App.UploadFileToGDrive) {
+          const folderName = (this.activeProfile?.name || 'Site') + ' Reports';
+          const res = await window.go.main.App.UploadFileToGDrive(tempPath, folderName);
+          if (res && res.webViewLink) {
+            navigator.clipboard.writeText(res.webViewLink);
+            this.showToast('success', 'Вивантажено ☁️ (Link copied 📋)', res.webViewLink);
+            this.addLog('success', `Файл з звітом шрифтів вивантажено в Google Drive: ${res.webViewLink}`);
+          }
+        }
+      } catch (err) {
+        console.error("GDrive upload error:", err);
+        this.showToast('error', 'Помилка вивантаження', err.message || err);
+      } finally {
+        this.isUploadingGDrive = false;
+      }
     },
 
     async loadSiteProfiles() {
@@ -239,6 +331,7 @@ function speedMapApp() {
 
         this.showProfileModal = false;
         await this.loadSiteProfiles();
+      this.checkGDriveStatus();
         if (saved) {
           const fresh = this.siteProfiles.find(p => p.id === saved.id) || saved;
           this.applyProfile(fresh);
@@ -264,6 +357,7 @@ function speedMapApp() {
         this.showToast('info', 'Профіль видалено', name);
         this.addLog('info', `Видалено профіль сайту: ${name}`);
         await this.loadSiteProfiles();
+      this.checkGDriveStatus();
       } catch (err) {
         console.error('Failed to delete profile:', err);
         this.showToast('error', 'Помилка видалення', err.message);
@@ -323,6 +417,7 @@ function speedMapApp() {
       console.log("[JS LOG] speedMapApp initialized.");
       this.loadSavedConfig();
       this.loadSiteProfiles();
+      this.checkGDriveStatus();
       this.addLog('info', 'SpeedMap додаток готовий до роботи.');
 
       // Unlock WebAudio on first real click (needed for later scan-complete sounds)

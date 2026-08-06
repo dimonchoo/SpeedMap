@@ -18,6 +18,10 @@ export function DeleteSiteProfile(arg1) {
   return window['go']['main']['App']['DeleteSiteProfile'](arg1);
 }
 
+export function DisconnectGDrive() {
+  return window['go']['main']['App']['DisconnectGDrive']();
+}
+
 export function DownloadOptimizedWebPZIP(arg1, arg2) {
   return window['go']['main']['App']['DownloadOptimizedWebPZIP'](arg1, arg2);
 }
@@ -40,6 +44,10 @@ export function ExportImageComparisonHTML(arg1, arg2, arg3) {
 
 export function ExportWordPressWebPApplyPHP(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ExportWordPressWebPApplyPHP'](arg1, arg2, arg3, arg4);
+}
+
+export function GetGDriveStatus() {
+  return window['go']['main']['App']['GetGDriveStatus']();
 }
 
 export function ListSiteProfiles() {
@@ -74,8 +82,16 @@ export function SelectDirectory(arg1) {
   return window['go']['main']['App']['SelectDirectory'](arg1);
 }
 
+export function StartGDriveAuth() {
+  return window['go']['main']['App']['StartGDriveAuth']();
+}
+
 export function StartScan(arg1, arg2) {
   return window['go']['main']['App']['StartScan'](arg1, arg2);
+}
+
+export function UploadFileToGDrive(arg1, arg2) {
+  return window['go']['main']['App']['UploadFileToGDrive'](arg1, arg2);
 }
 
 export function ValidateW3C(arg1) {
