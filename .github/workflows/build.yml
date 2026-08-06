@@ -1,0 +1,106 @@
+name: Wails Multi-Platform Build CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build SpeedMap (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin/universal
+            artifact_name: SpeedMap-macOS-Universal
+
+          - os: windows-latest
+            platform: windows/amd64
+            artifact_name: SpeedMap-Windows-x64
+
+          - os: ubuntu-latest
+            platform: linux/amd64
+            artifact_name: SpeedMap-Linux-x64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux Cgo Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libglib2.0-dev pkg-config
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build Wails Application
+        run: |
+          wails build -platform ${{ matrix.platform }}
+
+      - name: Package macOS Build (.zip)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cd build/bin
+          zip -r ../../SpeedMap-macOS-Universal.zip SpeedMap.app
+
+      - name: Package Windows Build
+        if: matrix.os == 'windows-latest'
+        run: |
+          Copy-Item -Path build/bin/SpeedMap.exe -Destination SpeedMap-Windows-x64.exe
+
+      - name: Package Linux Build
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cp build/bin/SpeedMap SpeedMap-Linux-x64
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            SpeedMap-macOS-Universal.zip
+            SpeedMap-Windows-x64.exe
+            SpeedMap-Linux-x64
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release & Attach Executables
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            SpeedMap-macOS-Universal/SpeedMap-macOS-Universal.zip
+            SpeedMap-Windows-x64/SpeedMap-Windows-x64.exe
+            SpeedMap-Linux-x64/SpeedMap-Linux-x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
