@@ -27,7 +27,7 @@ jobs:
             platform: windows/amd64
             artifact_name: SpeedMap-Windows-x64
 
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             platform: linux/amd64
             artifact_name: SpeedMap-Linux-x64
 
@@ -47,10 +47,10 @@ jobs:
           node-version: '20'
 
       - name: Install Linux Cgo Dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libglib2.0-dev pkg-config
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libglib2.0-dev pkg-config || sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libglib2.0-dev pkg-config
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -71,7 +71,7 @@ jobs:
           Copy-Item -Path build/bin/SpeedMap.exe -Destination SpeedMap-Windows-x64.exe
 
       - name: Package Linux Build
-        if: matrix.os == 'ubuntu-latest'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           cp build/bin/SpeedMap SpeedMap-Linux-x64
 
