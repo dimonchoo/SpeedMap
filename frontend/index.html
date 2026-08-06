@@ -1154,8 +1154,63 @@
               </div>
             </template>
 
-            <!-- Fonts Grid Cards (Top: Icon + Name + Preview; Bottom: Characteristics) -->
-            <template x-if="filteredFonts.length > 0">
+            <!-- Page-by-Page Fonts View Mode -->
+            <template x-if="fontViewMode === 'by-page'">
+              <div class="space-y-4">
+                <template x-if="pageFontsList.length === 0">
+                  <div class="p-12 text-center bg-slate-950/40 rounded-2xl border border-slate-800 space-y-3">
+                    <span class="text-4xl block">📄</span>
+                    <h3 class="text-sm font-bold text-slate-300">Немає сканованих сторінок</h3>
+                    <p class="text-xs text-slate-500">Запустіть сканування сторінок для формування посторінкового звіту про шрифти.</p>
+                  </div>
+                </template>
+
+                <template x-for="item in pageFontsList" :key="item.id">
+                  <div class="bg-slate-950/90 rounded-2xl border border-slate-800/90 p-4 space-y-3 shadow-xl hover:border-slate-700 transition">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                      <div class="flex items-center space-x-2 truncate">
+                        <span class="text-amber-400 font-bold text-base">📄</span>
+                        <a :href="item.url" target="_blank" class="font-mono font-bold text-xs text-slate-100 hover:text-emerald-400 underline truncate" :title="item.url" x-text="item.url"></a>
+                      </div>
+                      <span class="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0" x-text="item.fontCount + ' шрифтів'"></span>
+                    </div>
+
+                    <!-- Fonts List for this Page -->
+                    <template x-if="item.fonts.length > 0">
+                      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <template x-for="f in item.fonts" :key="f.family + f.url">
+                          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2 text-xs font-sans">
+                            <div class="flex items-center justify-between">
+                              <div class="flex items-center space-x-2 truncate">
+                                <span class="text-amber-400">🔤</span>
+                                <span class="font-bold text-slate-100 truncate" :style="'font-family: ' + f.family + ', sans-serif'" x-text="f.family"></span>
+                              </div>
+                              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0" x-text="f.type || 'font'"></span>
+                            </div>
+
+                            <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-slate-800">
+                              <span>⏱️ <strong class="text-slate-200" x-text="(f.duration || 0) + ' ms'"></strong></span>
+                              <template x-if="f.url">
+                                <button @click="copyFontUrl(f.url)" class="text-amber-400 hover:text-amber-300 underline text-[10px] font-sans">
+                                  📋 Copy URL
+                                </button>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                    <template x-if="item.fonts.length === 0">
+                      <p class="text-xs text-slate-500 italic">Зовнішніх файлів шрифтів на цій сторінці не виявлено (використовуються системні шрифти).</p>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <!-- Fonts Grid Cards (Aggregated by Font Family) -->
+            <template x-if="fontViewMode === 'by-font' && filteredFonts.length > 0">
+
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 <template x-for="font in filteredFonts" :key="font.family">
                   <div class="bg-slate-950/90 rounded-2xl border border-slate-800/90 hover:border-slate-700 transition duration-200 shadow-xl overflow-hidden flex flex-col justify-between group">
