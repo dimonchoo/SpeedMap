@@ -745,7 +745,7 @@ function speedMapApp() {
       return list;
     },
 
-    exportFontsCSV() {
+    async exportFontsCSV() {
       if (!this.siteAnalytics || !this.siteAnalytics.fontUsage || this.siteAnalytics.fontUsage.length === 0) {
         this.showToast('warning', 'Відсутні дані', 'Немає даних про шрифти для експорту.');
         return;
@@ -758,6 +758,20 @@ function speedMapApp() {
         csv += `${family},${type},${f.occurrences || 0},${f.percentage || 0},${f.avgDurationMs || 0},"${f.formattedSize || ''}",${url}\n`;
       });
 
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.ExportFontsCSV) {
+          const filePath = await window.go.main.App.ExportFontsCSV(csv);
+          if (filePath) {
+            this.showToast('success', 'CSV збережено 🟢', filePath);
+            this.addLog('success', `Експортовано CSV звіт шрифтів: ${filePath}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Native CSV save dialog fallback:", e);
+      }
+
+      // Browser fallback (saves to ~/Downloads)
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -765,23 +779,40 @@ function speedMapApp() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      this.showToast('success', 'CSV експортовано 🟢', 'Звіт по шрифтах збережено');
+      this.showToast('success', 'CSV завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
 
-    exportFontsJSON() {
+    async exportFontsJSON() {
       if (!this.siteAnalytics || !this.siteAnalytics.fontUsage || this.siteAnalytics.fontUsage.length === 0) {
         this.showToast('warning', 'Відсутні дані', 'Немає даних про шрифти для експорту.');
         return;
       }
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.siteAnalytics.fontUsage, null, 2));
+      const jsonStr = JSON.stringify(this.siteAnalytics.fontUsage, null, 2);
+
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.ExportFontsJSON) {
+          const filePath = await window.go.main.App.ExportFontsJSON(jsonStr);
+          if (filePath) {
+            this.showToast('success', 'JSON збережено 🟢', filePath);
+            this.addLog('success', `Експортовано JSON звіт шрифтів: ${filePath}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Native JSON save dialog fallback:", e);
+      }
+
+      // Browser fallback (saves to ~/Downloads)
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
       const link = document.createElement('a');
       link.setAttribute('href', dataStr);
       link.setAttribute('download', `speedmap_fonts_report_${Date.now()}.json`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      this.showToast('success', 'JSON експортовано 🟢', 'Звіт по шрифтах збережено');
+      this.showToast('success', 'JSON завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
+
 
     copyFontUrl(url) {
       if (!url) return;

@@ -19,6 +19,10 @@ export function DownloadOptimizedWebPZIP(arg1:Array<string>,arg2:config.ScanConf
 
 export function DownloadSingleWebPImage(arg1:string,arg2:config.ScanConfig):Promise<string>;
 
+export function ExportFontsCSV(arg1:string):Promise<string>;
+
+export function ExportFontsJSON(arg1:string):Promise<string>;
+
 export function ExportImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 
 export function ExportWordPressWebPApplyPHP(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>,arg4:string):Promise<string>;

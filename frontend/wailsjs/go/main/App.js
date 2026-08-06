@@ -26,6 +26,14 @@ export function DownloadSingleWebPImage(arg1, arg2) {
   return window['go']['main']['App']['DownloadSingleWebPImage'](arg1, arg2);
 }
 
+export function ExportFontsCSV(arg1) {
+  return window['go']['main']['App']['ExportFontsCSV'](arg1);
+}
+
+export function ExportFontsJSON(arg1) {
+  return window['go']['main']['App']['ExportFontsJSON'](arg1);
+}
+
 export function ExportImageComparisonHTML(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportImageComparisonHTML'](arg1, arg2, arg3);
 }

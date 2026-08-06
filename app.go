@@ -495,4 +495,43 @@ func (a *App) PlayNotificationSound(kind string) error {
 	return nil
 }
 
+// ExportFontsCSV opens a native macOS Save Dialog and saves the CSV report
+func (a *App) ExportFontsCSV(csvContent string) (string, error) {
+	filename, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Зберегти звіт по шрифтах (CSV)",
+		DefaultFilename: fmt.Sprintf("speedmap_fonts_report_%d.csv", time.Now().Unix()),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "CSV Files (*.csv)", Pattern: "*.csv"},
+		},
+	})
+	if err != nil || filename == "" {
+		return "", err
+	}
+	err = os.WriteFile(filename, []byte(csvContent), 0644)
+	if err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportFontsJSON opens a native macOS Save Dialog and saves the JSON report
+func (a *App) ExportFontsJSON(jsonContent string) (string, error) {
+	filename, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Зберегти звіт по шрифтах (JSON)",
+		DefaultFilename: fmt.Sprintf("speedmap_fonts_report_%d.json", time.Now().Unix()),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
+		},
+	})
+	if err != nil || filename == "" {
+		return "", err
+	}
+	err = os.WriteFile(filename, []byte(jsonContent), 0644)
+	if err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+
 
