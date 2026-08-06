@@ -41,6 +41,8 @@ export function RescanSingleURL(arg1:config.ScanConfig,arg2:string,arg3:number):
 
 export function SaveSiteProfile(arg1:profiles.SiteProfile):Promise<profiles.SiteProfile>;
 
+export function SelectDirectory(arg1:string):Promise<string>;
+
 export function StartScan(arg1:config.ScanConfig,arg2:Array<string>):Promise<void>;
 
 export function ValidateW3C(arg1:string):Promise<w3c.W3CReport>;

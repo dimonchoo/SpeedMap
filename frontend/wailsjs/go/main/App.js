@@ -70,6 +70,10 @@ export function SaveSiteProfile(arg1) {
   return window['go']['main']['App']['SaveSiteProfile'](arg1);
 }
 
+export function SelectDirectory(arg1) {
+  return window['go']['main']['App']['SelectDirectory'](arg1);
+}
+
 export function StartScan(arg1, arg2) {
   return window['go']['main']['App']['StartScan'](arg1, arg2);
 }

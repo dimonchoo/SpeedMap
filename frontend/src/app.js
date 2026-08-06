@@ -83,6 +83,8 @@ function speedMapApp() {
     selectedImageComparison: null, // { url, conversionResult, isConverting, error }
 	isBatchDownloadingZIP: false,
     isExportingWPApply: false,
+    showWPPathModal: false,
+    wpPathInput: '/var/www/site',
 
 
     // Multi-Site Profiles State
@@ -960,19 +962,35 @@ function speedMapApp() {
       }
     },
 
-    async exportWordPressWebPApply() {
+    async pickWPFolderOnLocal() {
+      try {
+        if (window.go?.main?.App?.SelectDirectory) {
+          const selected = await window.go.main.App.SelectDirectory("Виберіть папку сайту WordPress");
+          if (selected) {
+            this.wpPathInput = selected;
+            this.showToast('success', 'Папку вибрано 📁', selected);
+          }
+        }
+      } catch (e) {
+        console.error("Directory picker error:", e);
+      }
+    },
+
+    exportWordPressWebPApply() {
       if (!this.scanResults || this.scanResults.length === 0) {
         this.showToast('warning', 'Немає скану', 'Спочатку проскануйте сайт.');
         return;
       }
-      const wordpressPath = (window.prompt(
-        'Шлях до WordPress на сервері (для wp eval-file --path=…)',
-        '/var/www/site'
-      ) || '').trim();
+      this.showWPPathModal = true;
+    },
+
+    async confirmExportWPApply() {
+      const wordpressPath = (this.wpPathInput || '').trim();
       if (!wordpressPath) {
         this.showToast('info', 'Скасовано', 'Потрібен шлях до WordPress.');
         return;
       }
+      this.showWPPathModal = false;
       const domain = this.config.sitemapUrl || this.sitemapInput || 'site';
       this.isExportingWPApply = true;
       this.addLog('info', `🧩 Генерація WP-CLI WebP apply PHP (path=${wordpressPath})...`);

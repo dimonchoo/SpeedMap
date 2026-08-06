@@ -533,5 +533,21 @@ func (a *App) ExportFontsJSON(jsonContent string) (string, error) {
 	return filename, nil
 }
 
+// SelectDirectory opens native macOS directory picker dialog
+func (a *App) SelectDirectory(title string) (string, error) {
+
+	if title == "" {
+		title = "Виберіть папку WordPress"
+	}
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: title,
+	})
+	if err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+
 
 
