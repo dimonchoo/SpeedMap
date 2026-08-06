@@ -745,6 +745,44 @@ function speedMapApp() {
       return list;
     },
 
+    exportFontsCSV() {
+      if (!this.siteAnalytics || !this.siteAnalytics.fontUsage || this.siteAnalytics.fontUsage.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Немає даних про шрифти для експорту.');
+        return;
+      }
+      let csv = "Font Family,Format,Occurrences,Page Coverage %,Avg Load Duration (ms),Formatted Size,Direct Asset URL\n";
+      this.siteAnalytics.fontUsage.forEach(f => {
+        const family = `"${(f.family || '').replace(/"/g, '""')}"`;
+        const type = `"${(f.type || '').replace(/"/g, '""')}"`;
+        const url = `"${(f.url || '').replace(/"/g, '""')}"`;
+        csv += `${family},${type},${f.occurrences || 0},${f.percentage || 0},${f.avgDurationMs || 0},"${f.formattedSize || ''}",${url}\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', `speedmap_fonts_report_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      this.showToast('success', 'CSV експортовано 🟢', 'Звіт по шрифтах збережено');
+    },
+
+    exportFontsJSON() {
+      if (!this.siteAnalytics || !this.siteAnalytics.fontUsage || this.siteAnalytics.fontUsage.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Немає даних про шрифти для експорту.');
+        return;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.siteAnalytics.fontUsage, null, 2));
+      const link = document.createElement('a');
+      link.setAttribute('href', dataStr);
+      link.setAttribute('download', `speedmap_fonts_report_${Date.now()}.json`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      this.showToast('success', 'JSON експортовано 🟢', 'Звіт по шрифтах збережено');
+    },
+
     copyFontUrl(url) {
       if (!url) return;
       navigator.clipboard.writeText(url).then(() => {

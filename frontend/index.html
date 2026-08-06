@@ -1079,6 +1079,147 @@
           </div>
         </template>
 
+        <!-- VIEW 4: DEDICATED FONT INSPECTOR HUB (SEOAEO-301) -->
+        <template x-if="activeTab === 'fonts'">
+          <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            
+            <!-- Font Hub Top Header Bar & Export Actions -->
+            <div class="bg-slate-950/80 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+                <div class="space-y-1">
+                  <h2 class="text-lg font-bold text-slate-100 flex items-center space-x-2">
+                    <span class="text-amber-400 text-xl">🔤</span>
+                    <span>Інспектор Шрифтів Сайту (Font Hub)</span>
+                  </h2>
+                  <p class="text-xs text-slate-400">Повний аналіз гарнітур, типографіки, обсягу та часу завантаження веб-шрифтів</p>
+                </div>
+
+                <!-- Export Action Buttons -->
+                <div class="flex items-center space-x-2 shrink-0">
+                  <button @click="exportFontsCSV()" :disabled="!siteAnalytics || !siteAnalytics.fontUsage || siteAnalytics.fontUsage.length === 0"
+                    class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <span>📊 Експорт CSV</span>
+                  </button>
+                  <button @click="exportFontsJSON()" :disabled="!siteAnalytics || !siteAnalytics.fontUsage || siteAnalytics.fontUsage.length === 0"
+                    class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                    <span>📑 Експорт JSON</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Search and Filter Controls -->
+              <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <div class="relative flex-1 w-full sm:max-w-md">
+                  <input type="text" x-model="fontSearchQuery" placeholder="Пошук за назвою шрифту (Inter, Roboto, FontAwesome)..."
+                    class="w-full bg-slate-900 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-sans">
+                  <span class="absolute left-3 top-2.5 text-slate-500">🔍</span>
+                </div>
+
+                <div class="flex items-center space-x-2 w-full sm:w-auto justify-end overflow-x-auto">
+                  <span class="text-slate-400 font-semibold shrink-0">Сортування:</span>
+                  <select x-model="fontSortKey" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none">
+                    <option value="pages">За покриттям сторінок 📊</option>
+                    <option value="duration">За часом завантаження ⏱️</option>
+                    <option value="size">За обсягом файлу 💾</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <template x-if="!siteAnalytics || !siteAnalytics.fontUsage || siteAnalytics.fontUsage.length === 0">
+              <div class="p-12 text-center bg-slate-950/40 rounded-2xl border border-slate-800/80 space-y-3">
+                <span class="text-4xl block">🔤</span>
+                <h3 class="text-sm font-bold text-slate-300">Не виявлено зовнішніх шрифтів</h3>
+                <p class="text-xs text-slate-500 max-w-md mx-auto">Після сканування тут з'явиться детальний аналіз усіх гарнітур, завантажених на сторінках вашого сайту.</p>
+              </div>
+            </template>
+
+            <!-- Fonts Grid Cards (Top: Icon + Name + Preview; Bottom: Characteristics) -->
+            <template x-if="filteredFonts.length > 0">
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <template x-for="font in filteredFonts" :key="font.family">
+                  <div class="bg-slate-950/90 rounded-2xl border border-slate-800/90 hover:border-slate-700 transition duration-200 shadow-xl overflow-hidden flex flex-col justify-between group">
+                    
+                    <!-- UPPER SECTION: Icon, Family Name, Format Badge & Visual Preview -->
+                    <div class="p-4 space-y-3 bg-gradient-to-b from-slate-900/90 to-slate-950/90 border-b border-slate-800/80">
+                      <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2.5 truncate">
+                          <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-bold shrink-0">
+                            🔤
+                          </div>
+                          <h3 class="font-bold text-base text-slate-100 truncate group-hover:text-amber-400 transition font-sans" :title="font.family" x-text="font.family"></h3>
+                        </div>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase shrink-0"
+                          :class="font.type === 'woff2' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (font.type === 'woff' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30')"
+                          x-text="font.type || 'FONT'"></span>
+                      </div>
+
+                      <!-- Live Typography Preview Sandbox -->
+                      <div class="p-3 bg-slate-950 rounded-xl border border-slate-800/80 space-y-1 font-sans overflow-hidden">
+                        <div class="text-slate-100 text-sm font-medium truncate" :style="'font-family: ' + font.family + ', sans-serif'">
+                          Aa Bb Cc 123 • Ag Qg
+                        </div>
+                        <div class="text-slate-400 text-xs truncate opacity-80" :style="'font-family: ' + font.family + ', sans-serif'">
+                          The quick brown fox jumps over the lazy dog
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- LOWER SECTION: Characteristics & Optimization Metrics -->
+                    <div class="p-4 space-y-3 text-xs bg-slate-950/60">
+                      <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                        <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-800/80 space-y-0.5">
+                          <span class="text-slate-500 block text-[10px] font-sans">📊 Покриття сайту</span>
+                          <span class="font-bold text-emerald-400 block truncate" x-text="font.occurrences + ' стор. (' + font.percentage + '%)'"></span>
+                        </div>
+
+                        <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-800/80 space-y-0.5">
+                          <span class="text-slate-500 block text-[10px] font-sans">💾 Розмір файлу</span>
+                          <span class="font-bold text-cyan-400 block truncate" x-text="font.formattedSize || 'н/д'"></span>
+                        </div>
+                      </div>
+
+                      <div class="flex items-center justify-between text-[11px] font-mono pt-1 border-t border-slate-800/60">
+                        <span class="text-slate-400 font-sans">⏱️ Час завантаження:</span>
+                        <span class="font-bold text-slate-200" x-text="font.avgDurationMs + ' ms'"></span>
+                      </div>
+
+                      <!-- Font URL & Copy Button -->
+                      <template x-if="font.url">
+                        <div class="pt-2 border-t border-slate-800/60 flex items-center justify-between gap-2">
+                          <a :href="font.url" target="_blank" class="text-[11px] text-slate-400 hover:text-amber-400 underline font-mono truncate block flex-1" :title="font.url" x-text="font.url"></a>
+                          <button @click="copyFontUrl(font.url)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-semibold shrink-0 transition shadow">
+                            📋 Копіювати
+                          </button>
+                        </div>
+                      </template>
+
+                      <!-- Optimization Advice Badge -->
+                      <div class="pt-1">
+                        <template x-if="font.type === 'woff2'">
+                          <span class="inline-flex items-center space-x-1 text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            <span>WOFF2 Сучасний формат 🟢</span>
+                          </span>
+                        </template>
+                        <template x-if="font.type && font.type !== 'woff2'">
+                          <span class="inline-flex items-center space-x-1 text-[10px] text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                            <span>Рекомендовано конвертувати у WOFF2 ⚠️</span>
+                          </span>
+                        </template>
+                      </div>
+
+                    </div>
+
+                  </div>
+                </template>
+              </div>
+            </template>
+
+          </div>
+        </template>
+
+
       </section>
 
     </main>
