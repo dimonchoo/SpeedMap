@@ -97,8 +97,44 @@ type PageDiagnostics struct {
 	LargestImages       []ImageDetail                  `json:"largestImages"`
 	Fonts               []FontDetail                   `json:"fonts"`
 	Iframes             []IframeDetail                 `json:"iframes"`
+	Forms               []FormDetail                   `json:"forms"`
 	Categories          map[string]CategoryDiagnostic `json:"categories"`
 	W3C                 interface{}                    `json:"w3c,omitempty"`
+}
+
+// FormFieldDetail describes a single input/field inside a form
+type FormFieldDetail struct {
+	Name              string `json:"name"`
+	Label             string `json:"label"`
+	Type              string `json:"type"` // text, email, tel, select, checkbox, radio, file, textarea, hidden, submit
+	IsRequired        bool   `json:"isRequired"`
+	ValidationPattern string `json:"validationPattern,omitempty"`
+	Accept            string `json:"accept,omitempty"`
+	Value             string `json:"value,omitempty"`
+}
+
+// CaptchaDetail captures anti-spam and captcha integration state
+type CaptchaDetail struct {
+	Type     string `json:"type"` // "recaptcha-v3", "recaptcha-v2", "turnstile", "hcaptcha", "honeypot", "none"
+	SiteKey  string `json:"siteKey,omitempty"`
+	Action   string `json:"action,omitempty"`
+	IsActive bool   `json:"isActive"`
+}
+
+// FormDetail captures complete DOM and metadata for a detected web form
+type FormDetail struct {
+	ID               string            `json:"id"`
+	Title            string            `json:"title"`
+	Engine           string            `json:"engine"` // "contact-form-7", "pardot", "greenhouse", "hubspot", "native-html", "custom"
+	Method           string            `json:"method"` // "POST", "GET"
+	Action           string            `json:"action"`
+	Fields           []FormFieldDetail `json:"fields"`
+	FieldCount       int               `json:"fieldCount"`
+	HasFileUpload    bool              `json:"hasFileUpload"`
+	AllowedFileTypes string            `json:"allowedFileTypes,omitempty"`
+	Captcha          CaptchaDetail     `json:"captcha"`
+	HiddenTokens     map[string]string `json:"hiddenTokens,omitempty"`
+	InViewport       bool              `json:"inViewport"`
 }
 
 type PageResult struct {

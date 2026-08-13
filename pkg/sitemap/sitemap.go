@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"SpeedMap/pkg/config"
@@ -45,103 +46,204 @@ func FetchAndParse(sitemapURL string, cfg config.ScanConfig) ([]string, error) {
 		sitemapURL = "https://" + sitemapURL
 	}
 
-	visited := make(map[string]bool)
+	parsed, err := url.Parse(sitemapURL)
+	if err != nil {
+		return nil, fmt.Errorf("некоректний URL sitemap: %w", err)
+	}
+
+	isExplicitXML := strings.HasSuffix(strings.ToLower(parsed.Path), ".xml") || strings.HasSuffix(strings.ToLower(parsed.Path), ".xml.gz")
+
+	// If user provided a specific XML sitemap file, fetch it directly
+	if isExplicitXML {
+		visited := &sync.Map{}
+		urls, err := fetchRecursive(sitemapURL, cfg, visited, 0)
+		if err == nil && len(urls) > 0 {
+			return urls, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("не знайдено дійсних URL у sitemap: %s", sitemapURL)
+	}
+
+	// If user provided a base domain or non-XML URL (e.g. "https://infuse.com/"),
+	// perform intelligent XML sitemap discovery:
+	baseURL := fmt.Sprintf("%s://%s", parsed.Scheme, parsed.Host)
+
+	// 1. Try robots.txt for Sitemap directives
+	robotsSitemaps := discoverFromRobotsTxt(baseURL, cfg)
+	for _, smURL := range robotsSitemaps {
+		visited := &sync.Map{}
+		urls, err := fetchRecursive(smURL, cfg, visited, 0)
+		if err == nil && len(urls) > 0 {
+			return urls, nil
+		}
+	}
+
+	// 2. Try standard sitemap endpoints
+	standardCandidates := []string{
+		baseURL + "/sitemap_index.xml",
+		baseURL + "/sitemap.xml",
+		baseURL + "/wp-sitemap.xml",
+	}
+	for _, candidate := range standardCandidates {
+		visited := &sync.Map{}
+		urls, err := fetchRecursive(candidate, cfg, visited, 0)
+		if err == nil && len(urls) > 0 {
+			return urls, nil
+		}
+	}
+
+	// 3. Fallback: try raw URL itself if it happens to be a plain text list of URLs
+	visited := &sync.Map{}
 	urls, err := fetchRecursive(sitemapURL, cfg, visited, 0)
 	if err == nil && len(urls) > 0 {
 		return urls, nil
 	}
 
-	// Fallback 1: If URL doesn't end with /sitemap.xml, try appending /sitemap.xml
-	if !strings.HasSuffix(sitemapURL, "/sitemap.xml") && !strings.HasSuffix(sitemapURL, ".xml") {
-		altURL := strings.TrimRight(sitemapURL, "/") + "/sitemap.xml"
-		altVisited := make(map[string]bool)
-		altURLs, altErr := fetchRecursive(altURL, cfg, altVisited, 0)
-		if altErr == nil && len(altURLs) > 0 {
-			return altURLs, nil
-		}
-	}
-
 	if err != nil {
 		return nil, err
 	}
-	return nil, fmt.Errorf("не знайдено дійсних URL у sitemap: %s", sitemapURL)
+	return nil, fmt.Errorf("не знайдено дійсних XML sitemap або URL для сайту %s (перевірено /sitemap_index.xml, /sitemap.xml, /wp-sitemap.xml та robots.txt)", sitemapURL)
 }
 
-func fetchRecursive(rawURL string, cfg config.ScanConfig, visited map[string]bool, depth int) ([]string, error) {
-	if depth > 3 {
-		return nil, nil // Prevent infinite sitemap index loops
-	}
-
-	if visited[rawURL] {
-		return nil, nil
-	}
-	visited[rawURL] = true
-
-	req, err := http.NewRequest("GET", rawURL, nil)
+func discoverFromRobotsTxt(baseURL string, cfg config.ScanConfig) []string {
+	robotsURL := strings.TrimRight(baseURL, "/") + "/robots.txt"
+	req, err := http.NewRequest("GET", robotsURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("не вдалося створити запит для %s: %w", rawURL, err)
+		return nil
 	}
-
-	// Apply Basic Auth
 	if cfg.AuthUser != "" || cfg.AuthPass != "" {
 		auth := cfg.AuthUser + ":" + cfg.AuthPass
 		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(auth)))
 	}
-
-	// Apply Custom Headers
 	for _, h := range cfg.Headers {
 		if strings.TrimSpace(h.Key) != "" {
 			req.Header.Set(h.Key, h.Value)
 		}
 	}
+	req.Header.Set("User-Agent", "SpeedMap-SitemapParser/1.0")
 
-	if req.Header.Get("User-Agent") == "" {
-		req.Header.Set("User-Agent", "SpeedMap-SitemapParser/1.0")
-	}
-
-	timeoutSec := cfg.NormalizedTimeout()
-
-	// HTTP Transport with InsecureSkipVerify enabled for local dev domains (*.localdev / self-signed TLS)
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-
 	client := &http.Client{
 		Transport: tr,
-		Timeout:   time.Duration(timeoutSec) * time.Second,
+		Timeout:   15 * time.Second,
 	}
-
 	resp, err := client.Do(req)
-	if err != nil {
-		errStr := err.Error()
-		if strings.Contains(errStr, "connection refused") {
-			return nil, fmt.Errorf("помилка з'єднання з %s: сервер не відповідає (Connection Refused). Перевірте чи запущено ваш локальний dev-сервер", rawURL)
-		}
-		if strings.Contains(errStr, "no such host") {
-			return nil, fmt.Errorf("не знайдено хост %s (DNS Error). Перевірте налаштування /etc/hosts для вашого локального домену", rawURL)
-		}
-		return nil, fmt.Errorf("помилка завантаження sitemap %s: %v", rawURL, err)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return nil
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("HTTP помилка %d при отриманні sitemap %s", resp.StatusCode, rawURL)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
 	}
 
-	var reader io.Reader = resp.Body
-	if strings.HasSuffix(strings.ToLower(rawURL), ".gz") || resp.Header.Get("Content-Encoding") == "gzip" {
-		gzReader, err := gzip.NewReader(resp.Body)
-		if err == nil {
-			defer gzReader.Close()
-			reader = gzReader
+	var sitemaps []string
+	lines := strings.Split(string(body), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(line), "sitemap:") {
+			sm := strings.TrimSpace(line[len("sitemap:"):])
+			if isValidURL(sm) {
+				sitemaps = append(sitemaps, sm)
+			}
 		}
 	}
+	return deduplicate(sitemaps)
+}
 
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("помилка читання тіла відповіді sitemap %s: %w", rawURL, err)
+func fetchRecursive(rawURL string, cfg config.ScanConfig, visited *sync.Map, depth int) ([]string, error) {
+	if depth > 3 {
+		return nil, nil // Prevent infinite sitemap index loops
+	}
+
+	if _, already := visited.LoadOrStore(rawURL, true); already {
+		return nil, nil
+	}
+
+	timeoutSec := cfg.NormalizedTimeout()
+	if timeoutSec < 90 {
+		timeoutSec = 90 // Large WordPress sites (e.g. Yoast SEO) can take 30-50s to dynamically build post sitemaps
+	}
+
+	var body []byte
+	var lastErr error
+
+	// Retry loop for slow or fluctuating sitemap servers
+	for attempt := 1; attempt <= 2; attempt++ {
+		req, err := http.NewRequest("GET", rawURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("не вдалося створити запит для %s: %w", rawURL, err)
+		}
+
+		if cfg.AuthUser != "" || cfg.AuthPass != "" {
+			auth := cfg.AuthUser + ":" + cfg.AuthPass
+			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(auth)))
+		}
+
+		for _, h := range cfg.Headers {
+			if strings.TrimSpace(h.Key) != "" {
+				req.Header.Set(h.Key, h.Value)
+			}
+		}
+
+		if req.Header.Get("User-Agent") == "" {
+			req.Header.Set("User-Agent", "SpeedMap-SitemapParser/1.0")
+		}
+
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+
+		client := &http.Client{
+			Transport: tr,
+			Timeout:   time.Duration(timeoutSec) * time.Second,
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		if resp.StatusCode >= 400 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP помилка %d при отриманні sitemap %s", resp.StatusCode, rawURL)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		var reader io.Reader = resp.Body
+		if strings.HasSuffix(strings.ToLower(rawURL), ".gz") || resp.Header.Get("Content-Encoding") == "gzip" {
+			gzReader, err := gzip.NewReader(resp.Body)
+			if err == nil {
+				defer gzReader.Close()
+				reader = gzReader
+			}
+		}
+
+		readBody, err := io.ReadAll(reader)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		body = readBody
+		lastErr = nil
+		break
+	}
+
+	if lastErr != nil {
+		return nil, fmt.Errorf("помилка завантаження sitemap %s: %v", rawURL, lastErr)
 	}
 
 	// 1. Try parsing as SitemapIndex
@@ -149,16 +251,36 @@ func fetchRecursive(rawURL string, cfg config.ScanConfig, visited map[string]boo
 	decoder := xml.NewDecoder(bytes.NewReader(body))
 	decoder.CharsetReader = charsetReader
 	if err := decoder.Decode(&index); err == nil && len(index.Sitemaps) > 0 {
-		var allURLs []string
+		var (
+			allURLs []string
+			urlsMu  sync.Mutex
+			wg      sync.WaitGroup
+			sem     = make(chan struct{}, 4) // Fetch up to 4 sub-sitemaps concurrently
+		)
+
 		for _, sm := range index.Sitemaps {
 			loc := strings.TrimSpace(sm.Loc)
-			if loc != "" {
-				subURLs, err := fetchRecursive(loc, cfg, visited, depth+1)
-				if err == nil {
-					allURLs = append(allURLs, subURLs...)
-				}
+			if loc == "" {
+				continue
 			}
+			wg.Add(1)
+			go func(subURL string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				subURLs, err := fetchRecursive(subURL, cfg, visited, depth+1)
+				if err == nil && len(subURLs) > 0 {
+					urlsMu.Lock()
+					allURLs = append(allURLs, subURLs...)
+					urlsMu.Unlock()
+				} else if err != nil {
+					fmt.Printf("[WARN] Failed to fetch sub-sitemap %s: %v\n", subURL, err)
+				}
+			}(loc)
 		}
+
+		wg.Wait()
 		return deduplicate(allURLs), nil
 	}
 
@@ -177,21 +299,7 @@ func fetchRecursive(rawURL string, cfg config.ScanConfig, visited map[string]boo
 		return deduplicate(urls), nil
 	}
 
-	// 3. Fallback: line-by-line extraction of URLs
-	lines := strings.Split(string(body), "\n")
-	var fallbackURLs []string
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if isValidURL(line) {
-			fallbackURLs = append(fallbackURLs, line)
-		}
-	}
-
-	if len(fallbackURLs) > 0 {
-		return deduplicate(fallbackURLs), nil
-	}
-
-	return nil, fmt.Errorf("не знайдено дійсних URL у sitemap за адресою %s", rawURL)
+	return nil, fmt.Errorf("адреса %s не є валідним XML sitemap", rawURL)
 }
 
 func charsetReader(charset string, input io.Reader) (io.Reader, error) {

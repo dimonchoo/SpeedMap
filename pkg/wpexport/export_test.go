@@ -177,9 +177,25 @@ func TestWriteWebPFilesAndReviewZIP(t *testing.T) {
 	if n != 1 || len(written) != 1 {
 		t.Fatalf("written=%d len=%d", n, len(written))
 	}
-	abs := filepath.Join(root, "wp-content", "uploads", "2024", "03", "hero.webp")
-	if _, err := os.Stat(abs); err != nil {
-		t.Fatalf("expected webp at %s: %v", abs, err)
+	// Convert only — must NOT write into uploads anymore.
+	uploadsWebP := filepath.Join(root, "wp-content", "uploads", "2024", "03", "hero.webp")
+	if _, err := os.Stat(uploadsWebP); err == nil {
+		t.Fatalf("must not write WebP into uploads during convert: %s", uploadsWebP)
+	}
+	if written[0].ID == "" || written[0].PackageWebP == "" {
+		t.Fatalf("expected package id/path on written image")
+	}
+
+	pkg := filepath.Join(root, "package")
+	out, err := WriteDeployPackage(pkg, "https://example.com", config.ScanConfig{WebPQuality: 80}, written)
+	if err != nil {
+		t.Fatalf("WriteDeployPackage: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(pkg, "images", "001", "optimized.webp")); err != nil {
+		t.Fatalf("expected package webp: %v", err)
+	}
+	if _, err := os.Stat(out.ApplyPHP); err != nil {
+		t.Fatalf("expected apply.php: %v", err)
 	}
 
 	zipBytes, err := BuildReviewZIP("https://example.com", written)

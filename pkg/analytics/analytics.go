@@ -68,7 +68,22 @@ type AggregatedIframe struct {
 	Height          int      `json:"height"`
 }
 
-
+// AggregatedForm groups unique forms across scanned pages
+type AggregatedForm struct {
+	ID               string                    `json:"id"`
+	Title            string                    `json:"title"`
+	Engine           string                    `json:"engine"`
+	Method           string                    `json:"method"`
+	Action           string                    `json:"action"`
+	PageCount        int                       `json:"pageCount"`
+	Pages            []string                  `json:"pages"`
+	Fields           []scanner.FormFieldDetail `json:"fields"`
+	FieldCount       int                       `json:"fieldCount"`
+	HasFileUpload    bool                      `json:"hasFileUpload"`
+	AllowedFileTypes string                    `json:"allowedFileTypes,omitempty"`
+	Captcha          scanner.CaptchaDetail     `json:"captcha"`
+	HiddenTokens     map[string]string         `json:"hiddenTokens,omitempty"`
+}
 
 type SiteAnalytics struct {
 	TotalPages  scannedCount `json:"totalPages"`
@@ -78,12 +93,13 @@ type SiteAnalytics struct {
 
 	AverageMetrics map[string]float64 `json:"averageMetrics"` // TTFB, FCP, LCP, CLS, TBT
 
-	TopResourceBottlenecks []ResourceImpact  `json:"topResourceBottlenecks"`
-	LargestImages          []AggregatedImage `json:"largestImages"`
-	AllImages              []AggregatedImage `json:"allImages"`
-	FontUsage              []AggregatedFont  `json:"fontUsage"`
+	TopResourceBottlenecks []ResourceImpact   `json:"topResourceBottlenecks"`
+	LargestImages          []AggregatedImage  `json:"largestImages"`
+	AllImages              []AggregatedImage  `json:"allImages"`
+	FontUsage              []AggregatedFont   `json:"fontUsage"`
 	Iframes                []AggregatedIframe `json:"iframes"`
-	GlobalFixes            []string          `json:"globalFixes"`
+	Forms                  []AggregatedForm   `json:"forms"`
+	GlobalFixes            []string           `json:"globalFixes"`
 
 	// Image Optimization Analytics (SEOAEO-235)
 	TotalImagePayloadBytes     int64          `json:"totalImagePayloadBytes"`
@@ -100,6 +116,14 @@ type SiteAnalytics struct {
 	TotalIframeCount  int `json:"totalIframeCount"`
 	MissedIframeCount int `json:"missedIframeCount"`
 	LoadedIframeCount int `json:"loadedIframeCount"`
+
+	// Form audit
+	TotalFormsCount       int            `json:"totalFormsCount"`
+	PagesWithFormsCount   int            `json:"pagesWithFormsCount"`
+	CaptchaProtectedCount int            `json:"captchaProtectedCount"`
+	UnprotectedFormsCount int            `json:"unprotectedFormsCount"`
+	FileUploadFormsCount  int            `json:"fileUploadFormsCount"`
+	FormEngineBreakdown   map[string]int `json:"formEngineBreakdown"`
 }
 
 type scannedCount = int
@@ -515,6 +539,89 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		return iframeList[i].PageCount > iframeList[j].PageCount
 	})
 
+	// Aggregate Forms across pages
+	formMap := make(map[string]*AggregatedForm)
+	totalFormsCount := 0
+	pagesWithFormsSet := make(map[string]bool)
+	captchaProtectedCount := 0
+	unprotectedFormsCount := 0
+	fileUploadFormsCount := 0
+	formEngineBreakdown := make(map[string]int)
+
+	for _, res := range results {
+		if len(res.Diagnostics.Forms) > 0 {
+			pagesWithFormsSet[res.URL] = true
+		}
+		for _, f := range res.Diagnostics.Forms {
+			totalFormsCount++
+			formEngineBreakdown[f.Engine]++
+
+			if f.Captcha.IsActive {
+				captchaProtectedCount++
+			} else {
+				unprotectedFormsCount++
+			}
+
+			if f.HasFileUpload {
+				fileUploadFormsCount++
+			}
+
+			formKey := f.Engine + ":" + f.Title
+			if f.Title == "" || strings.HasPrefix(f.Title, "form-") {
+				formKey = f.Engine + ":" + f.ID + ":" + f.Action
+			}
+
+			if existing, found := formMap[formKey]; found {
+				existing.PageCount++
+				hasPage := false
+				for _, p := range existing.Pages {
+					if p == res.URL {
+						hasPage = true
+						break
+					}
+				}
+				if !hasPage {
+					existing.Pages = append(existing.Pages, res.URL)
+				}
+				if len(existing.Fields) == 0 && len(f.Fields) > 0 {
+					existing.Fields = f.Fields
+					existing.FieldCount = f.FieldCount
+				}
+				if !existing.HasFileUpload && f.HasFileUpload {
+					existing.HasFileUpload = true
+					existing.AllowedFileTypes = f.AllowedFileTypes
+				}
+				if !existing.Captcha.IsActive && f.Captcha.IsActive {
+					existing.Captcha = f.Captcha
+				}
+			} else {
+				formMap[formKey] = &AggregatedForm{
+					ID:               f.ID,
+					Title:            f.Title,
+					Engine:           f.Engine,
+					Method:           f.Method,
+					Action:           f.Action,
+					PageCount:        1,
+					Pages:            []string{res.URL},
+					Fields:           f.Fields,
+					FieldCount:       f.FieldCount,
+					HasFileUpload:    f.HasFileUpload,
+					AllowedFileTypes: f.AllowedFileTypes,
+					Captcha:          f.Captcha,
+					HiddenTokens:     f.HiddenTokens,
+				}
+			}
+		}
+	}
+
+	var formList []AggregatedForm
+	for _, f := range formMap {
+		formList = append(formList, *f)
+	}
+	sort.Slice(formList, func(i, j int) bool {
+		return formList[i].PageCount > formList[j].PageCount
+	})
+
 	// Calculate Health Score (0 - 100)
 	goodCount := statusCounts["good"]
 	needsImpCount := statusCounts["needs-improvement"]
@@ -528,6 +635,9 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 	if totalMissedIframes > 0 {
 		fixes = append(fixes, fmt.Sprintf("Виявлено %d iframe без мережевого timing під час load (lazy/below-fold). Перевірте вкладку «iframe» — %d унікальних src.", totalMissedIframes, len(iframeList)))
 	}
+	if unprotectedFormsCount > 0 {
+		fixes = append(fixes, fmt.Sprintf("Виявлено %d форм без анти-спам захисту (відсутня reCAPTCHA/Turnstile). Перевірте вкладку «Форми».", unprotectedFormsCount))
+	}
 
 	return SiteAnalytics{
 		TotalPages:                 total,
@@ -539,6 +649,7 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		AllImages:                  allImages,
 		FontUsage:                  fontList,
 		Iframes:                    iframeList,
+		Forms:                      formList,
 		GlobalFixes:                fixes,
 		TotalImagePayloadBytes:     totalPayloadBytes,
 		TotalImagePayloadFormatted: formatBytes(totalPayloadBytes),
@@ -552,6 +663,12 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		TotalIframeCount:           len(iframeList),
 		MissedIframeCount:          totalMissedIframes,
 		LoadedIframeCount:          totalLoadedIframes,
+		TotalFormsCount:            totalFormsCount,
+		PagesWithFormsCount:        len(pagesWithFormsSet),
+		CaptchaProtectedCount:      captchaProtectedCount,
+		UnprotectedFormsCount:      unprotectedFormsCount,
+		FileUploadFormsCount:       fileUploadFormsCount,
+		FormEngineBreakdown:        formEngineBreakdown,
 	}
 }
 
@@ -841,6 +958,9 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 		function closeModal() {
 			document.getElementById('modalOverlay').style.display = 'none';
 		}
+		document.addEventListener('keydown', function(e) {
+			if (e.key === 'Escape') closeModal();
+		});
 	</script>
 </body>
 </html>`, domain, domain, analytics.TotalImagePayloadFormatted, analytics.TotalImageCount, analytics.HeavyImagesCount, analytics.TotalWebPSavingsFormatted, rowsHTML.String())

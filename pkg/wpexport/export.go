@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"net/url"
 	"os"
 	"path"
@@ -28,14 +29,16 @@ var applyTemplate string
 var rollbackTemplate string
 
 type ManifestImage struct {
-	SourceURL string   `json:"sourceUrl"`
-	PathHint  string   `json:"pathHint"`
-	WebpRel   string   `json:"webpRel"`
-	Basename  string   `json:"basename"`
-	Format    string   `json:"format"`
-	IsHeavy   bool     `json:"isHeavy"`
-	Bytes     int64    `json:"bytes"`
-	Pages     []string `json:"pages"`
+	SourceURL   string   `json:"sourceUrl"`
+	PathHint    string   `json:"pathHint"`
+	WebpRel     string   `json:"webpRel"`
+	Basename    string   `json:"basename"`
+	Format      string   `json:"format"`
+	IsHeavy     bool     `json:"isHeavy"`
+	Bytes       int64    `json:"bytes"`
+	Pages       []string `json:"pages"`
+	ID          string   `json:"id,omitempty"`
+	PackageWebP string   `json:"packageWebp,omitempty"` // relative to apply.php, e.g. images/001/optimized.webp
 }
 
 type Manifest struct {
@@ -46,24 +49,25 @@ type Manifest struct {
 	Images        []ManifestImage `json:"images"`
 }
 
-// WrittenImage is a converted heavy image with payloads for disk + review ZIP.
+// WrittenImage is a converted heavy image with payloads for package + review ZIP.
 type WrittenImage struct {
 	ManifestImage
-	OrigExt          string
-	OrigData         []byte
-	WebPData         []byte
-	OriginalBytes    int64
-	OptimizedBytes   int64
-	SavingsPercent   float64
+	OrigExt            string
+	OrigData           []byte
+	WebPData           []byte
+	OriginalBytes      int64
+	OptimizedBytes     int64
+	SavingsPercent     float64
 	OriginalFormatted  string
 	OptimizedFormatted string
 }
 
-// ExportResult paths written under wordpressPath (no SaveFileDialog).
+// ExportResult paths for the deploy package (not WP uploads).
 type ExportResult struct {
 	ApplyPHP      string `json:"applyPHP"`
 	RollbackPHP   string `json:"rollbackPHP"`
 	ReviewZIP     string `json:"reviewZIP"`
+	PackageDir    string `json:"packageDir"`
 	WebPCount     int    `json:"webpCount"`
 	WordPressPath string `json:"wordpressPath"`
 }
@@ -151,24 +155,18 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 	return heavy
 }
 
-// WriteWebPFiles converts each image via pkg/optimizer and writes under
-// {wordpressPath}/wp-content/uploads/{webpRel}. Returns successful writes with payloads.
-func WriteWebPFiles(wordpressPath string, images []ManifestImage, quality float32, authUser, authPass string) ([]WrittenImage, int, error) {
-	wpPath := strings.TrimSpace(wordpressPath)
-	if wpPath == "" {
-		return nil, 0, fmt.Errorf("wordpress path is required")
-	}
-	info, err := os.Stat(wpPath)
-	if err != nil || !info.IsDir() {
-		return nil, 0, fmt.Errorf("wordpress path must be an existing directory: %s", wpPath)
-	}
+// ConvertHeavyImages downloads and converts each image via pkg/optimizer.
+// Does NOT write into WordPress uploads — PHP apply copies from the package.
+func ConvertHeavyImages(images []ManifestImage, quality float32, authUser, authPass string) ([]WrittenImage, error) {
+	return ConvertHeavyImagesWithThreshold(images, quality, 100*1024, true, authUser, authPass)
+}
 
-	uploads := filepath.Join(wpPath, "wp-content", "uploads")
+// ConvertHeavyImagesWithThreshold converts images with custom threshold byte budget.
+func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, thresholdBytes int64, adaptive bool, authUser, authPass string) ([]WrittenImage, error) {
 	ok := make([]WrittenImage, 0, len(images))
-	written := 0
 
-	for _, img := range images {
-		res, err := optimizer.ConvertImageURLToWebPAuth(img.SourceURL, quality, authUser, authPass)
+	for i, img := range images {
+		res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(img.SourceURL, quality, thresholdBytes, adaptive, authUser, authPass)
 		if err != nil {
 			fmt.Printf("[wpexport] skip %s: %v\n", img.SourceURL, err)
 			continue
@@ -189,14 +187,13 @@ func WriteWebPFiles(wordpressPath string, images []ManifestImage, quality float3
 			rel = webpRelFromHint(img.PathHint, img.Basename)
 		}
 		rel = filepath.ToSlash(rel)
-		abs := filepath.Join(uploads, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
-			return ok, written, fmt.Errorf("mkdir %s: %w", filepath.Dir(abs), err)
-		}
-		if err := os.WriteFile(abs, webpData, 0644); err != nil {
-			return ok, written, fmt.Errorf("write %s: %w", abs, err)
-		}
 		img.WebpRel = rel
+
+		id := fmt.Sprintf("%03d", len(ok)+1)
+		img.ID = id
+		img.PackageWebP = fmt.Sprintf("images/%s/optimized.webp", id)
+		_ = i
+
 		ext := path.Ext(img.Basename)
 		if ext == "" {
 			ext = "." + img.Format
@@ -212,13 +209,122 @@ func WriteWebPFiles(wordpressPath string, images []ManifestImage, quality float3
 			OriginalFormatted:  res.OriginalFormatted,
 			OptimizedFormatted: res.OptimizedFormatted,
 		})
-		written++
 	}
 
-	if written == 0 {
-		return nil, 0, fmt.Errorf("no WebP files written (check auth / image URLs)")
+	if len(ok) == 0 {
+		return nil, fmt.Errorf("no WebP conversions succeeded (check auth / image URLs)")
 	}
-	return ok, written, nil
+	return ok, nil
+}
+
+// WriteWebPFiles is deprecated: use ConvertHeavyImages + WriteDeployPackage.
+// Kept as a thin wrapper that only converts (does not touch uploads).
+func WriteWebPFiles(wordpressPath string, images []ManifestImage, quality float32, authUser, authPass string) ([]WrittenImage, int, error) {
+	_ = wordpressPath
+	written, err := ConvertHeavyImages(images, quality, authUser, authPass)
+	if err != nil {
+		return nil, 0, err
+	}
+	return written, len(written), nil
+}
+
+// WriteDeployPackage writes a self-contained folder:
+// apply.php, rollback.php, compare.html, manifest.json, images/NNN/{original,optimized}.
+// PHP apply copies optimized.webp → wp uploads/{webpRel} and retargets attachments.
+func WriteDeployPackage(packageDir, domain string, cfg config.ScanConfig, written []WrittenImage) (*ExportResult, error) {
+	if len(written) == 0 {
+		return nil, fmt.Errorf("no images for deploy package")
+	}
+	pkg := strings.TrimSpace(packageDir)
+	if pkg == "" {
+		return nil, fmt.Errorf("package dir is required")
+	}
+	if err := os.MkdirAll(pkg, 0755); err != nil {
+		return nil, err
+	}
+
+	for _, im := range written {
+		id := im.ID
+		if id == "" {
+			return nil, fmt.Errorf("missing package id for %s", im.Basename)
+		}
+		ext := im.OrigExt
+		if ext == "" {
+			ext = "bin"
+		}
+		imgDir := filepath.Join(pkg, "images", id)
+		if err := os.MkdirAll(imgDir, 0755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(filepath.Join(imgDir, "original."+ext), im.OrigData, 0644); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(filepath.Join(imgDir, "optimized.webp"), im.WebPData, 0644); err != nil {
+			return nil, err
+		}
+	}
+
+	manifestImgs := ManifestImagesFromWritten(written)
+	php, err := BuildApplyPHPFromManifest(domain, cfg, pkg, manifestImgs)
+	if err != nil {
+		return nil, err
+	}
+	applyPath := filepath.Join(pkg, "apply.php")
+	if err := os.WriteFile(applyPath, []byte(php), 0644); err != nil {
+		return nil, err
+	}
+	rollbackPath := filepath.Join(pkg, "rollback.php")
+	if err := os.WriteFile(rollbackPath, []byte(BuildRollbackPHP(pkg)), 0644); err != nil {
+		return nil, err
+	}
+
+	zipBytes, err := BuildReviewZIP(domain, written)
+	if err != nil {
+		return nil, err
+	}
+	// Also materialize compare.html + manifest.json beside apply.php (same as ZIP root).
+	zr, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range zr.File {
+		if f.Name != "compare.html" && f.Name != "manifest.json" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(filepath.Join(pkg, f.Name), data, 0644); err != nil {
+			return nil, err
+		}
+	}
+
+	zipPath := pkg + ".zip"
+	if err := os.WriteFile(zipPath, zipBytes, 0644); err != nil {
+		// Non-fatal for folder use; still return package.
+		zipPath = ""
+	} else {
+		// Prefer a full package zip that includes apply.php — rebuild with apply inside.
+		fullZip, zerr := buildPackageZIP(pkg)
+		if zerr == nil {
+			_ = os.WriteFile(zipPath, fullZip, 0644)
+		}
+	}
+
+	return &ExportResult{
+		ApplyPHP:      applyPath,
+		RollbackPHP:   rollbackPath,
+		ReviewZIP:     zipPath,
+		PackageDir:    pkg,
+		WebPCount:     len(written),
+		WordPressPath: pkg,
+	}, nil
 }
 
 // BuildReviewZIP packs orig + webp + compare.html + manifest.json for task handoff.
@@ -248,7 +354,10 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	zw := zip.NewWriter(&buf)
 
 	for i, im := range images {
-		id := fmt.Sprintf("%03d", i+1)
+		id := im.ID
+		if id == "" {
+			id = fmt.Sprintf("%03d", i+1)
+		}
 		ext := im.OrigExt
 		if ext == "" {
 			ext = "bin"
@@ -298,50 +407,185 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		return nil, err
 	}
 
+	entriesJSON, _ := json.Marshal(entries)
+
 	var htmlBuf strings.Builder
 	htmlBuf.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>SpeedMap WebP review — ")
 	htmlBuf.WriteString(esc(domain))
 	htmlBuf.WriteString("</title><style>")
-	htmlBuf.WriteString("body{font-family:system-ui,sans-serif;margin:24px;color:#111;background:#fafafa}")
+	htmlBuf.WriteString("body{font-family:system-ui,-apple-system,sans-serif;margin:24px;color:#111;background:#fafafa}")
 	htmlBuf.WriteString("h1{font-size:1.25rem;margin:0 0 8px}p.meta{color:#555;font-size:13px;margin:0 0 24px}")
-	// Stack Before/After vertically so reviewers see each image large, same asset compared top→bottom.
 	htmlBuf.WriteString(".pair{display:flex;flex-direction:column;gap:16px;max-width:1200px;margin:0 0 48px;padding:0 0 32px;border-bottom:1px solid #ddd}")
 	htmlBuf.WriteString(".pair h2{font-size:1rem;font-weight:600;margin:0;color:#222}")
 	htmlBuf.WriteString(".ctx{font-size:13px;color:#444;line-height:1.5}")
 	htmlBuf.WriteString(".ctx a{color:#0645ad;word-break:break-all}")
 	htmlBuf.WriteString(".ctx .more{color:#666}")
-	htmlBuf.WriteString("figure{margin:0}img{display:block;width:100%;max-width:100%;height:auto;background:#eee}")
-	htmlBuf.WriteString("figcaption{font-size:13px;color:#444;margin-top:8px} .sav{color:#066}")
+	htmlBuf.WriteString("figure{margin:0}.pair img{display:block;width:100%;max-width:100%;height:auto;background:#eee;cursor:zoom-in;transition:opacity 0.15s;border-radius:4px}.pair img:hover{opacity:0.92;box-shadow:0 4px 12px rgba(0,0,0,0.1)}")
+	htmlBuf.WriteString("figcaption{font-size:13px;color:#444;margin-top:8px} .sav{color:#066;font-weight:bold}")
+
+	// Lightbox Styles
+	htmlBuf.WriteString("#lightbox{display:none;position:fixed;inset:0;background:rgba(5,10,20,0.95);backdrop-filter:blur(10px);z-index:99999;flex-direction:column;justify-content:space-between;padding:16px 24px;box-sizing:border-box}")
+	htmlBuf.WriteString(".lb-header{display:flex;align-items:center;justify-content:space-between;width:100%;gap:16px;color:#f1f5f9}")
+	htmlBuf.WriteString(".lb-title-wrap{display:flex;align-items:center;gap:12px;min-width:0}")
+	htmlBuf.WriteString(".lb-title{font-size:15px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw}")
+	htmlBuf.WriteString(".badge-orig{background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.4);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}")
+	htmlBuf.WriteString(".badge-webp{background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}")
+	htmlBuf.WriteString(".lb-mode-toggle{display:flex;background:#1e293b;border-radius:24px;padding:3px;border:1px solid #334155;gap:4px}")
+	htmlBuf.WriteString(".lb-tab{background:transparent;border:none;color:#94a3b8;padding:6px 16px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s}")
+	htmlBuf.WriteString(".lb-tab:hover{color:#fff}")
+	htmlBuf.WriteString(".lb-tab-active-orig{background:#dc2626!important;color:#fff!important;box-shadow:0 2px 8px rgba(220,38,38,0.4)}")
+	htmlBuf.WriteString(".lb-tab-active-webp{background:#059669!important;color:#fff!important;box-shadow:0 2px 8px rgba(5,150,105,0.4)}")
+	htmlBuf.WriteString(".lb-close-btn{background:#334155;color:#f1f5f9;border:none;padding:6px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer}")
+	htmlBuf.WriteString(".lb-close-btn:hover{background:#475569}")
+
+	htmlBuf.WriteString(".lb-body{position:relative;flex:1;display:flex;align-items:center;justify-content:center;width:100%;height:calc(100vh - 130px);margin:8px 0}")
+	htmlBuf.WriteString(".lb-main-img{max-height:calc(100vh - 140px);max-width:88vw;object-fit:contain;border-radius:8px;box-shadow:0 20px 40px rgba(0,0,0,0.8);background:transparent;opacity:1!important;transition:none!important;cursor:pointer}.lb-main-img:hover{opacity:1!important;box-shadow:0 20px 40px rgba(0,0,0,0.8)!important}")
+	htmlBuf.WriteString(".lb-nav-btn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(30,41,59,0.85);color:#fff;border:1px solid #475569;width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:bold;cursor:pointer;transition:all 0.2s;user-select:none;z-index:10}")
+	htmlBuf.WriteString(".lb-nav-btn:hover{background:#2563eb;border-color:#60a5fa;transform:translateY(-50%) scale(1.08)}")
+	htmlBuf.WriteString(".lb-prev{left:16px}")
+	htmlBuf.WriteString(".lb-next{right:16px}")
+
+	htmlBuf.WriteString(".lb-footer{display:flex;align-items:center;justify-content:space-between;width:100%;color:#94a3b8;font-size:12px;font-family:monospace;border-top:1px solid #1e293b;padding-top:8px}")
+	htmlBuf.WriteString(".lb-shortcuts{color:#64748b;font-size:11px}")
 	htmlBuf.WriteString("</style></head><body>")
+
 	htmlBuf.WriteString("<h1>SpeedMap WebP review</h1>")
 	htmlBuf.WriteString("<p class=\"meta\">")
 	htmlBuf.WriteString(esc(domain))
 	htmlBuf.WriteString(" · ")
 	htmlBuf.WriteString(fmt.Sprintf("%d", len(entries)))
-	htmlBuf.WriteString(" images · open this file from the unzipped archive</p>")
-	for _, e := range entries {
+	htmlBuf.WriteString(" images · open this file from the unzipped archive (клікніть на будь-яке зображення для інтерактивного перегляду Before/After)</p>")
+
+	for idx, e := range entries {
 		htmlBuf.WriteString("<section class=\"pair\">")
 		htmlBuf.WriteString("<h2>")
 		htmlBuf.WriteString(esc(e.Basename))
 		htmlBuf.WriteString("</h2>")
 		writeReviewContextHTML(&htmlBuf, e.SourceURL, e.Pages)
-		htmlBuf.WriteString("<figure><img src=\"")
-		htmlBuf.WriteString(esc(e.OriginalPath))
-		htmlBuf.WriteString("\" alt=\"original\"><figcaption>Before · ")
-		htmlBuf.WriteString(esc(e.Basename))
-		htmlBuf.WriteString(" · ")
-		htmlBuf.WriteString(esc(e.OriginalFormatted))
-		htmlBuf.WriteString("</figcaption></figure>")
-		htmlBuf.WriteString("<figure><img src=\"")
-		htmlBuf.WriteString(esc(e.OptimizedPath))
-		htmlBuf.WriteString("\" alt=\"webp\"><figcaption>After · WebP · ")
-		htmlBuf.WriteString(esc(e.OptimizedFormatted))
-		htmlBuf.WriteString(" · <span class=\"sav\">−")
-		htmlBuf.WriteString(fmt.Sprintf("%.1f", e.SavingsPercent))
-		htmlBuf.WriteString("%</span></figcaption></figure>")
+		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"original\" onclick=\"openGallery(%d, 'orig')\"><figcaption>Before · %s · %s</figcaption></figure>", esc(e.OriginalPath), idx, esc(e.Basename), esc(e.OriginalFormatted)))
+		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"webp\" onclick=\"openGallery(%d, 'webp')\"><figcaption>After · WebP · %s · <span class=\"sav\">−%.1f%%</span></figcaption></figure>", esc(e.OptimizedPath), idx, esc(e.OptimizedFormatted), e.SavingsPercent))
 		htmlBuf.WriteString("</section>")
 	}
-	htmlBuf.WriteString("</body></html>")
+
+	// Fullscreen Gallery Modal DOM
+	htmlBuf.WriteString("<div id=\"lightbox\" onclick=\"onBackdropClick(event)\">")
+	htmlBuf.WriteString("<div class=\"lb-header\">")
+	htmlBuf.WriteString("<div class=\"lb-title-wrap\"><span id=\"lb-count\" style=\"color:#38bdf8;font-weight:bold;font-family:monospace;\"></span><span id=\"lb-title\" class=\"lb-title\"></span><span id=\"lb-mode-badge\" class=\"badge-webp\"></span></div>")
+	htmlBuf.WriteString("<div class=\"lb-mode-toggle\">")
+	htmlBuf.WriteString("<button id=\"btn-before\" class=\"lb-tab\" onclick=\"toggleMode('orig')\">🔴 Before (Original)</button>")
+	htmlBuf.WriteString("<button id=\"btn-after\" class=\"lb-tab lb-tab-active-webp\" onclick=\"toggleMode('webp')\">🟢 After (WebP)</button>")
+	htmlBuf.WriteString("</div>")
+	htmlBuf.WriteString("<button class=\"lb-close-btn\" onclick=\"closeLb()\">✕ Закрити (Esc)</button>")
+	htmlBuf.WriteString("</div>")
+
+	htmlBuf.WriteString("<div class=\"lb-body\">")
+	htmlBuf.WriteString("<div class=\"lb-nav-btn lb-prev\" onclick=\"prevItem()\" title=\"Попереднє (ArrowLeft)\">‹</div>")
+	htmlBuf.WriteString("<img id=\"lb-img\" class=\"lb-main-img\" src=\"\" alt=\"preview\" onclick=\"toggleMode()\" title=\"Клацніть для перемикання Before ↔ After\">")
+	htmlBuf.WriteString("<div class=\"lb-nav-btn lb-next\" onclick=\"nextItem()\" title=\"Наступне (ArrowRight)\">›</div>")
+	htmlBuf.WriteString("</div>")
+
+	htmlBuf.WriteString("<div class=\"lb-footer\">")
+	htmlBuf.WriteString("<div id=\"lb-stats\" style=\"color:#e2e8f0;font-weight:bold;\"></div>")
+	htmlBuf.WriteString("<div class=\"lb-shortcuts\">Гарячі клавіші: ⬅ ➡ (перегортання) | Пробіл / 1 / 2 (Before ↔ After) | Esc (вихід)</div>")
+	htmlBuf.WriteString("</div>")
+	htmlBuf.WriteString("</div>")
+
+	// Gallery Scripts
+	htmlBuf.WriteString("<script>")
+	htmlBuf.WriteString("const items = ")
+	htmlBuf.Write(entriesJSON)
+	htmlBuf.WriteString(";\n")
+	htmlBuf.WriteString("let currentIndex = 0;\n")
+	htmlBuf.WriteString("let currentMode = 'webp';\n")
+	htmlBuf.WriteString(`
+function openGallery(idx, mode) {
+	currentIndex = idx;
+	currentMode = mode || 'webp';
+	renderGallery();
+	document.getElementById('lightbox').style.display = 'flex';
+}
+
+function renderGallery() {
+	if (currentIndex < 0) currentIndex = 0;
+	if (currentIndex >= items.length) currentIndex = items.length - 1;
+	const item = items[currentIndex];
+	const isOrig = currentMode === 'orig';
+	const imgEl = document.getElementById('lb-img');
+	imgEl.src = isOrig ? item.originalPath : item.optimizedPath;
+	
+	document.getElementById('lb-title').textContent = item.basename;
+	document.getElementById('lb-count').textContent = (currentIndex + 1) + ' / ' + items.length;
+	
+	const badgeEl = document.getElementById('lb-mode-badge');
+	badgeEl.textContent = isOrig ? '🔴 Before (Original)' : '🟢 After (WebP)';
+	badgeEl.className = isOrig ? 'badge-orig' : 'badge-webp';
+	
+	document.getElementById('btn-before').className = isOrig ? 'lb-tab lb-tab-active-orig' : 'lb-tab';
+	document.getElementById('btn-after').className = !isOrig ? 'lb-tab lb-tab-active-webp' : 'lb-tab';
+	
+	const sav = item.savingsPercent > 0 ? ('-' + item.savingsPercent.toFixed(1) + '%') : '0%';
+	document.getElementById('lb-stats').textContent = 
+		'Before: ' + item.originalFormatted + ' ➜ After: ' + item.optimizedFormatted + ' (' + sav + ')';
+}
+
+function nextItem() {
+	if (currentIndex < items.length - 1) {
+		currentIndex++;
+		renderGallery();
+	}
+}
+
+function prevItem() {
+	if (currentIndex > 0) {
+		currentIndex--;
+		renderGallery();
+	}
+}
+
+function toggleMode(mode) {
+	if (mode) {
+		currentMode = mode;
+	} else {
+		currentMode = currentMode === 'orig' ? 'webp' : 'orig';
+	}
+	renderGallery();
+}
+
+function closeLb() {
+	document.getElementById('lightbox').style.display = 'none';
+}
+
+function onBackdropClick(e) {
+	if (e.target.id === 'lightbox' || e.target.classList.contains('lb-body')) {
+		closeLb();
+	}
+}
+
+document.addEventListener('keydown', function(e) {
+	const lb = document.getElementById('lightbox');
+	if (lb.style.display !== 'flex') return;
+	
+	if (e.key === 'ArrowLeft' || e.key === 'KeyA' || e.key === 'KeyH') {
+		e.preventDefault();
+		prevItem();
+	} else if (e.key === 'ArrowRight' || e.key === 'KeyD' || e.key === 'KeyL') {
+		e.preventDefault();
+		nextItem();
+	} else if (e.key === ' ' || e.key === 'Spacebar' || e.key === 'KeyB' || e.key === 'KeyW' || e.key === 'Tab') {
+		e.preventDefault();
+		toggleMode();
+	} else if (e.key === '1') {
+		e.preventDefault();
+		toggleMode('orig');
+	} else if (e.key === '2') {
+		e.preventDefault();
+		toggleMode('webp');
+	} else if (e.key === 'Escape') {
+		closeLb();
+	}
+});
+</script>
+</body></html>`)
 
 	if err := writeZipFile(zw, "compare.html", []byte(htmlBuf.String())); err != nil {
 		_ = zw.Close()
@@ -361,6 +605,38 @@ func writeZipFile(zw *zip.Writer, name string, data []byte) error {
 	}
 	_, err = w.Write(data)
 	return err
+}
+
+// buildPackageZIP zips an on-disk deploy package directory (apply.php + images/ + …).
+func buildPackageZIP(packageDir string) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	err := filepath.Walk(packageDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(packageDir, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return writeZipFile(zw, rel, data)
+	})
+	if err != nil {
+		_ = zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // BuildApplyPHP creates a self-contained WP-CLI eval-file script with embedded manifest.

@@ -21,6 +21,14 @@ type ScanConfig struct {
 	TimeoutSec            int            `json:"timeoutSec"`
 	GDriveClientID        string         `json:"gdriveClientID"`
 	GDriveClientSecret    string         `json:"gdriveClientSecret"`
+	AdaptiveQuality       *bool          `json:"adaptiveQuality"`       // true by default: automatically adjusts quality for gradients/transparency
+}
+
+func (c *ScanConfig) IsAdaptiveQualityEnabled() bool {
+	if c.AdaptiveQuality == nil {
+		return true // Default true
+	}
+	return *c.AdaptiveQuality
 }
 
 

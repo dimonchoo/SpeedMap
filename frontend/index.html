@@ -102,6 +102,15 @@
               <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="siteAnalytics.totalIframeCount"></span>
             </template>
           </button>
+
+          <button @click="activeTab = 'forms'; updateAnalytics()"
+            :class="activeTab === 'forms' ? 'bg-slate-800 text-blue-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
+            <span>📝 Форми</span>
+            <template x-if="siteAnalytics && siteAnalytics.totalFormsCount > 0">
+              <span class="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 text-[10px]" x-text="siteAnalytics.totalFormsCount"></span>
+            </template>
+          </button>
         </nav>
       </div>
 
@@ -378,20 +387,45 @@
             </template>
 
             <!-- Results Toolbar & Filters -->
-            <div class="px-6 py-3 flex items-center justify-between border-b border-slate-800 shrink-0">
-              <div class="flex space-x-1 bg-slate-950/60 p-1 rounded-lg border border-slate-800 text-xs">
-                <button @click="statusFilter = 'all'" :class="statusFilter === 'all' ? 'bg-slate-800 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
-                  Усі (<span x-text="scanResults.length"></span>)
-                </button>
-                <button @click="statusFilter = 'critical'" :class="statusFilter === 'critical' ? 'bg-rose-950/60 text-rose-400 border border-rose-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
-                  Критичні 🔴
-                </button>
-                <button @click="statusFilter = 'needs-improvement'" :class="statusFilter === 'needs-improvement' ? 'bg-amber-950/60 text-amber-400 border border-amber-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
-                  Потребують уваги 🟡
-                </button>
-                <button @click="statusFilter = 'good'" :class="statusFilter === 'good' ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
-                  Хороші 🟢
-                </button>
+            <div class="px-6 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 shrink-0">
+              <div class="flex items-center flex-wrap gap-2.5">
+                <div class="flex space-x-1 bg-slate-950/60 p-1 rounded-lg border border-slate-800 text-xs">
+                  <button @click="statusFilter = 'all'" :class="statusFilter === 'all' ? 'bg-slate-800 text-slate-100 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
+                    Усі (<span x-text="scanResults.length"></span>)
+                  </button>
+                  <button @click="statusFilter = 'critical'" :class="statusFilter === 'critical' ? 'bg-rose-950/60 text-rose-400 border border-rose-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
+                    Критичні 🔴
+                  </button>
+                  <button @click="statusFilter = 'needs-improvement'" :class="statusFilter === 'needs-improvement' ? 'bg-amber-950/60 text-amber-400 border border-amber-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
+                    Потребують уваги 🟡
+                  </button>
+                  <button @click="statusFilter = 'good'" :class="statusFilter === 'good' ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 font-semibold' : 'text-slate-400 hover:text-slate-200'" class="px-3 py-1 rounded transition">
+                    Хороші 🟢
+                  </button>
+                </div>
+
+                <!-- Live URL Search Input -->
+                <div class="relative flex items-center">
+                  <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                  </div>
+                  <input type="text" x-model="pageSearchQuery" placeholder="Пошук за посиланням (URL)..."
+                    class="bg-slate-900 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded-lg pl-8 pr-7 py-1 text-xs text-slate-100 placeholder-slate-500 focus:outline-none w-56 lg:w-72 font-mono transition shadow-inner">
+                  <template x-if="pageSearchQuery">
+                    <button @click="pageSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-200 text-xs font-bold" title="Очистити">
+                      ✕
+                    </button>
+                  </template>
+                </div>
+
+                <!-- Matched Filter Count Badge -->
+                <template x-if="pageSearchQuery || statusFilter !== 'all'">
+                  <span class="text-[11px] px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-800/50 font-mono">
+                    Знайдено: <strong x-text="filteredResults.length"></strong> з <span x-text="scanResults.length"></span>
+                  </span>
+                </template>
               </div>
 
               <div class="text-xs text-slate-400">
@@ -427,6 +461,23 @@
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-800/60 text-xs font-mono">
+                    <template x-if="filteredResults.length === 0">
+                      <tr>
+                        <td colspan="10" class="py-12 text-center text-slate-400">
+                          <div class="flex flex-col items-center justify-center space-y-2">
+                            <svg class="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                            <p class="text-sm font-medium">Сторінок за вказаним пошуковим запитом не знайдено</p>
+                            <template x-if="pageSearchQuery">
+                              <button @click="pageSearchQuery = ''" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-cyan-400 rounded-lg transition">
+                                Очистити пошуковий фільтр
+                              </button>
+                            </template>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
                     <template x-for="item in filteredResults" :key="item.id">
                       <tr @click="selectedDetail = item" class="hover:bg-slate-800/50 cursor-pointer transition group relative"
                         :class="rescanLoadingMap[item.id] ? 'bg-cyan-950/30 ring-1 ring-cyan-500/50' : (item.overallStatus === 'error' ? 'bg-rose-950/10' : '')">
@@ -1324,13 +1375,39 @@
                   </h2>
                   <p class="text-xs text-slate-400">Де iframe на сторінках, що встигли завантажитись під час load, і скільки пропущено (lazy / below-fold)</p>
                 </div>
-                <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
-                  <button @click="iframeViewMode = 'by-page'"
-                    :class="iframeViewMode === 'by-page' ? 'bg-slate-800 text-rose-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-                    class="px-3 py-1.5 rounded-lg transition">📄 За сторінками</button>
-                  <button @click="iframeViewMode = 'by-src'"
-                    :class="iframeViewMode === 'by-src' ? 'bg-slate-800 text-rose-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-                    class="px-3 py-1.5 rounded-lg transition">⧉ За src (агреговано)</button>
+
+                <!-- View Mode Toggle & Export Actions -->
+                <div class="flex flex-wrap items-center gap-3">
+                  <!-- View Mode Toggle: By-Page vs By-Src -->
+                  <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button @click="iframeViewMode = 'by-page'"
+                      :class="iframeViewMode === 'by-page' ? 'bg-slate-800 text-rose-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5">
+                      <span>📄 За сторінками</span>
+                    </button>
+                    <button @click="iframeViewMode = 'by-src'"
+                      :class="iframeViewMode === 'by-src' ? 'bg-slate-800 text-rose-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5">
+                      <span>⧉ За src (агреговано)</span>
+                    </button>
+                  </div>
+
+                  <!-- Export Action Buttons -->
+                  <div class="flex items-center space-x-2 shrink-0">
+                    <button @click="exportIframesCSV()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0"
+                      class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <span>📊 Експорт CSV</span>
+                    </button>
+                    <button @click="exportIframesJSON()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0"
+                      class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <span>📑 Експорт JSON</span>
+                    </button>
+                    <button @click="uploadIframesToGDrive()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0 || isUploadingGDrive"
+                      class="bg-cyan-700 hover:bg-cyan-600 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <span x-show="!isUploadingGDrive">☁️ На Google Drive</span>
+                      <span x-show="isUploadingGDrive">Вивантаження...</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1444,7 +1521,282 @@
           </div>
         </template>
 
+        <!-- VIEW 6: FORM INSPECTOR HUB -->
+        <template x-if="activeTab === 'forms'">
+          <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div class="bg-slate-950/80 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+                <div class="space-y-1">
+                  <h2 class="text-lg font-bold text-slate-100 flex items-center space-x-2">
+                    <span class="text-blue-400 text-xl">📝</span>
+                    <span>Інспектор форм сайту (Form Hub)</span>
+                  </h2>
+                  <p class="text-xs text-slate-400">Виявлення форм, аналіз полів, обов'язковості, валідації, reCAPTCHA v2/v3, Turnstile та CRM/Pardot/Greenhouse інтеграцій</p>
+                </div>
 
+                <!-- View Mode Toggle & Export Actions -->
+                <div class="flex flex-wrap items-center gap-3">
+                  <!-- View Mode Toggle: By-Page vs By-Form -->
+                  <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button @click="formViewMode = 'by-page'"
+                      :class="formViewMode === 'by-page' ? 'bg-slate-800 text-blue-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5">
+                      <span>📄 За сторінками</span>
+                    </button>
+                    <button @click="formViewMode = 'by-form'"
+                      :class="formViewMode === 'by-form' ? 'bg-slate-800 text-blue-300 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-3 py-1.5 rounded-lg transition flex items-center space-x-1.5">
+                      <span>📋 За формами (агреговано)</span>
+                    </button>
+                  </div>
+
+                  <!-- Export Action Buttons -->
+                  <div class="flex items-center space-x-2 shrink-0">
+                    <button @click="exportFormsCSV()" :disabled="!scanResults || scanResults.length === 0"
+                      class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <span>📊 Експорт CSV</span>
+                    </button>
+                    <button @click="exportFormsJSON()" :disabled="!scanResults || scanResults.length === 0"
+                      class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <span>📑 Експорт JSON</span>
+                    </button>
+                    <button @click="uploadFormsToGDrive()" :disabled="!siteAnalytics || !siteAnalytics.forms || siteAnalytics.forms.length === 0 || isUploadingGDrive"
+                      class="bg-cyan-700 hover:bg-cyan-600 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <span x-show="!isUploadingGDrive">☁️ На Google Drive</span>
+                      <span x-show="isUploadingGDrive">Вивантаження...</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Stats KPI Cards -->
+              <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                  <div class="text-slate-500 uppercase tracking-wider text-[10px] font-bold">Всього форм</div>
+                  <div class="text-xl font-extrabold text-slate-100 font-mono" x-text="siteAnalytics?.totalFormsCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                  <div class="text-slate-500 uppercase tracking-wider text-[10px] font-bold">Сторінок з формами</div>
+                  <div class="text-xl font-extrabold text-blue-300 font-mono" x-text="pageFormsList.length"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-emerald-800/40">
+                  <div class="text-emerald-500/80 uppercase tracking-wider text-[10px] font-bold">Захищено Captcha</div>
+                  <div class="text-xl font-extrabold text-emerald-300 font-mono" x-text="siteAnalytics?.captchaProtectedCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-amber-800/40">
+                  <div class="text-amber-500/80 uppercase tracking-wider text-[10px] font-bold">Без Captcha</div>
+                  <div class="text-xl font-extrabold text-amber-300 font-mono" x-text="siteAnalytics?.unprotectedFormsCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-xl border border-indigo-800/40">
+                  <div class="text-indigo-400 uppercase tracking-wider text-[10px] font-bold">З файлами / CV</div>
+                  <div class="text-xl font-extrabold text-indigo-300 font-mono" x-text="siteAnalytics?.fileUploadFormsCount || 0"></div>
+                </div>
+              </div>
+
+              <!-- Search & Filter Controls -->
+              <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+                <div class="relative flex-1">
+                  <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">🔍</span>
+                  <input type="text" x-model="formSearchQuery" placeholder="Пошук за назвою форми, URL, назвою поля (firstname, email, resume)..."
+                    class="w-full bg-slate-900 border border-slate-700/80 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                  <button x-show="formSearchQuery" @click="formSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-200 text-xs">✕</button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs shrink-0">
+                  <button @click="formEngineFilter = 'all'" :class="formEngineFilter === 'all' ? 'bg-slate-800 text-blue-300 font-bold' : 'text-slate-400 hover:text-slate-200'" class="px-2.5 py-1 rounded-lg transition">
+                    Усі
+                  </button>
+                  <button @click="formEngineFilter = 'contact-form-7'" :class="formEngineFilter === 'contact-form-7' ? 'bg-blue-950/60 text-blue-300 border border-blue-800/50 font-bold' : 'text-slate-400 hover:text-slate-200'" class="px-2.5 py-1 rounded-lg transition">
+                    Contact Form 7
+                  </button>
+                  <button @click="formEngineFilter = 'greenhouse'" :class="formEngineFilter === 'greenhouse' ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/50 font-bold' : 'text-slate-400 hover:text-slate-200'" class="px-2.5 py-1 rounded-lg transition">
+                    Greenhouse
+                  </button>
+                  <button @click="formEngineFilter = 'pardot'" :class="formEngineFilter === 'pardot' ? 'bg-cyan-950/60 text-cyan-300 border border-cyan-800/50 font-bold' : 'text-slate-400 hover:text-slate-200'" class="px-2.5 py-1 rounded-lg transition">
+                    Pardot
+                  </button>
+                  <button @click="formEngineFilter = 'has-captcha'" :class="formEngineFilter === 'has-captcha' ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/50 font-bold' : 'text-slate-400 hover:text-slate-200'" class="px-2.5 py-1 rounded-lg transition">
+                    🛡️ З капчею
+                  </button>
+                  <button @click="formEngineFilter = 'no-captcha'" :class="formEngineFilter === 'no-captcha' ? 'bg-amber-950/60 text-amber-300 border border-amber-800/50 font-bold' : 'text-slate-400 hover:text-slate-200'" class="px-2.5 py-1 rounded-lg transition">
+                    ⚠️ Без капчі
+                  </button>
+                  <button @click="formEngineFilter = 'file-upload'" :class="formEngineFilter === 'file-upload' ? 'bg-indigo-950/60 text-indigo-300 border border-indigo-800/50 font-bold' : 'text-slate-400 hover:text-slate-200'" class="px-2.5 py-1 rounded-lg transition">
+                    📎 З файлами
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty State -->
+            <template x-if="pageFormsList.length === 0">
+              <div class="bg-slate-950/40 rounded-2xl border border-slate-800 p-12 text-center space-y-3">
+                <div class="text-4xl">📝</div>
+                <h3 class="text-base font-bold text-slate-200">Форм не знайдено або сканування ще не запущено</h3>
+                <p class="text-xs text-slate-400 max-w-md mx-auto">Запустіть сканування сайту з панелі зліва, щоб автоматично виявити всі форми, поля, налаштування reCAPTCHA та інтеграції.</p>
+              </div>
+            </template>
+
+            <!-- MODE 1: BY-PAGE LIST -->
+            <template x-if="pageFormsList.length > 0 && formViewMode === 'by-page'">
+              <div class="space-y-4">
+                <template x-for="item in pageFormsList" :key="item.url">
+                  <div class="bg-slate-950/80 rounded-2xl border border-slate-800 shadow-lg p-5 space-y-4 transition hover:border-slate-700">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/60 pb-3">
+                      <div class="flex items-center space-x-2.5 min-w-0">
+                        <span class="px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-300 font-bold font-mono text-xs shrink-0" x-text="`#${item.id}`"></span>
+                        <a :href="item.url" target="_blank" class="text-xs font-semibold text-slate-200 hover:text-blue-400 truncate underline font-mono" x-text="item.url"></a>
+                      </div>
+                      <div class="flex items-center space-x-2 shrink-0 text-xs">
+                        <span class="text-slate-400">Форм: <strong class="text-slate-200 font-mono" x-text="item.formCount"></strong></span>
+                        <template x-if="item.hasCaptcha">
+                          <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">🛡️ Captcha</span>
+                        </template>
+                        <template x-if="!item.hasCaptcha">
+                          <span class="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-semibold">⚠️ Без захисту</span>
+                        </template>
+                        <template x-if="item.hasFileUpload">
+                          <span class="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[10px] font-semibold">📎 File Upload</span>
+                        </template>
+                      </div>
+                    </div>
+
+                    <!-- Forms Grid for this page -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <template x-for="(form, fIdx) in item.forms" :key="fIdx">
+                        <div class="bg-slate-900/90 rounded-xl border border-slate-800 p-4 space-y-3">
+                          <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                              <div class="flex items-center space-x-2">
+                                <h4 class="text-sm font-bold text-slate-100 truncate" x-text="form.title || 'Форма'"></h4>
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+                                  :class="form.engine === 'contact-form-7' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : (form.engine === 'greenhouse' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (form.engine === 'pardot' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-300'))"
+                                  x-text="form.engine"></span>
+                              </div>
+                              <div class="text-[11px] text-slate-400 font-mono mt-0.5" x-text="`ID: ${form.id} | Method: ${form.method}`"></div>
+                            </div>
+                            <button @click="openFormDetailModal(form)" class="text-xs bg-slate-800 hover:bg-slate-700 text-blue-300 px-2.5 py-1 rounded-lg border border-slate-700 transition shrink-0">
+                              🔍 Деталі
+                            </button>
+                          </div>
+
+                          <!-- Captcha Status Pill -->
+                          <div class="flex items-center justify-between text-xs bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+                            <div class="flex items-center space-x-1.5">
+                              <span x-text="form.captcha?.isActive ? '🛡️' : '⚠️'"></span>
+                              <span class="font-medium" :class="form.captcha?.isActive ? 'text-emerald-400' : 'text-amber-400'"
+                                x-text="form.captcha?.isActive ? `Захист: ${form.captcha.type}` : 'Анти-спам не виявлено'"></span>
+                            </div>
+                            <span class="text-slate-400 text-[11px]" x-text="`${form.fieldCount} полів`"></span>
+                          </div>
+
+                          <!-- Fields Chips List -->
+                          <div class="space-y-1">
+                            <div class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Поля форми:</div>
+                            <div class="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                              <template x-for="fld in form.fields" :key="fld.name">
+                                <span class="px-2 py-0.5 rounded bg-slate-800 border border-slate-700/60 text-[11px] text-slate-200 font-mono flex items-center space-x-1">
+                                  <span x-text="fld.name"></span>
+                                  <template x-if="fld.isRequired">
+                                    <span class="text-rose-400 font-bold">*</span>
+                                  </template>
+                                  <span class="text-slate-500 text-[10px]" x-text="`(${fld.type})`"></span>
+                                </span>
+                              </template>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <!-- MODE 2: BY-FORM (AGGREGATED) LIST -->
+            <template x-if="filteredForms.length > 0 && formViewMode === 'by-form'">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <template x-for="form in filteredForms" :key="form.id + form.title">
+                  <div class="bg-slate-950/80 rounded-2xl border border-slate-800 shadow-xl p-5 space-y-4 flex flex-col justify-between transition hover:border-slate-700">
+                    <div class="space-y-3">
+                      <div class="flex items-start justify-between gap-2">
+                        <div>
+                          <div class="flex items-center space-x-2">
+                            <h3 class="text-base font-bold text-slate-100" x-text="form.title || 'Форма'"></h3>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                              :class="form.engine === 'contact-form-7' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : (form.engine === 'greenhouse' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (form.engine === 'pardot' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-300'))"
+                              x-text="form.engine"></span>
+                          </div>
+                          <div class="text-xs text-slate-400 font-mono mt-0.5" x-text="`ID: ${form.id} | Метод: ${form.method}`"></div>
+                        </div>
+
+                        <div class="px-3 py-1 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-bold text-center shrink-0">
+                          <div class="text-[10px] text-blue-400 uppercase">Сторінок</div>
+                          <div class="text-base font-extrabold font-mono" x-text="form.pageCount"></div>
+                        </div>
+                      </div>
+
+                      <!-- Captcha & File Upload Status -->
+                      <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 flex items-center space-x-2">
+                          <span x-text="form.captcha?.isActive ? '🛡️' : '⚠️'"></span>
+                          <div class="truncate">
+                            <div class="text-[10px] text-slate-500 uppercase font-semibold">Капча</div>
+                            <div class="font-bold truncate" :class="form.captcha?.isActive ? 'text-emerald-400' : 'text-amber-400'"
+                              x-text="form.captcha?.isActive ? form.captcha.type : 'Немає'"></div>
+                          </div>
+                        </div>
+                        <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 flex items-center space-x-2">
+                          <span>📎</span>
+                          <div class="truncate">
+                            <div class="text-[10px] text-slate-500 uppercase font-semibold">Файли</div>
+                            <div class="font-bold truncate text-slate-200"
+                              x-text="form.hasFileUpload ? (form.allowedFileTypes || 'Дозволено') : 'Вимкнено'"></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Fields Table / Summary -->
+                      <div class="space-y-1.5">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Структура полів:</span>
+                          <span class="text-[11px]" x-text="`${form.fieldCount} полів`"></span>
+                        </div>
+                        <div class="max-h-36 overflow-y-auto space-y-1 bg-slate-900/60 p-2 rounded-xl border border-slate-800 font-mono text-xs">
+                          <template x-for="fld in form.fields" :key="fld.name">
+                            <div class="flex items-center justify-between text-slate-300 py-0.5 border-b border-slate-800/40 last:border-0 text-[11px]">
+                              <span class="truncate">
+                                <span class="font-semibold text-slate-100" x-text="fld.name"></span>
+                                <template x-if="fld.isRequired">
+                                  <span class="text-rose-400 font-bold">*</span>
+                                </template>
+                                <span class="text-slate-500 text-[10px]" x-text="` (${fld.label})`"></span>
+                              </span>
+                              <span class="px-1.5 py-0.2 rounded bg-slate-800 text-[10px] text-blue-300 shrink-0 font-sans" x-text="fld.type"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Expandable Pages Accordion -->
+                    <div x-data="{ open: false }" class="space-y-1.5 pt-2 border-t border-slate-800/60">
+                      <button @click="open = !open" class="w-full text-left text-xs font-semibold text-slate-400 hover:text-blue-300 flex items-center justify-between transition">
+                        <span x-text="`Переглянути сторінки з цією формою (${form.pages?.length || 0})`"></span>
+                        <span x-text="open ? '▲' : '▼'"></span>
+                      </button>
+                      <div x-show="open" x-cloak class="max-h-28 overflow-y-auto space-y-1 bg-slate-900/90 p-2 rounded-xl border border-slate-800 font-mono text-[10px]">
+                        <template x-for="pageUrl in form.pages" :key="pageUrl">
+                          <a :href="pageUrl" target="_blank" class="block text-slate-300 hover:text-blue-400 truncate underline" x-text="pageUrl"></a>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
       </section>
 
     </main>
@@ -1708,12 +2060,24 @@
                 <!-- WebP Compression Quality -->
                 <div class="space-y-2">
                   <div class="flex justify-between items-center">
-                    <label class="font-semibold text-slate-200">Якість стиснення WebP (Quality)</label>
+                    <label class="font-semibold text-slate-200">Базова якість стиснення WebP (Quality)</label>
                     <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono font-bold" x-text="(config.webpQuality || 80) + '%'"></span>
                   </div>
                   <input type="range" min="10" max="100" step="5" x-model.number="config.webpQuality"
                     class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
-                  <p class="text-xs text-slate-400">Рівень якості для реального CGo WebP конвертера (за замовчуванням 80% — оптимальний баланс якості та розміру)</p>
+                  <p class="text-xs text-slate-400">Рівень якості для реального WebP конвертера (за замовчуванням 80% — оптимальний баланс якості та розміру)</p>
+                </div>
+
+                <!-- Adaptive Smart Quality Toggle -->
+                <div class="flex items-start justify-between bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-x-3">
+                  <div class="space-y-0.5">
+                    <label class="font-semibold text-slate-200 text-xs flex items-center space-x-1.5 cursor-pointer">
+                      <span>🧠 Розумне адаптивне стиснення (Adaptive Quality)</span>
+                    </label>
+                    <p class="text-[11px] text-slate-400">Автоматично підвищує якість для дрібних та градієнтних фото (88–94%), усуває чорні краї на прозорих PNG (Lossless), запобігаючи артефактам перестискання.</p>
+                  </div>
+                  <input type="checkbox" x-model="config.adaptiveQuality"
+                    class="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500/20 bg-slate-900 h-4 w-4 mt-0.5 shrink-0 cursor-pointer">
                 </div>
 
                 <hr class="border-slate-800">
@@ -2385,17 +2749,17 @@
         
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
           <div class="flex items-center space-x-2">
-            <h3 class="text-base font-bold">Шлях до WordPress</h3>
+            <h3 class="text-base font-bold">Куди зберегти пакет</h3>
           </div>
           <button @click="showWPPathModal = false" class="text-slate-400 hover:text-slate-200 text-lg">✕</button>
         </div>
 
         <div class="space-y-3 text-xs">
           <p class="text-slate-300 leading-relaxed">
-            Один шлях: важкі WebP у <code class="text-emerald-400">wp-content/uploads</code>,
-            review ZIP (orig + webp + compare.html) і PHP apply/rollback.
-            Старі файли не видаляються. На оточенні після рев’ю:
-            <code class="block mt-1 bg-slate-950 p-2 rounded text-emerald-400 font-mono">wp eval-file &lt;apply&gt;.php --path=&lt;шлях&gt;</code>
+            SpeedMap збереже папку пакета: <code class="text-emerald-400">images/</code> +
+            <code class="text-emerald-400">apply.php</code> + rollback + compare.
+            У <code class="text-slate-400">uploads</code> нічого не пише — копію робить PHP на Stage.
+            <code class="block mt-1 bg-slate-950 p-2 rounded text-emerald-400 font-mono">wp eval-file …/apply.php --path=/path/to/wp</code>
           </p>
           <p class="text-slate-400" x-show="siteAnalytics && siteAnalytics.heavyImagesCount">
             Heavy images у скані:
@@ -2404,9 +2768,9 @@
 
           <!-- Input + Native Browse Button -->
           <div class="space-y-1.5 pt-2">
-            <label class="block font-semibold text-slate-300">Шлях до WordPress:</label>
+            <label class="block font-semibold text-slate-300">Папка для пакета (локально):</label>
             <div class="flex items-center space-x-2">
-              <input type="text" x-model="wpPathInput" placeholder="/var/www/site або /public_html"
+              <input type="text" x-model="wpPathInput" placeholder="/Users/…/Desktop або /tmp"
                 class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-emerald-500">
               
               <button @click="pickWPFolderOnLocal()" type="button"
@@ -2430,8 +2794,8 @@
             <input type="checkbox" x-model="wpApplyConfirmed"
               class="mt-0.5 rounded border-slate-600 bg-slate-950 text-emerald-500 focus:ring-emerald-500">
             <span class="text-slate-300 leading-relaxed">
-              Підтверджую: записати WebP у uploads, review ZIP і PHP (apply + rollback) у цей шлях.
-              Apply у БД запускаю окремо після рев’ю ZIP.
+              Підтверджую: зібрати пакет (images + apply/rollback PHP + ZIP) у цей шлях.
+              На Stage apply запустя окремо — він скопіює webp у uploads і оновить БД.
             </span>
           </label>
         </div>
@@ -2574,6 +2938,107 @@
           </button>
         </div>
 
+      </div>
+    </div>
+
+    <!-- FORM DETAIL INSPECTION MODAL -->
+    <div x-show="showFormModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+      <div class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm" @click="showFormModal = false"></div>
+
+      <div class="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 my-8">
+        <template x-if="selectedFormDetail">
+          <div class="space-y-4">
+            <div class="flex items-start justify-between border-b border-slate-800/80 pb-4">
+              <div>
+                <div class="flex items-center space-x-2">
+                  <h3 class="text-lg font-bold text-slate-100" x-text="selectedFormDetail.title || 'Деталі форми'"></h3>
+                  <span class="px-2 py-0.5 rounded text-xs font-bold uppercase"
+                    :class="selectedFormDetail.engine === 'contact-form-7' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : (selectedFormDetail.engine === 'greenhouse' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (selectedFormDetail.engine === 'pardot' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-300'))"
+                    x-text="selectedFormDetail.engine"></span>
+                </div>
+                <div class="text-xs text-slate-400 font-mono mt-1" x-text="`ID: ${selectedFormDetail.id} | Метод: ${selectedFormDetail.method}`"></div>
+              </div>
+              <button @click="showFormModal = false" class="text-slate-400 hover:text-slate-200 p-1">✕</button>
+            </div>
+
+            <!-- Metadata Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+              <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                <div class="text-[10px] text-slate-500 uppercase font-semibold">Анти-спам / Капча</div>
+                <div class="font-bold mt-1" :class="selectedFormDetail.captcha?.isActive ? 'text-emerald-400' : 'text-amber-400'"
+                  x-text="selectedFormDetail.captcha?.isActive ? `${selectedFormDetail.captcha.type}` : 'Не виявлено ⚠️'"></div>
+                <template x-if="selectedFormDetail.captcha?.siteKey">
+                  <div class="text-[10px] text-slate-400 font-mono truncate mt-0.5" x-text="`Key: ${selectedFormDetail.captcha.siteKey}`"></div>
+                </template>
+              </div>
+
+              <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                <div class="text-[10px] text-slate-500 uppercase font-semibold">Файлові завантаження</div>
+                <div class="font-bold text-slate-200 mt-1" x-text="selectedFormDetail.hasFileUpload ? 'Дозволено 📎' : 'Вимкнено'"></div>
+                <template x-if="selectedFormDetail.allowedFileTypes">
+                  <div class="text-[10px] text-indigo-300 font-mono truncate mt-0.5" x-text="selectedFormDetail.allowedFileTypes"></div>
+                </template>
+              </div>
+
+              <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                <div class="text-[10px] text-slate-500 uppercase font-semibold">Submit Action / Endpoint</div>
+                <div class="font-mono text-slate-300 text-[11px] truncate mt-1" x-text="selectedFormDetail.action || '(AJAX / Same page)'"></div>
+              </div>
+            </div>
+
+            <!-- Fields Detailed Table -->
+            <div class="space-y-2">
+              <div class="text-xs font-bold text-slate-300 uppercase tracking-wider">Список полів форми (<span x-text="selectedFormDetail.fields?.length || 0"></span>)</div>
+              <div class="max-h-60 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/60">
+                <table class="w-full text-left text-xs font-mono">
+                  <thead class="bg-slate-900/90 text-slate-400 text-[10px] uppercase border-b border-slate-800 sticky top-0">
+                    <tr>
+                      <th class="py-2 px-3">Ім'я поля</th>
+                      <th class="py-2 px-3">Лейбл / Підказка</th>
+                      <th class="py-2 px-3">Тип</th>
+                      <th class="py-2 px-3 text-center">Обов'язкове</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60">
+                    <template x-for="(fld, fIdx) in selectedFormDetail.fields" :key="fIdx">
+                      <tr class="hover:bg-slate-900/40 transition">
+                        <td class="py-2 px-3 font-semibold text-slate-200" x-text="fld.name"></td>
+                        <td class="py-2 px-3 text-slate-400 truncate max-w-[180px]" x-text="fld.label"></td>
+                        <td class="py-2 px-3">
+                          <span class="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-blue-300" x-text="fld.type"></span>
+                        </td>
+                        <td class="py-2 px-3 text-center">
+                          <span x-text="fld.isRequired ? '✅' : '—'"></span>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Hidden UTM / Tracking Tokens -->
+            <template x-if="selectedFormDetail.hiddenTokens && Object.keys(selectedFormDetail.hiddenTokens).length > 0">
+              <div class="space-y-2 pt-2 border-t border-slate-800/80">
+                <div class="text-xs font-bold text-slate-300 uppercase tracking-wider">Приховані токени та UTM параметри</div>
+                <div class="flex flex-wrap gap-2 max-h-28 overflow-y-auto">
+                  <template x-for="[key, val] in Object.entries(selectedFormDetail.hiddenTokens)" :key="key">
+                    <div class="bg-slate-950 p-2 rounded-lg border border-slate-800 text-[11px] font-mono">
+                      <span class="text-slate-400" x-text="key + ':'"></span>
+                      <span class="text-emerald-400 font-semibold" x-text="val || '(динамічний)'"></span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <div class="flex justify-end pt-3 border-t border-slate-800">
+          <button @click="showFormModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">
+            Закрити
+          </button>
+        </div>
       </div>
     </div>
 

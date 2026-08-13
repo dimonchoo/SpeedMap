@@ -264,20 +264,20 @@ func (a *App) ExportImageComparisonHTML(domain string, cfg config.ScanConfig, re
 
 // ConvertImageToWebP encodes a single image to WebP with the configured quality setting
 func (a *App) ConvertImageToWebP(rawURL string, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {
-	fmt.Printf("[GO LOG] ConvertImageToWebP called for %s (quality=%.0f)\n", rawURL, cfg.NormalizedWebPQuality())
-	res, err := optimizer.ConvertImageURLToWebPAuth(rawURL, cfg.NormalizedWebPQuality(), cfg.AuthUser, cfg.AuthPass)
+	fmt.Printf("[GO LOG] ConvertImageToWebP called for %s (quality=%.0f, threshold=%d KB, adaptive=%v)\n", rawURL, cfg.NormalizedWebPQuality(), cfg.HeavyImageThresholdKB, cfg.IsAdaptiveQualityEnabled())
+	res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL, cfg.NormalizedWebPQuality(), cfg.NormalizedHeavyThresholdBytes(), cfg.IsAdaptiveQualityEnabled(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
 		fmt.Printf("[GO LOG] ConvertImageToWebP error: %v\n", err)
 		return nil, err
 	}
-	fmt.Printf("[GO LOG] ConvertImageToWebP success: %s -> %s (savings %.1f%%)\n", res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent)
+	fmt.Printf("[GO LOG] ConvertImageToWebP success: %s -> %s (savings %.1f%%, qualityUsed=%.0f, lossless=%v)\n", res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
 	return res, nil
 }
 
 // DownloadSingleWebPImage converts a single image to WebP and saves it via SaveFileDialog
 func (a *App) DownloadSingleWebPImage(rawURL string, cfg config.ScanConfig) (string, error) {
 	fmt.Printf("[GO LOG] DownloadSingleWebPImage called for %s\n", rawURL)
-	res, err := optimizer.ConvertImageURLToWebPAuth(rawURL, cfg.NormalizedWebPQuality(), cfg.AuthUser, cfg.AuthPass)
+	res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL, cfg.NormalizedWebPQuality(), cfg.NormalizedHeavyThresholdBytes(), cfg.IsAdaptiveQualityEnabled(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
 		return "", err
 	}
@@ -329,12 +329,14 @@ func (a *App) DownloadOptimizedWebPZIP(urls []string, cfg config.ScanConfig) (st
 	var wg sync.WaitGroup
 
 	quality := cfg.NormalizedWebPQuality()
+	threshold := cfg.NormalizedHeavyThresholdBytes()
+	adaptive := cfg.IsAdaptiveQualityEnabled()
 	authUser, authPass := cfg.AuthUser, cfg.AuthPass
 	for _, rawURL := range urls {
 		wg.Add(1)
 		go func(u string) {
 			defer wg.Done()
-			res, err := optimizer.ConvertImageURLToWebPAuth(u, quality, authUser, authPass)
+			res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(u, quality, threshold, adaptive, authUser, authPass)
 			ch <- convertRes{res: res, err: err}
 		}(rawURL)
 	}
@@ -380,11 +382,12 @@ func (a *App) DownloadOptimizedWebPZIP(urls []string, cfg config.ScanConfig) (st
 	return savePath, nil
 }
 
-// ExportWordPressWebPApplyPHP converts heavy images to WebP under wordpressPath/uploads,
-// writes apply + rollback PHP, and a review ZIP (orig + webp + compare.html) for task handoff.
+// ExportWordPressWebPApplyPHP converts heavy images and writes a deploy package
+// (images/ + apply.php + rollback.php + compare.html). PHP apply copies webp into
+// uploads and retargets attachments — SpeedMap does not write into WP uploads.
 func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, results []scanner.PageResult, wordpressPath string) (*wpexport.ExportResult, error) {
-	wpPath := strings.TrimSpace(wordpressPath)
-	fmt.Printf("[GO LOG] ExportWordPressWebPApplyPHP called for %s (%d pages, path=%s)\n", domain, len(results), wpPath)
+	outBase := strings.TrimSpace(wordpressPath)
+	fmt.Printf("[GO LOG] ExportWordPressWebPApplyPHP called for %s (%d pages, out=%s)\n", domain, len(results), outBase)
 
 	site := analytics.ComputeSiteAnalytics(results, cfg.HeavyImageThresholdKB)
 	heavy := wpexport.CollectHeavyImages(site.AllImages)
@@ -392,45 +395,30 @@ func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, 
 		return nil, fmt.Errorf("no heavy convertible images in scan")
 	}
 
-	written, n, err := wpexport.WriteWebPFiles(wpPath, heavy, cfg.NormalizedWebPQuality(), cfg.AuthUser, cfg.AuthPass)
-	if err != nil {
-		return nil, err
-	}
-
-	manifestImgs := wpexport.ManifestImagesFromWritten(written)
-	php, err := wpexport.BuildApplyPHPFromManifest(domain, cfg, wpPath, manifestImgs)
+	written, err := wpexport.ConvertHeavyImagesWithThreshold(heavy, cfg.NormalizedWebPQuality(), cfg.NormalizedHeavyThresholdBytes(), cfg.IsAdaptiveQualityEnabled(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
 		return nil, err
 	}
 
 	stamp := time.Now().Format("20060102-150405")
-	applyPath := filepath.Join(wpPath, fmt.Sprintf("speedmap-webp-apply-%s.php", stamp))
-	if err := os.WriteFile(applyPath, []byte(php), 0644); err != nil {
-		return nil, fmt.Errorf("failed to write apply PHP: %w", err)
+	pkgDir := outBase
+	if info, statErr := os.Stat(outBase); statErr == nil && info.IsDir() {
+		pkgDir = filepath.Join(outBase, fmt.Sprintf("speedmap-webp-%s", stamp))
+	} else if outBase == "" {
+		return nil, fmt.Errorf("output path is required (folder where the package will be written)")
+	} else {
+		// Treat as parent path to create
+		if err := os.MkdirAll(outBase, 0755); err != nil {
+			return nil, err
+		}
+		pkgDir = filepath.Join(outBase, fmt.Sprintf("speedmap-webp-%s", stamp))
 	}
 
-	rollbackPath := filepath.Join(wpPath, fmt.Sprintf("speedmap-webp-rollback-%s.php", stamp))
-	if err := os.WriteFile(rollbackPath, []byte(wpexport.BuildRollbackPHP(wpPath)), 0644); err != nil {
-		return nil, fmt.Errorf("failed to write rollback PHP: %w", err)
-	}
-
-	zipBytes, err := wpexport.BuildReviewZIP(domain, written)
+	out, err := wpexport.WriteDeployPackage(pkgDir, domain, cfg, written)
 	if err != nil {
 		return nil, err
 	}
-	zipPath := filepath.Join(wpPath, fmt.Sprintf("speedmap-webp-review-%s.zip", stamp))
-	if err := os.WriteFile(zipPath, zipBytes, 0644); err != nil {
-		return nil, fmt.Errorf("failed to write review ZIP: %w", err)
-	}
-
-	out := &wpexport.ExportResult{
-		ApplyPHP:      applyPath,
-		RollbackPHP:   rollbackPath,
-		ReviewZIP:     zipPath,
-		WebPCount:     n,
-		WordPressPath: wpPath,
-	}
-	fmt.Printf("[GO LOG] WP WebP export: %d WebP + apply=%s zip=%s\n", n, applyPath, zipPath)
+	fmt.Printf("[GO LOG] WP WebP package: %d WebP → %s (apply=%s zip=%s)\n", out.WebPCount, out.PackageDir, out.ApplyPHP, out.ReviewZIP)
 	return out, nil
 }
 
@@ -544,6 +532,82 @@ func (a *App) ExportFontsJSON(jsonContent string) (string, error) {
 	filename, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Зберегти звіт по шрифтах (JSON)",
 		DefaultFilename: fmt.Sprintf("speedmap_fonts_report_%d.json", time.Now().Unix()),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
+		},
+	})
+	if err != nil || filename == "" {
+		return "", err
+	}
+	err = os.WriteFile(filename, []byte(jsonContent), 0644)
+	if err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportIframesCSV opens a native macOS Save Dialog and saves the CSV report
+func (a *App) ExportIframesCSV(csvContent string) (string, error) {
+	filename, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Зберегти звіт по iframe (CSV)",
+		DefaultFilename: fmt.Sprintf("speedmap_iframes_report_%d.csv", time.Now().Unix()),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "CSV Files (*.csv)", Pattern: "*.csv"},
+		},
+	})
+	if err != nil || filename == "" {
+		return "", err
+	}
+	err = os.WriteFile(filename, []byte(csvContent), 0644)
+	if err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportIframesJSON opens a native macOS Save Dialog and saves the JSON report
+func (a *App) ExportIframesJSON(jsonContent string) (string, error) {
+	filename, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Зберегти звіт по iframe (JSON)",
+		DefaultFilename: fmt.Sprintf("speedmap_iframes_report_%d.json", time.Now().Unix()),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
+		},
+	})
+	if err != nil || filename == "" {
+		return "", err
+	}
+	err = os.WriteFile(filename, []byte(jsonContent), 0644)
+	if err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportFormsCSV opens a native macOS Save Dialog and saves the Forms CSV report
+func (a *App) ExportFormsCSV(csvContent string) (string, error) {
+	filename, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Зберегти звіт по формах сайту (CSV)",
+		DefaultFilename: fmt.Sprintf("speedmap_forms_report_%d.csv", time.Now().Unix()),
+		Filters: []runtime.FileFilter{
+			{DisplayName: "CSV Files (*.csv)", Pattern: "*.csv"},
+		},
+	})
+	if err != nil || filename == "" {
+		return "", err
+	}
+	err = os.WriteFile(filename, []byte(csvContent), 0644)
+	if err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportFormsJSON opens a native macOS Save Dialog and saves the Forms JSON report
+func (a *App) ExportFormsJSON(jsonContent string) (string, error) {
+	filename, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Зберегти звіт по формах сайту (JSON)",
+		DefaultFilename: fmt.Sprintf("speedmap_forms_report_%d.json", time.Now().Unix()),
 		Filters: []runtime.FileFilter{
 			{DisplayName: "JSON Files (*.json)", Pattern: "*.json"},
 		},

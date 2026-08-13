@@ -28,6 +28,60 @@ export namespace analytics {
 	        this.pageUrls = source["pageUrls"];
 	    }
 	}
+	export class AggregatedForm {
+	    id: string;
+	    title: string;
+	    engine: string;
+	    method: string;
+	    action: string;
+	    pageCount: number;
+	    pages: string[];
+	    fields: scanner.FormFieldDetail[];
+	    fieldCount: number;
+	    hasFileUpload: boolean;
+	    allowedFileTypes?: string;
+	    captcha: scanner.CaptchaDetail;
+	    hiddenTokens?: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new AggregatedForm(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.engine = source["engine"];
+	        this.method = source["method"];
+	        this.action = source["action"];
+	        this.pageCount = source["pageCount"];
+	        this.pages = source["pages"];
+	        this.fields = this.convertValues(source["fields"], scanner.FormFieldDetail);
+	        this.fieldCount = source["fieldCount"];
+	        this.hasFileUpload = source["hasFileUpload"];
+	        this.allowedFileTypes = source["allowedFileTypes"];
+	        this.captcha = this.convertValues(source["captcha"], scanner.CaptchaDetail);
+	        this.hiddenTokens = source["hiddenTokens"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class AggregatedIframe {
 	    src: string;
 	    title: string;
@@ -138,6 +192,7 @@ export namespace analytics {
 	    allImages: AggregatedImage[];
 	    fontUsage: AggregatedFont[];
 	    iframes: AggregatedIframe[];
+	    forms: AggregatedForm[];
 	    globalFixes: string[];
 	    totalImagePayloadBytes: number;
 	    totalImagePayloadFormatted: string;
@@ -151,6 +206,12 @@ export namespace analytics {
 	    totalIframeCount: number;
 	    missedIframeCount: number;
 	    loadedIframeCount: number;
+	    totalFormsCount: number;
+	    pagesWithFormsCount: number;
+	    captchaProtectedCount: number;
+	    unprotectedFormsCount: number;
+	    fileUploadFormsCount: number;
+	    formEngineBreakdown: Record<string, number>;
 	
 	    static createFrom(source: any = {}) {
 	        return new SiteAnalytics(source);
@@ -167,6 +228,7 @@ export namespace analytics {
 	        this.allImages = this.convertValues(source["allImages"], AggregatedImage);
 	        this.fontUsage = this.convertValues(source["fontUsage"], AggregatedFont);
 	        this.iframes = this.convertValues(source["iframes"], AggregatedIframe);
+	        this.forms = this.convertValues(source["forms"], AggregatedForm);
 	        this.globalFixes = source["globalFixes"];
 	        this.totalImagePayloadBytes = source["totalImagePayloadBytes"];
 	        this.totalImagePayloadFormatted = source["totalImagePayloadFormatted"];
@@ -180,6 +242,12 @@ export namespace analytics {
 	        this.totalIframeCount = source["totalIframeCount"];
 	        this.missedIframeCount = source["missedIframeCount"];
 	        this.loadedIframeCount = source["loadedIframeCount"];
+	        this.totalFormsCount = source["totalFormsCount"];
+	        this.pagesWithFormsCount = source["pagesWithFormsCount"];
+	        this.captchaProtectedCount = source["captchaProtectedCount"];
+	        this.unprotectedFormsCount = source["unprotectedFormsCount"];
+	        this.fileUploadFormsCount = source["fileUploadFormsCount"];
+	        this.formEngineBreakdown = source["formEngineBreakdown"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -258,6 +326,7 @@ export namespace config {
 	    timeoutSec: number;
 	    gdriveClientID: string;
 	    gdriveClientSecret: string;
+	    adaptiveQuality?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanConfig(source);
@@ -280,6 +349,7 @@ export namespace config {
 	        this.timeoutSec = source["timeoutSec"];
 	        this.gdriveClientID = source["gdriveClientID"];
 	        this.gdriveClientSecret = source["gdriveClientSecret"];
+	        this.adaptiveQuality = source["adaptiveQuality"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -383,6 +453,9 @@ export namespace optimizer {
 	    savingsBytes: number;
 	    savingsFormatted: string;
 	    savingsPercent: number;
+	    qualityUsed: number;
+	    isLossless: boolean;
+	    adaptiveApplied: boolean;
 	    originalDataBase64: string;
 	    optimizedWebPBase64: string;
 	    error: string;
@@ -402,6 +475,9 @@ export namespace optimizer {
 	        this.savingsBytes = source["savingsBytes"];
 	        this.savingsFormatted = source["savingsFormatted"];
 	        this.savingsPercent = source["savingsPercent"];
+	        this.qualityUsed = source["qualityUsed"];
+	        this.isLossless = source["isLossless"];
+	        this.adaptiveApplied = source["adaptiveApplied"];
 	        this.originalDataBase64 = source["originalDataBase64"];
 	        this.optimizedWebPBase64 = source["optimizedWebPBase64"];
 	        this.error = source["error"];
@@ -462,6 +538,24 @@ export namespace profiles {
 
 export namespace scanner {
 	
+	export class CaptchaDetail {
+	    type: string;
+	    siteKey?: string;
+	    action?: string;
+	    isActive: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CaptchaDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.siteKey = source["siteKey"];
+	        this.action = source["action"];
+	        this.isActive = source["isActive"];
+	    }
+	}
 	export class CategoryDiagnostic {
 	    category: string;
 	    title: string;
@@ -558,6 +652,83 @@ export namespace scanner {
 	        this.duration = source["duration"];
 	    }
 	}
+	export class FormFieldDetail {
+	    name: string;
+	    label: string;
+	    type: string;
+	    isRequired: boolean;
+	    validationPattern?: string;
+	    accept?: string;
+	    value?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FormFieldDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.label = source["label"];
+	        this.type = source["type"];
+	        this.isRequired = source["isRequired"];
+	        this.validationPattern = source["validationPattern"];
+	        this.accept = source["accept"];
+	        this.value = source["value"];
+	    }
+	}
+	export class FormDetail {
+	    id: string;
+	    title: string;
+	    engine: string;
+	    method: string;
+	    action: string;
+	    fields: FormFieldDetail[];
+	    fieldCount: number;
+	    hasFileUpload: boolean;
+	    allowedFileTypes?: string;
+	    captcha: CaptchaDetail;
+	    hiddenTokens?: Record<string, string>;
+	    inViewport: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new FormDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.engine = source["engine"];
+	        this.method = source["method"];
+	        this.action = source["action"];
+	        this.fields = this.convertValues(source["fields"], FormFieldDetail);
+	        this.fieldCount = source["fieldCount"];
+	        this.hasFileUpload = source["hasFileUpload"];
+	        this.allowedFileTypes = source["allowedFileTypes"];
+	        this.captcha = this.convertValues(source["captcha"], CaptchaDetail);
+	        this.hiddenTokens = source["hiddenTokens"];
+	        this.inViewport = source["inViewport"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class IframeDetail {
 	    src: string;
 	    title: string;
@@ -656,6 +827,7 @@ export namespace scanner {
 	    largestImages: ImageDetail[];
 	    fonts: FontDetail[];
 	    iframes: IframeDetail[];
+	    forms: FormDetail[];
 	    categories: Record<string, CategoryDiagnostic>;
 	    w3c?: any;
 	
@@ -681,6 +853,7 @@ export namespace scanner {
 	        this.largestImages = this.convertValues(source["largestImages"], ImageDetail);
 	        this.fonts = this.convertValues(source["fonts"], FontDetail);
 	        this.iframes = this.convertValues(source["iframes"], IframeDetail);
+	        this.forms = this.convertValues(source["forms"], FormDetail);
 	        this.categories = this.convertValues(source["categories"], CategoryDiagnostic, true);
 	        this.w3c = source["w3c"];
 	    }
@@ -860,6 +1033,7 @@ export namespace wpexport {
 	    applyPHP: string;
 	    rollbackPHP: string;
 	    reviewZIP: string;
+	    packageDir: string;
 	    webpCount: number;
 	    wordpressPath: string;
 	
@@ -872,6 +1046,7 @@ export namespace wpexport {
 	        this.applyPHP = source["applyPHP"];
 	        this.rollbackPHP = source["rollbackPHP"];
 	        this.reviewZIP = source["reviewZIP"];
+	        this.packageDir = source["packageDir"];
 	        this.webpCount = source["webpCount"];
 	        this.wordpressPath = source["wordpressPath"];
 	    }

@@ -1,0 +1,112 @@
+{
+  "version": "1.0",
+  "engines": [
+    {
+      "id": "contact-form-7",
+      "name": "Contact Form 7",
+      "selectors": [
+        "form.wpcf7-form",
+        ".wpcf7 form",
+        "div.wpcf7",
+        "[data-wpcf7-id]"
+      ]
+    },
+    {
+      "id": "greenhouse",
+      "name": "Greenhouse ATS",
+      "selectors": [
+        "form#application_form",
+        ".greenhouse-form",
+        "[data-email-address-validator-url*=\"greenhouse.io\"]",
+        "input[name=\"jobs_id\"]",
+        ".join-position-hiring-flex__right--form"
+      ]
+    },
+    {
+      "id": "pardot",
+      "name": "Pardot / Salesforce",
+      "selectors": [
+        "form.pardot-form",
+        "input[value=\"pardot_form_send\"]",
+        "input[name=\"action\"][value*=\"pardot\"]",
+        "iframe[src*=\"pardot.com\"]",
+        "iframe[src*=\"go.pardot.com\"]"
+      ]
+    },
+    {
+      "id": "hubspot",
+      "name": "HubSpot Form",
+      "selectors": [
+        "form.hs-form",
+        ".hbspt-form",
+        "iframe[src*=\"forms.hubspot.com\"]",
+        "[data-form-id]"
+      ]
+    },
+    {
+      "id": "gravity-forms",
+      "name": "Gravity Forms",
+      "selectors": [
+        "form.gform_wrapper",
+        "div.gform_wrapper",
+        "[id^=\"gform_\"]"
+      ]
+    },
+    {
+      "id": "wpforms",
+      "name": "WPForms",
+      "selectors": [
+        "form.wpforms-form",
+        "div.wpforms-container"
+      ]
+    },
+    {
+      "id": "mailchimp",
+      "name": "Mailchimp",
+      "selectors": [
+        "form#mc-embedded-subscribe-form",
+        "form[action*=\"list-manage.com/subscribe\"]"
+      ]
+    },
+    {
+      "id": "native-html",
+      "name": "HTML Form",
+      "selectors": [
+        "form"
+      ]
+    }
+  ],
+  "captcha_signatures": [
+    {
+      "type": "recaptcha-v3",
+      "selectors": [
+        "input[name=\"_wpcf7_recaptcha_response\"]",
+        "input[name=\"g-recaptcha-response\"]",
+        ".grecaptcha-badge"
+      ]
+    },
+    {
+      "type": "recaptcha-v2",
+      "selectors": [
+        ".g-recaptcha",
+        "iframe[src*=\"google.com/recaptcha/api2\"]",
+        "div[data-sitekey]"
+      ]
+    },
+    {
+      "type": "turnstile",
+      "selectors": [
+        ".cf-turnstile",
+        "iframe[src*=\"challenges.cloudflare.com\"]",
+        "[data-turnstile-sitekey]"
+      ]
+    },
+    {
+      "type": "hcaptcha",
+      "selectors": [
+        ".h-captcha",
+        "iframe[src*=\"hcaptcha.com\"]"
+      ]
+    }
+  ]
+}

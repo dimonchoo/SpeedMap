@@ -1,25 +1,30 @@
 <?php
 /**
- * SpeedMap WebP apply script (WP-CLI eval-file) — DB only
+ * SpeedMap WebP apply script (WP-CLI eval-file)
  *
- * WebP files are written by SpeedMap into wp-content/uploads before you run this.
- * Place this PHP next to the WP root (or anywhere), then:
- *   wp eval-file this-file.php --path={{WORDPRESS_PATH}}
+ * Unpack the SpeedMap package so this PHP sits next to images/:
+ *   package/
+ *     apply.php          ← this file
+ *     images/001/optimized.webp
+ *     …
+ *
+ * Then on the target WP:
+ *   wp eval-file /path/to/package/apply.php --path=/var/www/site
  *
  * What it does:
- *   1) Reads embedded manifest (webpRel + old URLs + pages from SpeedMap scan)
- *   2) Verifies each .webp already exists under uploads
- *   3) Writes backup JSON (old meta/URLs) BEFORE mutating
- *   4) Updates attachment file pointer + mime (keeps old files on disk; keeps title/alt/caption)
- *   5) URL search-replace
- *   6) Writes JSON report + QA HTML checklist
+ *   1) Copies images/{id}/optimized.webp → wp-content/uploads/{webpRel}
+ *      (does NOT delete originals on disk)
+ *   2) Writes backup JSON (old meta/URLs) BEFORE mutating
+ *   3) Updates attachment file pointer + mime (keeps title/alt/caption)
+ *   4) URL search-replace in posts / postmeta / guid
+ *   5) Writes JSON report + QA HTML checklist
  *
- * Rollback: wp eval-file speedmap-webp-rollback-….php --path=…
+ * Rollback: wp eval-file rollback.php --path=…
  *
- * Requires: WP-CLI. Does NOT download or convert images. Does NOT delete originals.
+ * Requires: WP-CLI. Does NOT download or convert images.
  */
 if ( ! defined( 'ABSPATH' ) ) {
-	fwrite( STDERR, "Run via: wp eval-file this-file.php --path={{WORDPRESS_PATH}}\n" );
+	fwrite( STDERR, "Run via: wp eval-file this-file.php --path=/path/to/wordpress\n" );
 	exit( 1 );
 }
 
@@ -37,7 +42,11 @@ if ( $quality < 1 || $quality > 100 ) {
 	$quality = 80;
 }
 
-$wp_path = isset( $SPEEDMAP_MANIFEST['wordpressPath'] ) ? $SPEEDMAP_MANIFEST['wordpressPath'] : '{{WORDPRESS_PATH}}';
+$package_dir = dirname( __FILE__ );
+// Optional: wp eval-file apply.php /abs/path/to/package --path=…
+if ( isset( $args[0] ) && is_string( $args[0] ) && $args[0] !== '' && is_dir( $args[0] ) ) {
+	$package_dir = rtrim( $args[0], '/\\' );
+}
 
 $uploads = wp_upload_dir();
 if ( ! empty( $uploads['error'] ) ) {
@@ -46,7 +55,7 @@ if ( ! empty( $uploads['error'] ) ) {
 
 $report = array(
 	'domain'         => isset( $SPEEDMAP_MANIFEST['domain'] ) ? $SPEEDMAP_MANIFEST['domain'] : '',
-	'wordpressPath'  => $wp_path,
+	'packageDir'     => $package_dir,
 	'generated'      => isset( $SPEEDMAP_MANIFEST['generated'] ) ? $SPEEDMAP_MANIFEST['generated'] : '',
 	'appliedAt'      => gmdate( 'c' ),
 	'quality'        => $quality,
@@ -85,7 +94,7 @@ function speedmap_find_attachment_id( $basename, $path_hint ) {
 			$like
 		)
 	);
-	if ( count( $rows ) === 1 ) {
+	if ( count( $rows ) == 1 ) {
 		return (int) $rows[0];
 	}
 	if ( $path_hint ) {
@@ -96,7 +105,6 @@ function speedmap_find_attachment_id( $basename, $path_hint ) {
 				return (int) $pid;
 			}
 		}
-		// Also match when attached file is already webp with same stem
 		$hint_stem = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $hint_base );
 		foreach ( $rows as $pid ) {
 			$file = get_post_meta( (int) $pid, '_wp_attached_file', true );
@@ -110,7 +118,7 @@ function speedmap_find_attachment_id( $basename, $path_hint ) {
 		}
 	}
 	if ( count( $rows ) > 1 ) {
-		return 0; // ambiguous
+		return 0;
 	}
 	$guid_like = '%' . $wpdb->esc_like( $basename );
 	$guid_ids  = $wpdb->get_col(
@@ -119,7 +127,7 @@ function speedmap_find_attachment_id( $basename, $path_hint ) {
 			$guid_like
 		)
 	);
-	if ( count( $guid_ids ) === 1 ) {
+	if ( count( $guid_ids ) == 1 ) {
 		return (int) $guid_ids[0];
 	}
 	return 0;
@@ -137,7 +145,32 @@ function speedmap_replace_urls( $old_url, $new_url ) {
 	return $n;
 }
 
-function speedmap_resolve_item( $item, $uploads ) {
+/**
+ * Copy package webp into uploads/{webpRel}. Never deletes the original raster.
+ */
+function speedmap_copy_package_webp( $package_dir, $item, $dest_abs ) {
+	$rel = isset( $item['packageWebp'] ) ? ltrim( str_replace( '\\', '/', $item['packageWebp'] ), '/' ) : '';
+	if ( $rel === '' && ! empty( $item['id'] ) ) {
+		$rel = 'images/' . $item['id'] . '/optimized.webp';
+	}
+	if ( $rel === '' ) {
+		return new WP_Error( 'speedmap_no_package', 'packageWebp missing in manifest' );
+	}
+	$src = trailingslashit( $package_dir ) . str_replace( '/', DIRECTORY_SEPARATOR, $rel );
+	if ( ! file_exists( $src ) ) {
+		return new WP_Error( 'speedmap_missing_src', 'package file missing: ' . $rel );
+	}
+	$dir = dirname( $dest_abs );
+	if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
+		return new WP_Error( 'speedmap_mkdir', 'cannot create ' . $dir );
+	}
+	if ( ! copy( $src, $dest_abs ) ) {
+		return new WP_Error( 'speedmap_copy', 'copy failed: ' . $rel . ' → ' . $dest_abs );
+	}
+	return $rel;
+}
+
+function speedmap_resolve_item( $item, $uploads, $package_dir ) {
 	$row = array(
 		'sourceUrl'    => isset( $item['sourceUrl'] ) ? $item['sourceUrl'] : '',
 		'pages'        => isset( $item['pages'] ) && is_array( $item['pages'] ) ? $item['pages'] : array(),
@@ -149,7 +182,9 @@ function speedmap_resolve_item( $item, $uploads ) {
 		'webpRel'      => '',
 		'pathHint'     => '',
 		'basename'     => '',
+		'packageWebp'  => '',
 		'destAbs'      => '',
+		'copied'       => false,
 	);
 
 	$source = $row['sourceUrl'];
@@ -180,9 +215,17 @@ function speedmap_resolve_item( $item, $uploads ) {
 	$row['newUrl']  = trailingslashit( $uploads['baseurl'] ) . $webp_rel;
 	$row['oldUrl']  = $source;
 
-	if ( ! file_exists( $dest_abs ) ) {
-		$row['reason'] = 'webp missing on disk (export from SpeedMap first): ' . $webp_rel;
-		return $row;
+	$copy = speedmap_copy_package_webp( $package_dir, $item, $dest_abs );
+	if ( is_wp_error( $copy ) ) {
+		// Allow re-run if webp already sits in uploads from a prior apply.
+		if ( ! file_exists( $dest_abs ) ) {
+			$row['reason'] = $copy->get_error_message();
+			return $row;
+		}
+		$row['reason'] = 'package copy skipped; existing uploads webp kept';
+	} else {
+		$row['packageWebp'] = $copy;
+		$row['copied']      = true;
 	}
 
 	$att_id              = speedmap_find_attachment_id( $basename, $path_hint );
@@ -194,28 +237,30 @@ function speedmap_resolve_item( $item, $uploads ) {
 		}
 	}
 	$row['status'] = 'pending';
-	$row['reason'] = '';
+	if ( $row['reason'] === '' ) {
+		$row['reason'] = '';
+	}
 	return $row;
 }
 
-WP_CLI::log( sprintf( 'SpeedMap WebP DB apply: %d images, path=%s', count( $SPEEDMAP_MANIFEST['images'] ), $wp_path ) );
+WP_CLI::log( sprintf( 'SpeedMap WebP apply: %d images, package=%s', count( $SPEEDMAP_MANIFEST['images'] ), $package_dir ) );
 
-// Pass 1: resolve + snapshot backup (before any mutation)
+// Pass 1: copy into uploads + resolve + snapshot backup (before any DB mutation)
 $resolved = array();
 $backup   = array(
-	'domain'        => isset( $SPEEDMAP_MANIFEST['domain'] ) ? $SPEEDMAP_MANIFEST['domain'] : '',
-	'wordpressPath' => $wp_path,
-	'createdAt'     => gmdate( 'c' ),
-	'items'         => array(),
+	'domain'     => isset( $SPEEDMAP_MANIFEST['domain'] ) ? $SPEEDMAP_MANIFEST['domain'] : '',
+	'packageDir' => $package_dir,
+	'createdAt'  => gmdate( 'c' ),
+	'items'      => array(),
 );
 
 foreach ( $SPEEDMAP_MANIFEST['images'] as $item ) {
-	$row = speedmap_resolve_item( $item, $uploads );
+	$row        = speedmap_resolve_item( $item, $uploads, $package_dir );
 	$resolved[] = $row;
 	if ( $row['status'] !== 'pending' || ! $row['attachmentId'] ) {
 		continue;
 	}
-	$att_id = $row['attachmentId'];
+	$att_id            = $row['attachmentId'];
 	$backup['items'][] = array(
 		'attachmentId'      => $att_id,
 		'oldAttachedFile'   => get_post_meta( $att_id, '_wp_attached_file', true ),
@@ -230,13 +275,13 @@ foreach ( $SPEEDMAP_MANIFEST['images'] as $item ) {
 	);
 }
 
-$stamp = gmdate( 'Ymd-His' );
+$stamp       = gmdate( 'Ymd-His' );
 $backup_path = trailingslashit( $uploads['basedir'] ) . 'speedmap-webp-backup-' . $stamp . '.json';
 file_put_contents( $backup_path, wp_json_encode( $backup, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
 $report['backup'] = $backup_path;
 WP_CLI::log( 'Backup written: ' . $backup_path . ' (' . count( $backup['items'] ) . ' attachments)' );
 
-// Pass 2: mutate (keep old files on disk; preserve title/alt/caption)
+// Pass 2: mutate DB (keep old raster files on disk; preserve title/alt/caption)
 foreach ( $resolved as $row ) {
 	if ( $row['status'] !== 'pending' ) {
 		$report['items'][] = $row;
@@ -250,7 +295,6 @@ foreach ( $resolved as $row ) {
 	$new_url  = $row['newUrl'];
 
 	if ( $att_id ) {
-		// Title / alt / caption intentionally untouched (same attachment).
 		update_post_meta( $att_id, '_wp_attached_file', $webp_rel );
 		wp_update_post(
 			array(
@@ -274,10 +318,10 @@ foreach ( $resolved as $row ) {
 			}
 		}
 		$row['status'] = 'applied';
-		$row['reason'] = '';
+		$row['reason'] = $row['copied'] ? 'copied + DB' : 'DB (webp already in uploads)';
 	} else {
 		$row['status'] = 'file_only';
-		$row['reason'] = 'webp on disk but no unique attachment match (old files kept)';
+		$row['reason'] = 'webp copied/present but no unique attachment match (old files kept)';
 	}
 
 	unset( $row['destAbs'] );
@@ -290,12 +334,12 @@ file_put_contents( $report_path, wp_json_encode( $report, JSON_PRETTY_PRINT | JS
 
 $qa_path = trailingslashit( $uploads['basedir'] ) . 'speedmap-webp-qa-' . $stamp . '.html';
 file_put_contents( $qa_path, speedmap_build_qa_html( $report ) );
-$report['qaReport'] = $qa_path;
+$report['qaReport']   = $qa_path;
 $report['jsonReport'] = $report_path;
 file_put_contents( $report_path, wp_json_encode( $report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
 
-$ok = 0;
-$fail = 0;
+$ok        = 0;
+$fail      = 0;
 $file_only = 0;
 foreach ( $report['items'] as $it ) {
 	if ( $it['status'] === 'applied' ) {
@@ -317,37 +361,29 @@ function speedmap_build_qa_html( $report ) {
 	$esc = function( $s ) {
 		return htmlspecialchars( (string) $s, ENT_QUOTES, 'UTF-8' );
 	};
-	$rows = '';
-	foreach ( $report['items'] as $it ) {
-		$pages_html = '';
-		if ( ! empty( $it['pages'] ) && is_array( $it['pages'] ) ) {
-			$links = array();
-			foreach ( $it['pages'] as $pg ) {
-				$links[] = '<a href="' . $esc( $pg ) . '" target="_blank" rel="noopener">' . $esc( $pg ) . '</a>';
-			}
-			$pages_html = implode( '<br>', $links );
+	$html  = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>SpeedMap WebP QA</title>';
+	$html .= '<style>body{font-family:system-ui,sans-serif;margin:24px;color:#111}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;vertical-align:top;font-size:13px}th{background:#f4f4f4;text-align:left}.st-applied{background:#e8f8e8}.st-file_only{background:#fff8e0}.st-failed{background:#fde8e8}a{word-break:break-all}</style></head><body>';
+	$html .= '<h1>SpeedMap WebP QA</h1>';
+	$html .= '<p>Applied at: ' . $esc( isset( $report['appliedAt'] ) ? $report['appliedAt'] : '' );
+	$html .= ' · Package: <code>' . $esc( isset( $report['packageDir'] ) ? $report['packageDir'] : '' ) . '</code>';
+	$html .= ' · Quality: ' . $esc( isset( $report['quality'] ) ? $report['quality'] : '' );
+	$html .= ' · Backup: <code>' . $esc( isset( $report['backup'] ) ? $report['backup'] : '' ) . '</code></p>';
+	$html .= '<p>Open each <strong>Pages</strong> URL and confirm the image loads as WebP. Old raster files remain on disk for rollback.</p>';
+	$html .= '<table><thead><tr><th>Status</th><th>Old URL</th><th>New URL</th><th>Pages</th><th>Notes</th></tr></thead><tbody>';
+	foreach ( isset( $report['items'] ) ? $report['items'] : array() as $it ) {
+		$st = isset( $it['status'] ) ? $it['status'] : '';
+		$html .= '<tr class="st-' . $esc( $st ) . '">';
+		$html .= '<td>' . $esc( $st ) . '</td>';
+		$html .= '<td>' . $esc( isset( $it['oldUrl'] ) ? $it['oldUrl'] : '' ) . '</td>';
+		$html .= '<td>' . $esc( isset( $it['newUrl'] ) ? $it['newUrl'] : '' ) . '</td>';
+		$html .= '<td>';
+		foreach ( isset( $it['pages'] ) && is_array( $it['pages'] ) ? array_slice( $it['pages'], 0, 5 ) : array() as $p ) {
+			$html .= '<div><a href="' . $esc( $p ) . '" target="_blank" rel="noopener">' . $esc( $p ) . '</a></div>';
 		}
-		$status = isset( $it['status'] ) ? $it['status'] : '';
-		$rows .= '<tr class="st-' . $esc( $status ) . '">'
-			. '<td>' . $esc( $status ) . '</td>'
-			. '<td><a href="' . $esc( isset( $it['oldUrl'] ) ? $it['oldUrl'] : '' ) . '" target="_blank" rel="noopener">' . $esc( isset( $it['oldUrl'] ) ? $it['oldUrl'] : '' ) . '</a></td>'
-			. '<td><a href="' . $esc( isset( $it['newUrl'] ) ? $it['newUrl'] : '' ) . '" target="_blank" rel="noopener">' . $esc( isset( $it['newUrl'] ) ? $it['newUrl'] : '' ) . '</a></td>'
-			. '<td>' . $pages_html . '</td>'
-			. '<td>' . $esc( isset( $it['reason'] ) ? $it['reason'] : '' ) . '</td>'
-			. '</tr>';
+		$html .= '</td>';
+		$html .= '<td>' . $esc( isset( $it['reason'] ) ? $it['reason'] : '' ) . '</td>';
+		$html .= '</tr>';
 	}
-
-	$title = 'SpeedMap WebP QA — ' . $esc( isset( $report['domain'] ) ? $report['domain'] : '' );
-	return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' . $title . '</title>'
-		. '<style>body{font-family:system-ui,sans-serif;margin:24px;color:#111}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;vertical-align:top;font-size:13px}th{background:#f4f4f4;text-align:left}.st-applied{background:#e8f8e8}.st-file_only{background:#fff8e0}.st-failed{background:#fde8e8}a{word-break:break-all}</style>'
-		. '</head><body>'
-		. '<h1>' . $title . '</h1>'
-		. '<p>Applied at: ' . $esc( isset( $report['appliedAt'] ) ? $report['appliedAt'] : '' )
-		. ' · WP path: <code>' . $esc( isset( $report['wordpressPath'] ) ? $report['wordpressPath'] : '' ) . '</code>'
-		. ' · Quality: ' . $esc( isset( $report['quality'] ) ? $report['quality'] : '' )
-		. ' · Backup: <code>' . $esc( isset( $report['backup'] ) ? $report['backup'] : '' ) . '</code></p>'
-		. '<p>Open each <strong>Pages</strong> URL and confirm the image loads as WebP (new URL). Compare old vs new. Old files remain on disk for rollback.</p>'
-		. '<table><thead><tr><th>Status</th><th>Old URL</th><th>New URL</th><th>Pages (spot-check)</th><th>Notes</th></tr></thead><tbody>'
-		. $rows
-		. '</tbody></table></body></html>';
+	$html .= '</tbody></table></body></html>';
+	return $html;
 }

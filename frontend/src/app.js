@@ -6,6 +6,7 @@ function speedMapApp() {
       concurrency: 1, // Default 1 process as requested
       heavyImageThresholdKB: 100, // Default 100 KB heavy image threshold
       webpQuality: 80, // WebP compression quality (1 - 100)
+      adaptiveQuality: true, // Auto-adjust quality for gradients & lossless for transparent graphics
       pngWebPRatio: 30, // Default 30% of original (70% savings)
       jpgWebPRatio: 60, // Default 60% of original (40% savings)
       gifWebPRatio: 50, // Default 50% of original (50% savings)
@@ -30,8 +31,16 @@ function speedMapApp() {
     discoveredUrls: [],
     selectedUrls: [],
     urlFilter: '',
+    pageSearchQuery: '', // Search across scanned pages / links
     isParsing: false,
     parseError: '',
+
+    // Form Hub State
+    formSearchQuery: '',
+    formEngineFilter: 'all', // 'all' | 'contact-form-7' | 'greenhouse' | 'pardot' | 'hubspot' | 'native-html' | 'has-captcha' | 'no-captcha' | 'file-upload'
+    formViewMode: 'by-page', // 'by-page' | 'by-form'
+    selectedFormDetail: null,
+    showFormModal: false,
 
     // Activity Log & Toast Feed
     activityLogs: [],
@@ -803,11 +812,24 @@ function speedMapApp() {
     },
 
     get filteredResults() {
-      if (this.statusFilter === 'all') return this.scanResults;
+      let results = this.scanResults || [];
       if (this.statusFilter === 'critical') {
-        return this.scanResults.filter(r => r.overallStatus === 'poor' || r.overallStatus === 'error');
+        results = results.filter(r => r.overallStatus === 'poor' || r.overallStatus === 'error');
+      } else if (this.statusFilter !== 'all') {
+        results = results.filter(r => r.overallStatus === this.statusFilter);
       }
-      return this.scanResults.filter(r => r.overallStatus === this.statusFilter);
+
+      if (this.pageSearchQuery && this.pageSearchQuery.trim()) {
+        const q = this.pageSearchQuery.toLowerCase().trim();
+        results = results.filter(r => 
+          (r.url && r.url.toLowerCase().includes(q)) || 
+          (r.id && String(r.id).includes(q)) ||
+          (r.pluginCacheStatus && r.pluginCacheStatus.toLowerCase().includes(q)) ||
+          (r.cloudflareCacheStatus && r.cloudflareCacheStatus.toLowerCase().includes(q))
+        );
+      }
+
+      return results;
     },
 
     updateFilteredImages() {
@@ -948,6 +970,234 @@ function speedMapApp() {
       return list;
     },
 
+    get pageFormsList() {
+      if (!this.scanResults || this.scanResults.length === 0) return [];
+      let list = this.scanResults.map(p => {
+        const forms = p.diagnostics?.forms || [];
+        return {
+          id: p.id,
+          url: p.url,
+          formCount: forms.length,
+          forms: forms,
+          hasCaptcha: forms.some(f => f.captcha?.isActive),
+          hasFileUpload: forms.some(f => f.hasFileUpload),
+          engines: [...new Set(forms.map(f => f.engine))]
+        };
+      }).filter(item => item.formCount > 0);
+
+      if (this.formSearchQuery && this.formSearchQuery.trim()) {
+        const q = this.formSearchQuery.toLowerCase().trim();
+        list = list.filter(item => {
+          if (item.url && item.url.toLowerCase().includes(q)) return true;
+          return item.forms.some(f =>
+            (f.title && f.title.toLowerCase().includes(q)) ||
+            (f.id && f.id.toLowerCase().includes(q)) ||
+            (f.engine && f.engine.toLowerCase().includes(q)) ||
+            (f.fields && f.fields.some(fld => (fld.name && fld.name.toLowerCase().includes(q)) || (fld.label && fld.label.toLowerCase().includes(q))))
+          );
+        });
+      }
+
+      if (this.formEngineFilter !== 'all') {
+        if (this.formEngineFilter === 'has-captcha') {
+          list = list.filter(item => item.forms.some(f => f.captcha?.isActive));
+        } else if (this.formEngineFilter === 'no-captcha') {
+          list = list.filter(item => item.forms.some(f => !f.captcha?.isActive));
+        } else if (this.formEngineFilter === 'file-upload') {
+          list = list.filter(item => item.forms.some(f => f.hasFileUpload));
+        } else {
+          const target = this.formEngineFilter.toLowerCase();
+          list = list.filter(item => item.forms.some(f => f.engine && f.engine.toLowerCase().includes(target)));
+        }
+      }
+
+      return list;
+    },
+
+    get filteredForms() {
+      if (!this.siteAnalytics || !this.siteAnalytics.forms) return [];
+      let list = [...this.siteAnalytics.forms];
+
+      if (this.formSearchQuery && this.formSearchQuery.trim()) {
+        const q = this.formSearchQuery.toLowerCase().trim();
+        list = list.filter(f =>
+          (f.title && f.title.toLowerCase().includes(q)) ||
+          (f.id && f.id.toLowerCase().includes(q)) ||
+          (f.engine && f.engine.toLowerCase().includes(q)) ||
+          (f.pages && f.pages.some(p => p.toLowerCase().includes(q))) ||
+          (f.fields && f.fields.some(fld => (fld.name && fld.name.toLowerCase().includes(q)) || (fld.label && fld.label.toLowerCase().includes(q))))
+        );
+      }
+
+      if (this.formEngineFilter !== 'all') {
+        if (this.formEngineFilter === 'has-captcha') {
+          list = list.filter(f => f.captcha?.isActive);
+        } else if (this.formEngineFilter === 'no-captcha') {
+          list = list.filter(f => !f.captcha?.isActive);
+        } else if (this.formEngineFilter === 'file-upload') {
+          list = list.filter(f => f.hasFileUpload);
+        } else {
+          const target = this.formEngineFilter.toLowerCase();
+          list = list.filter(f => f.engine && f.engine.toLowerCase().includes(target));
+        }
+      }
+
+      list.sort((a, b) => (b.pageCount || 0) - (a.pageCount || 0));
+      return list;
+    },
+
+    openFormDetailModal(form) {
+      this.selectedFormDetail = form;
+      this.showFormModal = true;
+    },
+
+    async exportFormsCSV() {
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
+        return;
+      }
+      let csv = "Page URL,Form ID,Form Title,Engine,Method,Action,Field Count,Fields List,File Upload,Allowed File Types,Captcha Type,Captcha Active,Hidden UTM Tokens\n";
+      this.scanResults.forEach(p => {
+        const pageUrl = `"${(p.url || '').replace(/"/g, '""')}"`;
+        const forms = p.diagnostics?.forms || [];
+        if (forms.length === 0) {
+          csv += `${pageUrl},"No forms","none","none","none","none",0,"","false","","none","false",""\n`;
+        } else {
+          forms.forEach(f => {
+            const formId = `"${(f.id || '').replace(/"/g, '""')}"`;
+            const title = `"${(f.title || '').replace(/"/g, '""')}"`;
+            const engine = `"${(f.engine || '').replace(/"/g, '""')}"`;
+            const method = `"${(f.method || 'POST').replace(/"/g, '""')}"`;
+            const action = `"${(f.action || '').replace(/"/g, '""')}"`;
+            const count = f.fieldCount || (f.fields || []).length;
+            const fieldsList = `"${(f.fields || []).map(fld => fld.name + (fld.isRequired ? '*' : '') + ':' + fld.type).join('; ').replace(/"/g, '""')}"`;
+            const fileUpload = f.hasFileUpload ? '"Yes"' : '"No"';
+            const allowedFiles = `"${(f.allowedFileTypes || '').replace(/"/g, '""')}"`;
+            const captchaType = `"${(f.captcha?.type || 'none').replace(/"/g, '""')}"`;
+            const captchaActive = f.captcha?.isActive ? '"Yes"' : '"No"';
+            const hiddenTokens = `"${Object.entries(f.hiddenTokens || {}).map(([k, v]) => k + '=' + v).join('&').replace(/"/g, '""')}"`;
+            csv += `${pageUrl},${formId},${title},${engine},${method},${action},${count},${fieldsList},${fileUpload},${allowedFiles},${captchaType},${captchaActive},${hiddenTokens}\n`;
+          });
+        }
+      });
+
+      try {
+        if (window.go?.main?.App?.ExportFormsCSV) {
+          const filePath = await window.go.main.App.ExportFormsCSV(csv);
+          if (filePath) {
+            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath);
+            this.addLog('success', `Експортовано посторінковий CSV звіт форм: ${filePath}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Native CSV save dialog fallback:", e);
+      }
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', `speedmap_forms_report_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      this.showToast('success', 'CSV завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
+    },
+
+    async exportFormsJSON() {
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
+        return;
+      }
+      const pageFormsData = {
+        summary: {
+          totalFormsScanned: this.siteAnalytics?.totalFormsCount || 0,
+          pagesWithForms: this.siteAnalytics?.pagesWithFormsCount || 0,
+          captchaProtectedCount: this.siteAnalytics?.captchaProtectedCount || 0,
+          unprotectedFormsCount: this.siteAnalytics?.unprotectedFormsCount || 0,
+          fileUploadFormsCount: this.siteAnalytics?.fileUploadFormsCount || 0,
+          engineBreakdown: this.siteAnalytics?.formEngineBreakdown || {},
+          exportedAt: new Date().toISOString()
+        },
+        aggregatedForms: this.siteAnalytics?.forms || [],
+        pages: this.scanResults.map(p => ({
+          pageUrl: p.url,
+          formCount: (p.diagnostics?.forms || []).length,
+          forms: p.diagnostics?.forms || []
+        }))
+      };
+
+      const jsonStr = JSON.stringify(pageFormsData, null, 2);
+
+      try {
+        if (window.go?.main?.App?.ExportFormsJSON) {
+          const filePath = await window.go.main.App.ExportFormsJSON(jsonStr);
+          if (filePath) {
+            this.showToast('success', 'JSON звіт форм збережено 🟢', filePath);
+            this.addLog('success', `Експортовано JSON звіт форм: ${filePath}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Native JSON save dialog fallback:", e);
+      }
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
+      const link = document.createElement('a');
+      link.setAttribute('href', dataStr);
+      link.setAttribute('download', `speedmap_forms_report_${Date.now()}.json`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      this.showToast('success', 'JSON завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
+    },
+
+    async uploadFormsToGDrive() {
+      if (!this.siteAnalytics || !this.siteAnalytics.forms || this.siteAnalytics.forms.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку виконайте сканування сторінок.');
+        return;
+      }
+      if (!this.gdriveStatus.connected) {
+        this.showToast('warning', 'Не підключено', 'Спочатку підключіть Google Drive у Налаштуваннях.');
+        this.settingsTab = 'cloud';
+        this.showSettings = true;
+        return;
+      }
+
+      this.isUploadingGDrive = true;
+      this.showToast('info', 'Вивантаження ☁️', 'Надсилаємо звіт форм у Google Drive...');
+      try {
+        let csv = "Form Title,Engine,Page Count,Method,Action,Field Count,Fields Summary,File Upload,Allowed File Types,Captcha Type,Captcha Active,Page URLs List\n";
+        this.siteAnalytics.forms.forEach(f => {
+          const title = `"${(f.title || '').replace(/"/g, '""')}"`;
+          const engine = `"${(f.engine || '').replace(/"/g, '""')}"`;
+          const method = `"${(f.method || 'POST').replace(/"/g, '""')}"`;
+          const action = `"${(f.action || '').replace(/"/g, '""')}"`;
+          const count = f.fieldCount || (f.fields || []).length;
+          const fieldsSummary = `"${(f.fields || []).map(fld => fld.name + (fld.isRequired ? '*' : '') + ':' + fld.type).join('; ').replace(/"/g, '""')}"`;
+          const fileUpload = f.hasFileUpload ? '"Yes"' : '"No"';
+          const allowedFiles = `"${(f.allowedFileTypes || '').replace(/"/g, '""')}"`;
+          const captchaType = `"${(f.captcha?.type || 'none').replace(/"/g, '""')}"`;
+          const captchaActive = f.captcha?.isActive ? '"Yes"' : '"No"';
+          const pageUrlsList = `"${(f.pages || []).join('; ').replace(/"/g, '""')}"`;
+          csv += `${title},${engine},${f.pageCount || 0},${method},${action},${count},${fieldsSummary},${fileUpload},${allowedFiles},${captchaType},${captchaActive},${pageUrlsList}\n`;
+        });
+
+        const filename = `speedmap_forms_audit_${Date.now()}.csv`;
+        const res = await window.go.main.App.UploadFileToGDrive(filename, csv, "text/csv");
+        if (res && res.success) {
+          this.showToast('success', 'Вивантажено в Google Drive ☁️', `Файл збережено: ${res.fileName}`);
+          this.addLog('success', `Звіт по формах вивантажено на Google Drive: ${res.fileUrl}`);
+        } else {
+          throw new Error(res?.error || 'Помилка вивантаження');
+        }
+      } catch (err) {
+        this.showToast('error', 'Помилка Google Drive', err.message || err);
+      } finally {
+        this.isUploadingGDrive = false;
+      }
+    },
+
     async exportFontsCSV() {
       if (!this.scanResults || this.scanResults.length === 0) {
         this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
@@ -1030,6 +1280,158 @@ function speedMapApp() {
       this.showToast('success', 'JSON завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
 
+    async exportIframesCSV() {
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
+        return;
+      }
+      let csv = "Page URL,Iframe SRC,Title,Status,Lazy Loading,In Viewport,Sandbox,Load Duration (ms),Transfer Size,Dimensions\n";
+      this.scanResults.forEach(p => {
+        const pageUrl = `"${(p.url || '').replace(/"/g, '""')}"`;
+        const iframes = p.diagnostics?.iframes || [];
+        if (iframes.length === 0) {
+          csv += `${pageUrl},"No iframes","none","none","false","false","false",0,"0 B","0x0"\n`;
+        } else {
+          iframes.forEach(f => {
+            const src = `"${(f.src || '').replace(/"/g, '""')}"`;
+            const title = `"${(f.title || '').replace(/"/g, '""')}"`;
+            const status = f.loadedDuringScan ? '"Loaded"' : '"Missed (Lazy/Deferred)"';
+            const lazy = f.isLazy ? '"Yes"' : '"No"';
+            const inViewport = f.inViewport ? '"Yes"' : '"No"';
+            const sandbox = f.sandbox ? '"Yes"' : '"No"';
+            const duration = f.duration || 0;
+            const size = `"${f.formattedSize || (f.transferSize ? (f.transferSize + ' B') : '0 B')}"`;
+            const dimensions = `"${(f.width || 0)}x${(f.height || 0)}"`;
+            csv += `${pageUrl},${src},${title},${status},${lazy},${inViewport},${sandbox},${duration},${size},${dimensions}\n`;
+          });
+        }
+      });
+
+      try {
+        if (window.go?.main?.App?.ExportIframesCSV) {
+          const filePath = await window.go.main.App.ExportIframesCSV(csv);
+          if (filePath) {
+            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath);
+            this.addLog('success', `Експортовано посторінковий CSV звіт iframe: ${filePath}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Native CSV save dialog fallback:", e);
+      }
+
+      // Browser fallback (saves to ~/Downloads)
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', `speedmap_iframes_report_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      this.showToast('success', 'CSV завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
+    },
+
+    async exportIframesJSON() {
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
+        return;
+      }
+      const pageIframesData = {
+        summary: {
+          totalUniqueIframes: this.siteAnalytics?.totalIframeCount || (this.siteAnalytics?.iframes || []).length,
+          loadedCount: this.siteAnalytics?.loadedIframeCount || 0,
+          missedCount: this.siteAnalytics?.missedIframeCount || 0,
+          pagesWithIframes: this.pageIframesList.filter(p => p.iframeCount > 0).length,
+          exportedAt: new Date().toISOString()
+        },
+        aggregatedIframes: this.siteAnalytics?.iframes || [],
+        pages: this.scanResults.map(p => ({
+          pageUrl: p.url,
+          iframeCount: (p.diagnostics?.iframes || []).length,
+          loadedCount: (p.diagnostics?.iframes || []).filter(f => f.loadedDuringScan).length,
+          missedCount: (p.diagnostics?.iframes || []).filter(f => !f.loadedDuringScan).length,
+          iframes: p.diagnostics?.iframes || []
+        }))
+      };
+
+      const jsonStr = JSON.stringify(pageIframesData, null, 2);
+
+      try {
+        if (window.go?.main?.App?.ExportIframesJSON) {
+          const filePath = await window.go.main.App.ExportIframesJSON(jsonStr);
+          if (filePath) {
+            this.showToast('success', 'JSON звіт iframe збережено 🟢', filePath);
+            this.addLog('success', `Експортовано JSON звіт iframe: ${filePath}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Native JSON save dialog fallback:", e);
+      }
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
+      const link = document.createElement('a');
+      link.setAttribute('href', dataStr);
+      link.setAttribute('download', `speedmap_iframes_report_${Date.now()}.json`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      this.showToast('success', 'JSON завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
+    },
+
+    async uploadIframesToGDrive() {
+      if (!this.siteAnalytics || !this.siteAnalytics.iframes || this.siteAnalytics.iframes.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку виконайте сканування сторінок.');
+        return;
+      }
+      if (!this.gdriveStatus.connected) {
+        this.showToast('warning', 'Не підключено', 'Спочатку підключіть Google Drive у Налаштуваннях.');
+        this.settingsTab = 'cloud';
+        this.showSettings = true;
+        return;
+      }
+
+      this.isUploadingGDrive = true;
+      this.showToast('info', 'Вивантаження ☁️', 'Надсилаємо звіт iframe у Google Drive...');
+      try {
+        let csv = "Iframe SRC,Title,Occurrences,Page Count,Loaded Count,Missed Count,Lazy Loading,Avg Duration (ms),Max Transfer Size,Dimensions,Page URLs List\n";
+        this.siteAnalytics.iframes.forEach(f => {
+          const src = `"${(f.src || '').replace(/"/g, '""')}"`;
+          const title = `"${(f.title || '').replace(/"/g, '""')}"`;
+          const isLazy = f.isLazy ? '"Yes"' : '"No"';
+          const size = `"${f.formattedSize || (f.maxTransferSize ? (f.maxTransferSize + ' B') : '0 B')}"`;
+          const dimensions = `"${(f.width || 0)}x${(f.height || 0)}"`;
+          const pageUrlsList = `"${(f.pages || []).join('; ').replace(/"/g, '""')}"`;
+          csv += `${src},${title},${f.occurrences || 0},${f.pageCount || 0},${f.loadedCount || 0},${f.missedCount || 0},${isLazy},${f.avgDurationMs || 0},${size},${dimensions},${pageUrlsList}\n`;
+        });
+
+        // Save temporary local CSV file first
+        const tempPath = await window.go.main.App.ExportIframesCSV(csv);
+        if (tempPath && window.go.main.App.UploadFileToGDrive) {
+          const folderName = (this.activeProfile?.name || 'Site') + ' Reports';
+          const res = await window.go.main.App.UploadFileToGDrive(tempPath, folderName);
+          if (res && res.webViewLink) {
+            navigator.clipboard.writeText(res.webViewLink);
+            this.showToast('success', 'Вивантажено ☁️ (Link copied 📋)', res.webViewLink);
+            this.addLog('success', `Файл зі звітом iframe вивантажено в Google Drive: ${res.webViewLink}`);
+          }
+        }
+      } catch (err) {
+        console.error("GDrive iframe upload error:", err);
+        this.showToast('error', 'Помилка вивантаження', err.message || err);
+      } finally {
+        this.isUploadingGDrive = false;
+      }
+    },
+
+    copyIframeSrc(src) {
+      if (!src) return;
+      navigator.clipboard.writeText(src).then(() => {
+        this.showToast('success', 'URL iframe скопійовано 📋', src);
+      }).catch(err => {
+        console.error('Failed to copy iframe src:', err);
+      });
+    },
 
     copyFontUrl(url) {
       if (!url) return;
@@ -1211,7 +1613,7 @@ function speedMapApp() {
       this.showWPPathModal = false;
       const domain = this.config.sitemapUrl || this.sitemapInput || 'site';
       this.isExportingWPApply = true;
-      this.addLog('info', `WP apply: WebP + review ZIP + PHP → ${wordpressPath}...`);
+      this.addLog('info', `WP package: convert → folder → ${wordpressPath}...`);
       try {
         if (window.go?.main?.App?.ExportWordPressWebPApplyPHP) {
           const res = await window.go.main.App.ExportWordPressWebPApplyPHP(
@@ -1221,12 +1623,14 @@ function speedMapApp() {
           const applyPHP = res.applyPHP || res.ApplyPHP || '';
           const reviewZIP = res.reviewZIP || res.ReviewZIP || '';
           const rollbackPHP = res.rollbackPHP || res.RollbackPHP || '';
-          this.addLog('success', `WP apply: ${count} WebP записано`);
+          const pkg = res.packageDir || res.PackageDir || '';
+          this.addLog('success', `Package: ${count} WebP → ${pkg}`);
           this.addLog('info', `Apply PHP: ${applyPHP}`);
-          this.addLog('info', `Review ZIP: ${reviewZIP}`);
+          this.addLog('info', `ZIP: ${reviewZIP}`);
           this.addLog('info', `Rollback: ${rollbackPHP}`);
-          this.addLog('info', `На оточенні: wp eval-file ${applyPHP} --path=${wordpressPath}`);
-          this.showToast('success', `${count} WebP + ZIP + PHP`, reviewZIP || applyPHP);
+          this.addLog('info', `На Stage: розпакуй ZIP/залий папку, потім wp eval-file …/apply.php --path=/path/to/wp`);
+          this.addLog('info', `PHP скопіює images/*/optimized.webp → uploads/{webpRel} і оновить attachment.`);
+          this.showToast('success', `${count} WebP package`, reviewZIP || applyPHP);
         } else {
           throw new Error('ExportWordPressWebPApplyPHP method not available');
         }

@@ -64,6 +64,38 @@ func TestComputeSiteAnalytics(t *testing.T) {
 				Iframes: []scanner.IframeDetail{
 					{Src: "https://www.youtube.com/embed/abc", Title: "Video", Width: 560, Height: 315, LoadedDuringScan: false, IsLazy: true},
 				},
+				Forms: []scanner.FormDetail{
+					{
+						ID:     "wpcf7-f34972-o1",
+						Title:  "Footer Form",
+						Engine: "contact-form-7",
+						Method: "POST",
+						Action: "/#wpcf7-f34972-o1",
+						Fields: []scanner.FormFieldDetail{
+							{Name: "firstname", Label: "First Name", Type: "text", IsRequired: true},
+							{Name: "email", Label: "Company Email", Type: "email", IsRequired: true},
+						},
+						FieldCount: 2,
+						Captcha: scanner.CaptchaDetail{
+							Type:     "recaptcha-v3",
+							SiteKey:  "6Le-wvkSAAAAAPBMRT0X3nBDyd2h4BPn64qStZZL",
+							IsActive: true,
+						},
+					},
+					{
+						ID:               "application_form",
+						Title:            "Job Application",
+						Engine:           "greenhouse",
+						Method:           "POST",
+						HasFileUpload:    true,
+						AllowedFileTypes: ".pdf, .doc, .docx",
+						Fields: []scanner.FormFieldDetail{
+							{Name: "resume", Label: "Resume/CV", Type: "file", IsRequired: true, Accept: ".pdf,.doc,.docx"},
+						},
+						FieldCount: 1,
+						Captcha:    scanner.CaptchaDetail{Type: "none", IsActive: false},
+					},
+				},
 			},
 		},
 	}
@@ -147,6 +179,26 @@ func TestComputeSiteAnalytics(t *testing.T) {
 	}
 	if analytics.TotalWebPSavingsBytes <= 0 {
 		t.Errorf("Expected positive WebP savings, got %d", analytics.TotalWebPSavingsBytes)
+	}
+
+	// Verify Form Analytics
+	if analytics.TotalFormsCount != 2 {
+		t.Errorf("Expected TotalFormsCount = 2, got %d", analytics.TotalFormsCount)
+	}
+	if analytics.PagesWithFormsCount != 1 {
+		t.Errorf("Expected PagesWithFormsCount = 1, got %d", analytics.PagesWithFormsCount)
+	}
+	if analytics.CaptchaProtectedCount != 1 {
+		t.Errorf("Expected CaptchaProtectedCount = 1, got %d", analytics.CaptchaProtectedCount)
+	}
+	if analytics.UnprotectedFormsCount != 1 {
+		t.Errorf("Expected UnprotectedFormsCount = 1, got %d", analytics.UnprotectedFormsCount)
+	}
+	if analytics.FileUploadFormsCount != 1 {
+		t.Errorf("Expected FileUploadFormsCount = 1, got %d", analytics.FileUploadFormsCount)
+	}
+	if len(analytics.Forms) != 2 {
+		t.Fatalf("Expected 2 aggregated forms, got %d", len(analytics.Forms))
 	}
 
 	// Test GenerateImageComparisonHTML

@@ -33,6 +33,7 @@ new Promise(async (resolve) => {
             largestImages: [],
             fonts: [],
             iframes: [],
+            forms: [],
             categories: {}
         }
     };
@@ -444,6 +445,181 @@ new Promise(async (resolve) => {
 
         data.diagnostics.iframes = iframeList;
     } catch (e) {}
+
+    // 8. Form Extraction (DOM + Engine Classification + Captcha + Fields)
+    try {
+        const formList = [];
+        const seenFormElements = new Set();
+
+        const detectEngine = (formEl) => {
+            const markup = formEl.outerHTML || '';
+            const action = formEl.getAttribute('action') || '';
+            const className = formEl.className || '';
+            const id = formEl.id || '';
+
+            if (className.includes('wpcf7') || formEl.closest('.wpcf7') || markup.includes('wpcf7') || formEl.querySelector('[name^="_wpcf7"]')) {
+                return 'contact-form-7';
+            }
+            if (markup.includes('greenhouse.io') || formEl.querySelector('[name="jobs_id"]') || className.includes('greenhouse') || id.includes('application_form') || formEl.closest('.join-position-hiring-flex__right--form')) {
+                return 'greenhouse';
+            }
+            if (className.includes('pardot') || markup.includes('pardot_form_send') || action.includes('pardot.com') || action.includes('go.pardot.com')) {
+                return 'pardot';
+            }
+            if (className.includes('hs-form') || className.includes('hbspt') || formEl.querySelector('[data-form-id]')) {
+                return 'hubspot';
+            }
+            if (className.includes('gform_wrapper') || id.startsWith('gform_')) {
+                return 'gravity-forms';
+            }
+            if (className.includes('wpforms-form')) {
+                return 'wpforms';
+            }
+            if (id.includes('mc-embedded') || action.includes('list-manage.com')) {
+                return 'mailchimp';
+            }
+            return 'native-html';
+        };
+
+        const detectCaptcha = (formEl) => {
+            const hasRecaptchaV3 = !!formEl.querySelector('input[name="_wpcf7_recaptcha_response"]') ||
+                                  !!formEl.querySelector('input[name="g-recaptcha-response"]') ||
+                                  !!document.querySelector('.grecaptcha-badge') ||
+                                  (typeof window.grecaptcha !== 'undefined');
+
+            const hasRecaptchaV2 = !!formEl.querySelector('.g-recaptcha') ||
+                                  !!formEl.querySelector('iframe[src*="google.com/recaptcha/api2"]') ||
+                                  !!formEl.querySelector('[data-sitekey]');
+
+            const hasTurnstile = !!formEl.querySelector('.cf-turnstile') ||
+                                !!formEl.querySelector('iframe[src*="challenges.cloudflare.com"]') ||
+                                !!formEl.querySelector('[data-turnstile-sitekey]');
+
+            const hasHcaptcha = !!formEl.querySelector('.h-captcha') ||
+                               !!formEl.querySelector('iframe[src*="hcaptcha.com"]');
+
+            if (hasRecaptchaV3) {
+                let siteKey = '';
+                const scriptEl = Array.from(document.querySelectorAll('script[src*="recaptcha"]')).find(s => s.src.includes('render='));
+                if (scriptEl) {
+                    try { siteKey = new URL(scriptEl.src).searchParams.get('render') || ''; } catch(e) {}
+                }
+                return { type: 'recaptcha-v3', siteKey: siteKey, action: 'contact_form', isActive: true };
+            }
+            if (hasRecaptchaV2) {
+                const el = formEl.querySelector('[data-sitekey]') || document.querySelector('[data-sitekey]');
+                return { type: 'recaptcha-v2', siteKey: el ? el.getAttribute('data-sitekey') : '', action: '', isActive: true };
+            }
+            if (hasTurnstile) {
+                const el = formEl.querySelector('[data-turnstile-sitekey]') || formEl.querySelector('.cf-turnstile');
+                return { type: 'turnstile', siteKey: el ? (el.getAttribute('data-turnstile-sitekey') || el.getAttribute('data-sitekey') || '') : '', action: '', isActive: true };
+            }
+            if (hasHcaptcha) {
+                const el = formEl.querySelector('.h-captcha');
+                return { type: 'hcaptcha', siteKey: el ? el.getAttribute('data-sitekey') : '', action: '', isActive: true };
+            }
+            return { type: 'none', siteKey: '', action: '', isActive: false };
+        };
+
+        const formNodes = Array.from(document.querySelectorAll('form, .wpcf7, .greenhouse-form, .join-position-hiring-flex__right--form'));
+        
+        formNodes.forEach((node, formIdx) => {
+            const formEl = node.tagName && node.tagName.toLowerCase() === 'form' ? node : (node.querySelector('form') || node);
+            if (seenFormElements.has(formEl)) return;
+            seenFormElements.add(formEl);
+
+            const engine = detectEngine(formEl);
+            const captcha = detectCaptcha(formEl);
+            
+            let title = '';
+            const headingEl = formEl.closest('section, div, footer')?.querySelector('h1, h2, h3, .footer-form__title, .hero-banner__form-popup-title') ||
+                              formEl.querySelector('h1, h2, h3, legend, .form-title');
+            if (headingEl) {
+                title = headingEl.textContent.trim().slice(0, 100);
+            }
+            if (!title) {
+                title = formEl.getAttribute('aria-label') || formEl.getAttribute('name') || formEl.id || (engine + ' #' + (formIdx + 1));
+            }
+
+            const inputElements = Array.from(formEl.querySelectorAll('input, textarea, select, button[type="submit"], input[type="submit"]'));
+            const fields = [];
+            const hiddenTokens = {};
+            let hasFileUpload = false;
+            let allowedFileTypes = '';
+
+            inputElements.forEach(inp => {
+                const tag = inp.tagName.toLowerCase();
+                let type = (inp.getAttribute('type') || (tag === 'textarea' ? 'textarea' : (tag === 'select' ? 'select' : 'text'))).toLowerCase();
+                const name = inp.getAttribute('name') || inp.id || '';
+                const placeholder = inp.getAttribute('placeholder') || '';
+                
+                let label = '';
+                if (inp.id) {
+                    const lblEl = formEl.querySelector('label[for="' + inp.id + '"]');
+                    if (lblEl) label = lblEl.textContent.trim();
+                }
+                if (!label && inp.closest('label')) {
+                    label = inp.closest('label').textContent.trim();
+                }
+                if (!label) {
+                    label = placeholder || inp.getAttribute('aria-label') || name;
+                }
+
+                const isRequired = inp.hasAttribute('required') || inp.getAttribute('aria-required') === 'true' || (name.includes('*') || label.includes('*'));
+                const validationPattern = inp.getAttribute('pattern') || '';
+                const accept = inp.getAttribute('accept') || '';
+                const value = inp.value || inp.getAttribute('value') || '';
+
+                if (type === 'file') {
+                    hasFileUpload = true;
+                    if (accept) allowedFileTypes = accept;
+                }
+
+                if (type === 'hidden') {
+                    if (name) hiddenTokens[name] = value;
+                }
+
+                if (name === '_wpcf7_recaptcha_response' || name === 'g-recaptcha-response') {
+                    return;
+                }
+
+                fields.push({
+                    name: name || ('(unnamed_' + fields.length + ')'),
+                    label: label.slice(0, 80),
+                    type: type,
+                    isRequired: isRequired,
+                    validationPattern: validationPattern,
+                    accept: accept,
+                    value: type === 'hidden' ? value : ''
+                });
+            });
+
+            let inViewport = false;
+            try {
+                const rect = formEl.getBoundingClientRect();
+                inViewport = rect.top < (window.innerHeight || 0) && rect.bottom > 0 &&
+                    rect.left < (window.innerWidth || 0) && rect.right > 0 &&
+                    rect.width > 0 && rect.height > 0;
+            } catch(e) {}
+
+            formList.push({
+                id: formEl.id || ('form-' + (formIdx + 1)),
+                title: title,
+                engine: engine,
+                method: (formEl.getAttribute('method') || 'POST').toUpperCase(),
+                action: formEl.getAttribute('action') || (formEl.getAttribute('data-action') || ''),
+                fields: fields,
+                fieldCount: fields.length,
+                hasFileUpload: hasFileUpload,
+                allowedFileTypes: allowedFileTypes,
+                captcha: captcha,
+                hiddenTokens: hiddenTokens,
+                inViewport: inViewport
+            });
+        });
+
+        data.diagnostics.forms = formList;
+    } catch(e) {}
 
     // 1.0s observation window
     setTimeout(() => {

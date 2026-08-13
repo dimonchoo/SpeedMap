@@ -38,6 +38,22 @@ export function ExportFontsJSON(arg1) {
   return window['go']['main']['App']['ExportFontsJSON'](arg1);
 }
 
+export function ExportFormsCSV(arg1) {
+  return window['go']['main']['App']['ExportFormsCSV'](arg1);
+}
+
+export function ExportFormsJSON(arg1) {
+  return window['go']['main']['App']['ExportFormsJSON'](arg1);
+}
+
+export function ExportIframesCSV(arg1) {
+  return window['go']['main']['App']['ExportIframesCSV'](arg1);
+}
+
+export function ExportIframesJSON(arg1) {
+  return window['go']['main']['App']['ExportIframesJSON'](arg1);
+}
+
 export function ExportImageComparisonHTML(arg1, arg2, arg3) {
   return window['go']['main']['App']['ExportImageComparisonHTML'](arg1, arg2, arg3);
 }
