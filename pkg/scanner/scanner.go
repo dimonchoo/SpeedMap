@@ -298,6 +298,50 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 			}
 			vitals = evalRes.Metrics
 			diagnostics = evalRes.Diagnostics
+
+			// Dual-Viewport Safety: if in mobile mode, quickly expand viewport to 1920x1080
+			// without reloading the page or re-running full metrics to capture max desktop layout sizes.
+			if s.cfg.IsMobile && len(diagnostics.LargestImages) > 0 {
+				if err := emulation.SetDeviceMetricsOverride(1920, 1080, 1.0, false).Do(ctx); err == nil {
+					desktopJS := `(() => {
+						const map = {};
+						document.querySelectorAll('img').forEach(img => {
+							const src = img.currentSrc || img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src');
+							if (src && !src.startsWith('data:')) {
+								try {
+									const fullUrl = new URL(src, document.baseURI).href;
+									const rect = img.getBoundingClientRect();
+									const w = Math.round(rect.width || img.clientWidth || img.offsetWidth || 0);
+									const h = Math.round(rect.height || img.clientHeight || img.offsetHeight || 0);
+									if (w > 0 || h > 0) {
+										map[fullUrl] = { width: w, height: h };
+									}
+								} catch(e) {}
+							}
+						});
+						return map;
+					})()`
+					if dtObj, _, err := runtime.Evaluate(desktopJS).WithReturnByValue(true).Do(ctx); err == nil && dtObj != nil && dtObj.Value != nil {
+						var dtMap map[string]struct {
+							Width  int `json:"width"`
+							Height int `json:"height"`
+						}
+						if err := json.Unmarshal(dtObj.Value, &dtMap); err == nil && len(dtMap) > 0 {
+							for i := range diagnostics.LargestImages {
+								u := diagnostics.LargestImages[i].URL
+								if dt, ok := dtMap[u]; ok {
+									if dt.Width > diagnostics.LargestImages[i].RenderedWidth {
+										diagnostics.LargestImages[i].RenderedWidth = dt.Width
+									}
+									if dt.Height > diagnostics.LargestImages[i].RenderedHeight {
+										diagnostics.LargestImages[i].RenderedHeight = dt.Height
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 			return nil
 		}),
 	)
