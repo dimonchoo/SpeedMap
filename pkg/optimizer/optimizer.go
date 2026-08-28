@@ -11,12 +11,14 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"math"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 
 	_ "golang.org/x/image/bmp"
+	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
 	"github.com/chai2010/webp"
@@ -34,6 +36,10 @@ var sharedClient = &http.Client{
 type ConversionResult struct {
 	URL                 string  `json:"url"`
 	Filename            string  `json:"filename"`
+	OriginalWidth       int     `json:"originalWidth,omitempty"`
+	OriginalHeight      int     `json:"originalHeight,omitempty"`
+	OptimizedWidth      int     `json:"optimizedWidth,omitempty"`
+	OptimizedHeight     int     `json:"optimizedHeight,omitempty"`
 	OriginalBytes       int64   `json:"originalBytes"`
 	OriginalFormatted   string  `json:"originalFormatted"`
 	OptimizedBytes      int64   `json:"optimizedBytes"`
@@ -137,6 +143,42 @@ func toStraightRGBA(m image.Image) *image.RGBA {
 	return rgba
 }
 
+func resizeProportional(src *image.RGBA, maxW, maxH int) *image.RGBA {
+	bounds := src.Bounds()
+	origW := bounds.Dx()
+	origH := bounds.Dy()
+	if origW <= 0 || origH <= 0 || (maxW <= 0 && maxH <= 0) {
+		return src
+	}
+
+	targetW := origW
+	targetH := origH
+
+	if maxW > 0 && targetW > maxW {
+		targetW = maxW
+		targetH = int(math.Round(float64(origH) * float64(maxW) / float64(origW)))
+	}
+	if maxH > 0 && targetH > maxH {
+		targetH = maxH
+		targetW = int(math.Round(float64(origW) * float64(maxH) / float64(origH)))
+	}
+
+	if targetW <= 0 {
+		targetW = 1
+	}
+	if targetH <= 0 {
+		targetH = 1
+	}
+
+	if targetW >= origW && targetH >= origH {
+		return src
+	}
+
+	dst := image.NewRGBA(image.Rect(0, 0, targetW, targetH))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
+	return dst
+}
+
 // ConvertImageURLToWebPAdaptiveAuth encodes to WebP with default 100KB heavy threshold budget.
 func ConvertImageURLToWebPAdaptiveAuth(rawURL string, quality float32, adaptive bool, user, pass string) (*ConversionResult, error) {
 	return ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL, quality, 100*1024, adaptive, user, pass)
@@ -145,6 +187,12 @@ func ConvertImageURLToWebPAdaptiveAuth(rawURL string, quality float32, adaptive 
 // ConvertImageURLToWebPAdaptiveBudgetAuth finds the optimal WebP quality that maximizes fidelity
 // without exceeding the specified heavy threshold byte budget.
 func ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL string, quality float32, thresholdBytes int64, adaptive bool, user, pass string) (*ConversionResult, error) {
+	return ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL, quality, thresholdBytes, adaptive, 0, 0, user, pass)
+}
+
+// ConvertImageURLToWebPAdaptiveBudgetAuthResize encodes to WebP, optionally downscaling oversized
+// images proportionally to target maxW/maxH (e.g. max rendered Retina 2x bounds).
+func ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL string, quality float32, thresholdBytes int64, adaptive bool, maxW, maxH int, user, pass string) (*ConversionResult, error) {
 	if quality <= 0 || quality > 100 {
 		quality = 80
 	}
@@ -187,6 +235,10 @@ func ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL string, quality float32, thr
 		return nil, fmt.Errorf("failed to decode image (format %s): %w", formatName, err)
 	}
 
+	origBounds := img.Bounds()
+	origW := origBounds.Dx()
+	origH := origBounds.Dy()
+
 	origSize := int64(len(origBytes))
 	isTransparent := hasTransparency(img)
 	isLossless := false
@@ -196,6 +248,15 @@ func ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL string, quality float32, thr
 	// Convert decoded image into raw straight (unpremultiplied) RGBA to prevent Go's color premultiplication
 	// from corrupting anti-aliased edge pixels into dark/black borders in libwebp.
 	rawImg := toStraightRGBA(img)
+
+	// Apply proportional downscaling if target dimensions provided (Properly Size Images for Lighthouse)
+	if maxW > 0 || maxH > 0 {
+		rawImg = resizeProportional(rawImg, maxW, maxH)
+	}
+
+	optBounds := rawImg.Bounds()
+	optW := optBounds.Dx()
+	optH := optBounds.Dy()
 
 	var webpData []byte
 
@@ -255,8 +316,8 @@ func ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL string, quality float32, thr
 				if err := webp.Encode(&highQBuf, rawImg, highQOpts); err == nil {
 					highQBytes := highQBuf.Bytes()
 					highQLen := int64(len(highQBytes))
-					// Must stay within safeBudget and provide at least 20% savings over original
-					if highQLen <= safeBudget && highQLen < int64(float64(origSize)*0.80) {
+					// Ensure we don't breach the safeBudget or drop below 40% savings
+					if highQLen <= safeBudget && highQLen < int64(float64(origSize)*0.60) {
 						webpData = highQBytes
 						qualityUsed = testQ
 						adaptiveApplied = true
@@ -292,6 +353,10 @@ func ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL string, quality float32, thr
 	return &ConversionResult{
 		URL:                 rawURL,
 		Filename:            filename,
+		OriginalWidth:       origW,
+		OriginalHeight:      origH,
+		OptimizedWidth:      optW,
+		OptimizedHeight:     optH,
 		OriginalBytes:       origSize,
 		OriginalFormatted:   FormatBytes(origSize),
 		OptimizedBytes:      webpSize,

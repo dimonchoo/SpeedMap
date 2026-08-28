@@ -343,6 +343,7 @@ export namespace config {
 	    gdriveClientID: string;
 	    gdriveClientSecret: string;
 	    adaptiveQuality?: boolean;
+	    resizeToRetina?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanConfig(source);
@@ -366,6 +367,7 @@ export namespace config {
 	        this.gdriveClientID = source["gdriveClientID"];
 	        this.gdriveClientSecret = source["gdriveClientSecret"];
 	        this.adaptiveQuality = source["adaptiveQuality"];
+	        this.resizeToRetina = source["resizeToRetina"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -462,6 +464,10 @@ export namespace optimizer {
 	export class ConversionResult {
 	    url: string;
 	    filename: string;
+	    originalWidth?: number;
+	    originalHeight?: number;
+	    optimizedWidth?: number;
+	    optimizedHeight?: number;
 	    originalBytes: number;
 	    originalFormatted: string;
 	    optimizedBytes: number;
@@ -484,6 +490,10 @@ export namespace optimizer {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.url = source["url"];
 	        this.filename = source["filename"];
+	        this.originalWidth = source["originalWidth"];
+	        this.originalHeight = source["originalHeight"];
+	        this.optimizedWidth = source["optimizedWidth"];
+	        this.optimizedHeight = source["optimizedHeight"];
 	        this.originalBytes = source["originalBytes"];
 	        this.originalFormatted = source["originalFormatted"];
 	        this.optimizedBytes = source["optimizedBytes"];

@@ -22,6 +22,7 @@ type ScanConfig struct {
 	GDriveClientID        string         `json:"gdriveClientID"`
 	GDriveClientSecret    string         `json:"gdriveClientSecret"`
 	AdaptiveQuality       *bool          `json:"adaptiveQuality"`       // true by default: automatically adjusts quality for gradients/transparency
+	ResizeToRetina        *bool          `json:"resizeToRetina"`        // true by default: resize oversized images to max rendered Retina 2x bounds
 }
 
 func (c *ScanConfig) IsAdaptiveQualityEnabled() bool {
@@ -29,6 +30,13 @@ func (c *ScanConfig) IsAdaptiveQualityEnabled() bool {
 		return true // Default true
 	}
 	return *c.AdaptiveQuality
+}
+
+func (c *ScanConfig) IsResizeToRetinaEnabled() bool {
+	if c.ResizeToRetina == nil {
+		return true // Default true
+	}
+	return *c.ResizeToRetina
 }
 
 

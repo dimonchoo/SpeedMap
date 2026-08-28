@@ -63,6 +63,8 @@ type WrittenImage struct {
 	OrigExt            string
 	OrigData           []byte
 	WebPData           []byte
+	OptimizedWidth     int
+	OptimizedHeight    int
 	OriginalBytes      int64
 	OptimizedBytes     int64
 	SavingsPercent     float64
@@ -190,11 +192,11 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 // ConvertHeavyImages downloads and converts each image via pkg/optimizer.
 // Does NOT write into WordPress uploads — PHP apply copies from the package.
 func ConvertHeavyImages(images []ManifestImage, quality float32, authUser, authPass string) ([]WrittenImage, error) {
-	return ConvertHeavyImagesWithThreshold(images, quality, 100*1024, true, authUser, authPass)
+	return ConvertHeavyImagesWithThreshold(images, quality, 100*1024, true, true, authUser, authPass)
 }
 
 // ConvertHeavyImagesWithThreshold converts images with custom threshold byte budget using concurrent workers.
-func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, thresholdBytes int64, adaptive bool, authUser, authPass string) ([]WrittenImage, error) {
+func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, thresholdBytes int64, adaptive bool, resizeToRetina bool, authUser, authPass string) ([]WrittenImage, error) {
 	if len(images) == 0 {
 		return nil, fmt.Errorf("no images to convert")
 	}
@@ -231,7 +233,14 @@ func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, th
 			defer wg.Done()
 			for task := range tasks {
 				img := task.img
-				res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(img.SourceURL, quality, thresholdBytes, adaptive, authUser, authPass)
+				maxW := 0
+				maxH := 0
+				if resizeToRetina && img.RecommendedRetinaWidth > 0 && img.RecommendedRetinaHeight > 0 {
+					maxW = img.RecommendedRetinaWidth
+					maxH = img.RecommendedRetinaHeight
+				}
+
+				res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuthResize(img.SourceURL, quality, thresholdBytes, adaptive, maxW, maxH, authUser, authPass)
 				if err != nil {
 					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: %w", img.SourceURL, err)}
 					continue
@@ -259,11 +268,22 @@ func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, th
 					ext = "." + img.Format
 				}
 
+				optW := res.OptimizedWidth
+				optH := res.OptimizedHeight
+				if optW == 0 {
+					optW = img.NaturalWidth
+				}
+				if optH == 0 {
+					optH = img.NaturalHeight
+				}
+
 				written := &WrittenImage{
 					ManifestImage:      img,
 					OrigExt:            strings.TrimPrefix(strings.ToLower(ext), "."),
 					OrigData:           origData,
 					WebPData:           webpData,
+					OptimizedWidth:     optW,
+					OptimizedHeight:    optH,
 					OriginalBytes:      res.OriginalBytes,
 					OptimizedBytes:     res.OptimizedBytes,
 					SavingsPercent:     res.SavingsPercent,
@@ -433,6 +453,8 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		Pages                   []string `json:"pages"`
 		NaturalWidth            int      `json:"naturalWidth,omitempty"`
 		NaturalHeight           int      `json:"naturalHeight,omitempty"`
+		OptimizedWidth          int      `json:"optimizedWidth,omitempty"`
+		OptimizedHeight         int      `json:"optimizedHeight,omitempty"`
 		MaxRenderedWidth        int      `json:"maxRenderedWidth,omitempty"`
 		MaxRenderedHeight       int      `json:"maxRenderedHeight,omitempty"`
 		RecommendedRetinaWidth  int      `json:"recommendedRetinaWidth,omitempty"`
@@ -480,6 +502,8 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			Pages:                   im.Pages,
 			NaturalWidth:            im.NaturalWidth,
 			NaturalHeight:           im.NaturalHeight,
+			OptimizedWidth:          im.OptimizedWidth,
+			OptimizedHeight:         im.OptimizedHeight,
 			MaxRenderedWidth:        im.MaxRenderedWidth,
 			MaxRenderedHeight:       im.MaxRenderedHeight,
 			RecommendedRetinaWidth:  im.RecommendedRetinaWidth,
@@ -568,11 +592,16 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			retinaText = fmt.Sprintf("<span class=\"badge-dim\" style=\"color:#10b981;\">%d×%d px</span>", e.RecommendedRetinaWidth, e.RecommendedRetinaHeight)
 		}
 
+		optDimText := ""
+		if e.OptimizedWidth > 0 && e.OptimizedHeight > 0 {
+			optDimText = fmt.Sprintf("<br><span class=\"badge-dim\" style=\"color:#10b981;font-size:11px;\">%d×%d px</span>", e.OptimizedWidth, e.OptimizedHeight)
+		}
+
 		previewHTML := fmt.Sprintf("<div class=\"preview-box\"><div class=\"thumb-card\"><span class=\"thumb-badge thumb-orig\">Оригінал (Before)</span><a href=\"%s\" target=\"_blank\"><img src=\"%s\" loading=\"lazy\" class=\"thumb-img\" alt=\"Original\" /></a></div><div class=\"thumb-card\"><span class=\"thumb-badge thumb-webp\">WebP (After)</span><a href=\"%s\" target=\"_blank\"><img src=\"%s\" loading=\"lazy\" class=\"thumb-img\" alt=\"WebP\" /></a></div></div>",
 			esc(e.OriginalPath), esc(e.OriginalPath), esc(e.OptimizedPath), esc(e.OptimizedPath))
 
-		renderReportBuf.WriteString(fmt.Sprintf("<tr><td>%d</td><td><strong style=\"color:#f1f5f9;font-size:14px;\">%s</strong><br><a href=\"%s\" target=\"_blank\" style=\"color:#64748b;font-size:11px;word-break:break-all;\">%s</a>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><strong style=\"color:#10b981;\">%s</strong></td><td><span class=\"badge-opt\">-%.1f%%</span></td></tr>",
-			idx+1, esc(e.Basename), esc(e.SourceURL), esc(e.SourceURL), previewHTML, pagesHTML.String(), origDimText, rendText, retinaText, esc(e.OriginalFormatted), esc(e.OptimizedFormatted), e.SavingsPercent))
+		renderReportBuf.WriteString(fmt.Sprintf("<tr><td>%d</td><td><strong style=\"color:#f1f5f9;font-size:14px;\">%s</strong><br><a href=\"%s\" target=\"_blank\" style=\"color:#64748b;font-size:11px;word-break:break-all;\">%s</a>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><strong style=\"color:#10b981;\">%s</strong>%s</td><td><span class=\"badge-opt\">-%.1f%%</span></td></tr>",
+			idx+1, esc(e.Basename), esc(e.SourceURL), esc(e.SourceURL), previewHTML, pagesHTML.String(), origDimText, rendText, retinaText, esc(e.OriginalFormatted), esc(e.OptimizedFormatted), optDimText, e.SavingsPercent))
 	}
 	renderReportBuf.WriteString("</tbody></table></div></body></html>")
 

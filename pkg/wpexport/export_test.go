@@ -291,7 +291,7 @@ func TestConcurrentHeavyExportSpeed(t *testing.T) {
 	}
 
 	start := time.Now()
-	written, err := ConvertHeavyImagesWithThreshold(images, 80, 100*1024, true, "", "")
+	written, err := ConvertHeavyImagesWithThreshold(images, 80, 100*1024, true, true, "", "")
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -367,7 +367,7 @@ func TestBenchmark137ImagesFromDump(t *testing.T) {
 	}
 
 	start := time.Now()
-	written, err := ConvertHeavyImagesWithThreshold(manifestImages, 80, 100*1024, true, "", "")
+	written, err := ConvertHeavyImagesWithThreshold(manifestImages, 80, 100*1024, true, true, "", "")
 	convElapsed := time.Since(start)
 
 	if err != nil {

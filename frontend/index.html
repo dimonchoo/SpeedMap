@@ -2176,6 +2176,18 @@
                     class="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500/20 bg-slate-900 h-4 w-4 mt-0.5 shrink-0 cursor-pointer">
                 </div>
 
+                <!-- Retina 2x Render Downscaling Toggle -->
+                <div class="flex items-start justify-between bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-x-3">
+                  <div class="space-y-0.5">
+                    <label class="font-semibold text-slate-200 text-xs flex items-center space-x-1.5 cursor-pointer">
+                      <span>📐 Ресайз до Retina 2x рендеру (Properly Size Images для Lighthouse)</span>
+                    </label>
+                    <p class="text-[11px] text-slate-400">Фізично масштабує надвеликі зображення (наприклад, 4000px фото) під максимальний розмір контейнера на сайті з запасом Retina 2x. Усуває попередження Lighthouse «Properly size images».</p>
+                  </div>
+                  <input type="checkbox" x-model="config.resizeToRetina"
+                    class="rounded border-slate-700 text-indigo-500 focus:ring-indigo-500/20 bg-slate-900 h-4 w-4 mt-0.5 shrink-0 cursor-pointer">
+                </div>
+
                 <hr class="border-slate-800">
 
                 <div class="space-y-4">

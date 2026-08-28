@@ -141,3 +141,36 @@ func TestConvertTransparentHeavyImageAdaptive(t *testing.T) {
 		t.Errorf("expected non-empty webp base64")
 	}
 }
+
+func TestConvertImageResizeProportional(t *testing.T) {
+	// Create 4000x2000 image
+	img := image.NewRGBA(image.Rect(0, 0, 4000, 2000))
+	for y := 0; y < 2000; y += 100 {
+		for x := 0; x < 4000; x += 100 {
+			img.Set(x, y, color.RGBA{R: 100, G: 150, B: 200, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(buf.Bytes())
+	}))
+	defer ts.Close()
+
+	// Request resize to maxW=1000, maxH=500
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResize(ts.URL+"/oversized.png", 80, 100*1024, true, 1000, 500, "", "")
+	if err != nil {
+		t.Fatalf("ConvertImageURLToWebPAdaptiveBudgetAuthResize failed: %v", err)
+	}
+
+	if res.OriginalWidth != 4000 || res.OriginalHeight != 2000 {
+		t.Errorf("expected original 4000x2000, got %dx%d", res.OriginalWidth, res.OriginalHeight)
+	}
+	if res.OptimizedWidth != 1000 || res.OptimizedHeight != 500 {
+		t.Errorf("expected optimized 1000x500, got %dx%d", res.OptimizedWidth, res.OptimizedHeight)
+	}
+}

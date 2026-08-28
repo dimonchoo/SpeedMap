@@ -395,7 +395,7 @@ func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, 
 		return nil, fmt.Errorf("no heavy convertible images in scan")
 	}
 
-	written, err := wpexport.ConvertHeavyImagesWithThreshold(heavy, cfg.NormalizedWebPQuality(), cfg.NormalizedHeavyThresholdBytes(), cfg.IsAdaptiveQualityEnabled(), cfg.AuthUser, cfg.AuthPass)
+	written, err := wpexport.ConvertHeavyImagesWithThreshold(heavy, cfg.NormalizedWebPQuality(), cfg.NormalizedHeavyThresholdBytes(), cfg.IsAdaptiveQualityEnabled(), cfg.IsResizeToRetinaEnabled(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
 		return nil, err
 	}

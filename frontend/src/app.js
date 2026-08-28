@@ -7,6 +7,7 @@ function speedMapApp() {
       heavyImageThresholdKB: 100, // Default 100 KB heavy image threshold
       webpQuality: 80, // WebP compression quality (1 - 100)
       adaptiveQuality: true, // Auto-adjust quality for gradients & lossless for transparent graphics
+      resizeToRetina: true, // Downscale oversized images to max rendered Retina 2x bounds (Properly size images)
       pngWebPRatio: 30, // Default 30% of original (70% savings)
       jpgWebPRatio: 60, // Default 60% of original (40% savings)
       gifWebPRatio: 50, // Default 50% of original (50% savings)
