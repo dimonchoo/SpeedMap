@@ -1801,6 +1801,61 @@ function speedMapApp() {
         default:
           return 'bg-slate-800 text-slate-400';
       }
+    },
+
+    // Who's That Pokémon? Easter Egg Game
+    showPokemonGame: false,
+    pokemonGame: {
+      current: null,
+      options: [],
+      isRevealed: false
+    },
+    pokedex: [
+      { id: "pikachu", name: "Пікачу (Pikachu)", perk: "Блискавичний TTFB & LCP" },
+      { id: "bulbasaur", name: "Бульбазавр (Bulbasaur)", perk: "Зелена зона Core Web Vitals" },
+      { id: "charmander", name: "Чармандер (Charmander)", perk: "Гаряча компресія WebP Q85" },
+      { id: "squirtle", name: "Сквіртл (Squirtle)", perk: "Очищення кешу Cloudflare" },
+      { id: "eevee", name: "Іві (Eevee)", perk: "Адаптивний рендер під Retina 2x" },
+      { id: "gengar", name: "Генгар (Gengar)", perk: "Пошук важких DOM-вузлів" },
+      { id: "snorlax", name: "Снорлакс (Snorlax)", perk: "Оптимізація мегабайтних банерів" },
+      { id: "psyduck", name: "Псайдак (Psyduck)", perk: "Діагностика складних помилок LCP" },
+      { id: "jigglypuff", name: "Джігліпаф (Jigglypuff)", perk: "Плавний CLS 0.000" }
+    ],
+
+    openPokemonGame(targetId) {
+      this.showPokemonGame = true;
+      this.startPokemonRound(targetId);
+    },
+
+    startPokemonRound(targetId) {
+      this.pokemonGame.isRevealed = false;
+      let target = null;
+      if (targetId) {
+        target = this.pokedex.find(p => p.id === targetId);
+      }
+      if (!target) {
+        target = this.pokedex[Math.floor(Math.random() * this.pokedex.length)];
+      }
+      this.pokemonGame.current = target;
+
+      const shuffled = [...this.pokedex].sort(() => 0.5 - Math.random());
+      if (!shuffled.slice(0, 4).some(p => p.id === target.id)) {
+        shuffled[0] = target;
+      }
+      this.pokemonGame.options = shuffled.slice(0, 4).sort(() => 0.5 - Math.random());
+    },
+
+    guessPokemon(opt) {
+      this.pokemonGame.isRevealed = true;
+      this.playPokemonCry();
+    },
+
+    playPokemonCry() {
+      if (!this.pokemonGame.current) return;
+      try {
+        const audio = new Audio(`pokemon/audio/${this.pokemonGame.current.id}.ogg`);
+        audio.play().catch(() => {});
+      } catch (e) {}
     }
   };
 }
