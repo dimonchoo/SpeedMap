@@ -41,6 +41,8 @@ type ManifestImage struct {
 	Pages                  []string `json:"pages"`
 	ID                     string   `json:"id,omitempty"`
 	PackageWebP            string   `json:"packageWebp,omitempty"` // relative to apply.php, e.g. images/001/optimized.webp
+	NaturalWidth           int      `json:"naturalWidth,omitempty"`
+	NaturalHeight          int      `json:"naturalHeight,omitempty"`
 	MaxRenderedWidth        int      `json:"maxRenderedWidth,omitempty"`
 	MaxRenderedHeight       int      `json:"maxRenderedHeight,omitempty"`
 	RecommendedRetinaWidth  int      `json:"recommendedRetinaWidth,omitempty"`
@@ -125,6 +127,12 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 			if img.IsHeavy {
 				ex.IsHeavy = true
 			}
+			if img.NaturalWidth > ex.NaturalWidth {
+				ex.NaturalWidth = img.NaturalWidth
+			}
+			if img.NaturalHeight > ex.NaturalHeight {
+				ex.NaturalHeight = img.NaturalHeight
+			}
 			if img.MaxRenderedWidth > ex.MaxRenderedWidth {
 				ex.MaxRenderedWidth = img.MaxRenderedWidth
 			}
@@ -161,6 +169,8 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 			IsHeavy:                 img.IsHeavy,
 			Bytes:                   img.MaxTransferSize,
 			Pages:                   append([]string(nil), pages...),
+			NaturalWidth:            img.NaturalWidth,
+			NaturalHeight:           img.NaturalHeight,
 			MaxRenderedWidth:        img.MaxRenderedWidth,
 			MaxRenderedHeight:       img.MaxRenderedHeight,
 			RecommendedRetinaWidth:  img.RecommendedRetinaWidth,
@@ -421,6 +431,8 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		WebpRel                 string   `json:"webpRel"`
 		Basename                string   `json:"basename"`
 		Pages                   []string `json:"pages"`
+		NaturalWidth            int      `json:"naturalWidth,omitempty"`
+		NaturalHeight           int      `json:"naturalHeight,omitempty"`
 		MaxRenderedWidth        int      `json:"maxRenderedWidth,omitempty"`
 		MaxRenderedHeight       int      `json:"maxRenderedHeight,omitempty"`
 		RecommendedRetinaWidth  int      `json:"recommendedRetinaWidth,omitempty"`
@@ -466,6 +478,8 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			WebpRel:                 im.WebpRel,
 			Basename:                im.Basename,
 			Pages:                   im.Pages,
+			NaturalWidth:            im.NaturalWidth,
+			NaturalHeight:           im.NaturalHeight,
 			MaxRenderedWidth:        im.MaxRenderedWidth,
 			MaxRenderedHeight:       im.MaxRenderedHeight,
 			RecommendedRetinaWidth:  im.RecommendedRetinaWidth,
@@ -502,19 +516,24 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	renderReportBuf.WriteString(esc(domain))
 	renderReportBuf.WriteString("</title><style>")
 	renderReportBuf.WriteString("body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:24px;background:#0f172a;color:#f8fafc}")
-	renderReportBuf.WriteString(".container{max-width:1400px;margin:0 auto}")
+	renderReportBuf.WriteString(".container{max-width:1440px;margin:0 auto}")
 	renderReportBuf.WriteString("h1{color:#38bdf8;font-size:24px;margin:0 0 8px}p.meta{color:#94a3b8;font-size:13px;margin:0 0 24px}")
-	renderReportBuf.WriteString("table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:12px;overflow:hidden;border:1px solid #334155;font-size:13px}")
-	renderReportBuf.WriteString("thead th{position:sticky;top:0;background:#090d16;color:#94a3b8;padding:12px;text-align:left;font-size:11px;text-transform:uppercase;z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.4)}")
+	renderReportBuf.WriteString("table{width:100%;border-collapse:separate;border-spacing:0;background:#1e293b;border-radius:12px;border:1px solid #334155;font-size:13px}")
+	renderReportBuf.WriteString("thead th{position:sticky;top:0;background:#090d16;color:#94a3b8;padding:12px;text-align:left;font-size:11px;text-transform:uppercase;z-index:20;box-shadow:0 2px 6px rgba(0,0,0,0.6);border-bottom:2px solid #334155}")
+	renderReportBuf.WriteString("thead th:first-child{border-top-left-radius:12px}")
+	renderReportBuf.WriteString("thead th:last-child{border-top-right-radius:12px}")
 	renderReportBuf.WriteString("td{padding:12px;border-bottom:1px solid #334155;vertical-align:top}")
+	renderReportBuf.WriteString("tr:last-child td:first-child{border-bottom-left-radius:12px}")
+	renderReportBuf.WriteString("tr:last-child td:last-child{border-bottom-right-radius:12px}")
 	renderReportBuf.WriteString(".pages-list{font-size:12px;color:#cbd5e1;list-style:disc;padding-left:18px;margin:4px 0}")
 	renderReportBuf.WriteString(".pages-list a{color:#38bdf8;text-decoration:underline;word-break:break-all}")
 	renderReportBuf.WriteString(".badge-opt{color:#10b981;background:rgba(16,185,129,0.15);padding:2px 8px;border-radius:4px;font-weight:bold;font-size:11px}")
 	renderReportBuf.WriteString(".badge-dim{color:#38bdf8;font-family:monospace;font-size:12px;font-weight:bold}")
+	renderReportBuf.WriteString(".badge-orig-dim{color:#f59e0b;font-family:monospace;font-size:12px;font-weight:bold}")
 	renderReportBuf.WriteString("</style></head><body><div class=\"container\">")
 	renderReportBuf.WriteString("<h1>📊 Звіт оптимізації за рендером на сторінках (Render-Aware WebP Optimization)</h1>")
 	renderReportBuf.WriteString(fmt.Sprintf("<p class=\"meta\">Домен: %s · Всього зображень: %d · Згенеровано: %s</p>", esc(domain), len(entries), time.Now().UTC().Format("2006-01-02 15:04:05 UTC")))
-	renderReportBuf.WriteString("<table><thead><tr><th>#</th><th>Зображення</th><th>Сторінки використання</th><th>Фактичний рендер</th><th>Retina 2x ціль</th><th>Оригінальний розмір</th><th>Оптимізований WebP</th><th>Економія</th></tr></thead><tbody>")
+	renderReportBuf.WriteString("<table><thead><tr><th>#</th><th>Зображення</th><th>Сторінки використання</th><th>Оригінальні розміри (W×H)</th><th>Фактичний рендер</th><th>Retina 2x ціль</th><th>Оригінал (вага)</th><th>Оптимізований WebP</th><th>Економія</th></tr></thead><tbody>")
 
 	for idx, e := range entries {
 		pagesHTML := strings.Builder{}
@@ -528,6 +547,10 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			pagesHTML.WriteString("<span style=\"color:#64748b;\">—</span>")
 		}
 
+		origDimText := "—"
+		if e.NaturalWidth > 0 {
+			origDimText = fmt.Sprintf("<span class=\"badge-orig-dim\">%d×%d px</span>", e.NaturalWidth, e.NaturalHeight)
+		}
 		rendText := "—"
 		if e.MaxRenderedWidth > 0 {
 			rendText = fmt.Sprintf("<span class=\"badge-dim\">%d×%d px</span>", e.MaxRenderedWidth, e.MaxRenderedHeight)
@@ -537,8 +560,8 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			retinaText = fmt.Sprintf("<span class=\"badge-dim\" style=\"color:#10b981;\">%d×%d px</span>", e.RecommendedRetinaWidth, e.RecommendedRetinaHeight)
 		}
 
-		renderReportBuf.WriteString(fmt.Sprintf("<tr><td>%d</td><td><strong style=\"color:#f1f5f9;\">%s</strong><br><a href=\"%s\" target=\"_blank\" style=\"color:#64748b;font-size:11px;word-break:break-all;\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><strong style=\"color:#10b981;\">%s</strong></td><td><span class=\"badge-opt\">-%.1f%%</span></td></tr>",
-			idx+1, esc(e.Basename), esc(e.SourceURL), esc(e.SourceURL), pagesHTML.String(), rendText, retinaText, esc(e.OriginalFormatted), esc(e.OptimizedFormatted), e.SavingsPercent))
+		renderReportBuf.WriteString(fmt.Sprintf("<tr><td>%d</td><td><strong style=\"color:#f1f5f9;\">%s</strong><br><a href=\"%s\" target=\"_blank\" style=\"color:#64748b;font-size:11px;word-break:break-all;\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><strong style=\"color:#10b981;\">%s</strong></td><td><span class=\"badge-opt\">-%.1f%%</span></td></tr>",
+			idx+1, esc(e.Basename), esc(e.SourceURL), esc(e.SourceURL), pagesHTML.String(), origDimText, rendText, retinaText, esc(e.OriginalFormatted), esc(e.OptimizedFormatted), e.SavingsPercent))
 	}
 	renderReportBuf.WriteString("</tbody></table></div></body></html>")
 
