@@ -302,6 +302,12 @@ function speedMapApp() {
       if (profile.config) {
         this.config = { ...this.config, ...profile.config };
       }
+      if (this.config.adaptiveQuality !== false) {
+        this.config.adaptiveQuality = true;
+      }
+      if (this.config.resizeToRetina !== false) {
+        this.config.resizeToRetina = true;
+      }
       this.saveConfig();
     },
 
@@ -432,6 +438,12 @@ function speedMapApp() {
         if (saved) {
           const parsed = JSON.parse(saved);
           this.config = { ...this.config, ...parsed };
+          if (this.config.adaptiveQuality !== false) {
+            this.config.adaptiveQuality = true;
+          }
+          if (this.config.resizeToRetina !== false) {
+            this.config.resizeToRetina = true;
+          }
           if (this.config.sitemapUrl && !this.sitemapInput) {
             this.sitemapInput = this.config.sitemapUrl;
           }

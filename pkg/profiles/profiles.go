@@ -62,6 +62,16 @@ func listProfilesInternal() ([]SiteProfile, error) {
 		return []SiteProfile{}, nil
 	}
 
+	trueVal := true
+	for i := range list {
+		if list[i].Config.AdaptiveQuality == nil {
+			list[i].Config.AdaptiveQuality = &trueVal
+		}
+		if list[i].Config.ResizeToRetina == nil {
+			list[i].Config.ResizeToRetina = &trueVal
+		}
+	}
+
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].UpdatedAt.After(list[j].UpdatedAt)
 	})
