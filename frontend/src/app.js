@@ -1853,7 +1853,7 @@ function speedMapApp() {
     playPokemonCry() {
       if (!this.pokemonGame.current) return;
       try {
-        const audio = new Audio(`pokemon/audio/${this.pokemonGame.current.id}.ogg`);
+        const audio = new Audio(`pokemon/audio/${this.pokemonGame.current.id}.mp3`);
         audio.play().catch(() => {});
       } catch (e) {}
     }
