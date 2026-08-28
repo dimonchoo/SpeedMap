@@ -33,17 +33,21 @@ type ResourceTiming struct {
 }
 
 type ImageDetail struct {
-	URL           string  `json:"url"`
-	TransferSize  int64   `json:"transferSize"`  // bytes
-	EncodedSize   int64   `json:"encodedSize"`   // bytes
-	Duration      float64 `json:"duration"`     // ms
-	Width         int     `json:"width"`        // px
-	Height        int     `json:"height"`       // px
-	FormattedSize string  `json:"formattedSize"` // e.g. "450 KB"
-	Format        string  `json:"format"`        // e.g. "png", "jpg", "webp", "svg", "avif"
-	IsLazy        bool    `json:"isLazy"`        // whether loading="lazy" is set
-	Alt           string  `json:"alt"`           // image alt text if available
-	IsLCP         bool    `json:"isLCP"`         // whether this image is the LCP element
+	URL            string  `json:"url"`
+	TransferSize   int64   `json:"transferSize"`   // bytes
+	EncodedSize    int64   `json:"encodedSize"`    // bytes
+	Duration       float64 `json:"duration"`       // ms
+	Width          int     `json:"width"`          // px (intrinsic / natural width)
+	Height         int     `json:"height"`         // px (intrinsic / natural height)
+	NaturalWidth   int     `json:"naturalWidth"`   // px (original image width)
+	NaturalHeight  int     `json:"naturalHeight"`  // px (original image height)
+	RenderedWidth  int     `json:"renderedWidth"`  // px (DOM display width via getBoundingClientRect / clientWidth)
+	RenderedHeight int     `json:"renderedHeight"` // px (DOM display height via getBoundingClientRect / clientHeight)
+	FormattedSize  string  `json:"formattedSize"`  // e.g. "450 KB"
+	Format         string  `json:"format"`         // e.g. "png", "jpg", "webp", "svg", "avif"
+	IsLazy         bool    `json:"isLazy"`         // whether loading="lazy" is set
+	Alt            string  `json:"alt"`            // image alt text if available
+	IsLCP          bool    `json:"isLCP"`          // whether this image is the LCP element
 }
 
 type FontDetail struct {

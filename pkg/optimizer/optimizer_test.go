@@ -94,3 +94,50 @@ func TestConvertImageURLToWebPAuth(t *testing.T) {
 		t.Fatal("expected webp bytes")
 	}
 }
+
+func TestConvertTransparentHeavyImageAdaptive(t *testing.T) {
+	// Create a large 800x600 PNG with gradient and transparency (simulating a banner/avatar)
+	img := image.NewRGBA(image.Rect(0, 0, 800, 600))
+	for y := 0; y < 600; y++ {
+		for x := 0; x < 800; x++ {
+			a := uint8(255)
+			if x < 100 {
+				a = uint8((x * 255) / 100)
+			}
+			img.Set(x, y, color.RGBA{
+				R: uint8((x * 255) / 800),
+				G: uint8((y * 255) / 600),
+				B: uint8(((x + y) * 255) / 1400),
+				A: a,
+			})
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(buf.Bytes())
+	}))
+	defer ts.Close()
+
+	// Safe budget is 85KB (85% of 100KB). Lossless WebP on complex gradients easily exceeds 150KB.
+	// The optimizer must correctly recognize that lossless exceeds safeBudget and fall back to Lossy WebP with alpha preservation.
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuth(ts.URL+"/gradient.png", 80, 100*1024, true, "", "")
+	if err != nil {
+		t.Fatalf("ConvertImageURLToWebPAdaptiveBudgetAuth failed: %v", err)
+	}
+
+	if res.OptimizedBytes > 100*1024 {
+		t.Errorf("expected optimized size <= 100KB budget, got %d bytes (%s)", res.OptimizedBytes, res.OptimizedFormatted)
+	}
+	if res.SavingsPercent < 50.0 {
+		t.Errorf("expected savings >= 50%%, got %.1f%%", res.SavingsPercent)
+	}
+	if res.OptimizedWebPBase64 == "" {
+		t.Errorf("expected non-empty webp base64")
+	}
+}

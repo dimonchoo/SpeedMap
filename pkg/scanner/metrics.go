@@ -223,19 +223,44 @@ new Promise(async (resolve) => {
         const imageMap = new Map();
         const domImgMap = new Map();
 
-        // A. Extract DOM <img> attributes
+        // A. Extract DOM <img> attributes and accurate display/rendered dimensions
         const imgElements = Array.from(document.querySelectorAll('img'));
         imgElements.forEach(img => {
             const src = img.currentSrc || img.src || img.getAttribute('data-src') || img.getAttribute('data-lazy-src');
             if (src && !src.startsWith('data:')) {
                 let fullUrl = src;
                 try { fullUrl = new URL(src, document.baseURI).href; } catch(e){}
-                domImgMap.set(fullUrl, {
-                    width: img.naturalWidth || img.width || 0,
-                    height: img.naturalHeight || img.height || 0,
-                    isLazy: img.getAttribute('loading') === 'lazy' || !!img.getAttribute('data-src'),
-                    alt: img.getAttribute('alt') || ''
-                });
+                
+                const rect = img.getBoundingClientRect();
+                const renderedW = Math.round(rect.width || img.clientWidth || img.offsetWidth || 0);
+                const renderedH = Math.round(rect.height || img.clientHeight || img.offsetHeight || 0);
+                const naturalW = img.naturalWidth || img.width || 0;
+                const naturalH = img.naturalHeight || img.height || 0;
+
+                const prev = domImgMap.get(fullUrl);
+                if (prev) {
+                    domImgMap.set(fullUrl, {
+                        width: naturalW || prev.width,
+                        height: naturalH || prev.height,
+                        naturalWidth: naturalW || prev.naturalWidth,
+                        naturalHeight: naturalH || prev.naturalHeight,
+                        renderedWidth: Math.max(prev.renderedWidth || 0, renderedW),
+                        renderedHeight: Math.max(prev.renderedHeight || 0, renderedH),
+                        isLazy: prev.isLazy || (img.getAttribute('loading') === 'lazy' || !!img.getAttribute('data-src')),
+                        alt: img.getAttribute('alt') || prev.alt || ''
+                    });
+                } else {
+                    domImgMap.set(fullUrl, {
+                        width: naturalW,
+                        height: naturalH,
+                        naturalWidth: naturalW,
+                        naturalHeight: naturalH,
+                        renderedWidth: renderedW,
+                        renderedHeight: renderedH,
+                        isLazy: img.getAttribute('loading') === 'lazy' || !!img.getAttribute('data-src'),
+                        alt: img.getAttribute('alt') || ''
+                    });
+                }
             }
         });
 
@@ -245,14 +270,18 @@ new Promise(async (resolve) => {
             const isImgExt = /\.(jpg|jpeg|png|webp|avif|gif|svg|ico|bmp)(\?.*)?$/i.test(r.name);
             if (isImgType || isImgExt) {
                 const size = r.transferSize || r.encodedBodySize || r.decodedBodySize || 0;
-                const domInfo = domImgMap.get(r.name) || { width: 0, height: 0, isLazy: false, alt: '' };
+                const domInfo = domImgMap.get(r.name) || { width: 0, height: 0, naturalWidth: 0, naturalHeight: 0, renderedWidth: 0, renderedHeight: 0, isLazy: false, alt: '' };
                 imageMap.set(r.name, {
                     url: r.name,
                     transferSize: size,
                     encodedSize: r.encodedBodySize || 0,
                     duration: Math.round(r.duration || 0),
-                    width: domInfo.width,
-                    height: domInfo.height,
+                    width: domInfo.width || domInfo.naturalWidth || 0,
+                    height: domInfo.height || domInfo.naturalHeight || 0,
+                    naturalWidth: domInfo.naturalWidth || domInfo.width || 0,
+                    naturalHeight: domInfo.naturalHeight || domInfo.height || 0,
+                    renderedWidth: domInfo.renderedWidth || 0,
+                    renderedHeight: domInfo.renderedHeight || 0,
                     formattedSize: formatBytes(size),
                     format: getImgFormat(r.name),
                     isLazy: domInfo.isLazy,
@@ -269,17 +298,22 @@ new Promise(async (resolve) => {
                 let fullUrl = src;
                 try { fullUrl = new URL(src, document.baseURI).href; } catch(e){}
                 if (!imageMap.has(fullUrl)) {
+                    const domInfo = domImgMap.get(fullUrl) || { width: 0, height: 0, naturalWidth: 0, naturalHeight: 0, renderedWidth: 0, renderedHeight: 0, isLazy: false, alt: '' };
                     imageMap.set(fullUrl, {
                         url: fullUrl,
                         transferSize: 0,
                         encodedSize: 0,
                         duration: 0,
-                        width: img.naturalWidth || img.width || 0,
-                        height: img.naturalHeight || img.height || 0,
+                        width: domInfo.width || domInfo.naturalWidth || 0,
+                        height: domInfo.height || domInfo.naturalHeight || 0,
+                        naturalWidth: domInfo.naturalWidth || domInfo.width || 0,
+                        naturalHeight: domInfo.naturalHeight || domInfo.height || 0,
+                        renderedWidth: domInfo.renderedWidth || 0,
+                        renderedHeight: domInfo.renderedHeight || 0,
                         formattedSize: '0 B',
                         format: getImgFormat(fullUrl),
-                        isLazy: img.getAttribute('loading') === 'lazy' || !!img.getAttribute('data-src'),
-                        alt: img.getAttribute('alt') || '',
+                        isLazy: domInfo.isLazy,
+                        alt: domInfo.alt,
                         isLCP: data.diagnostics.lcpUrl === fullUrl
                     });
                 }
@@ -304,6 +338,10 @@ new Promise(async (resolve) => {
                                 duration: 0,
                                 width: 0,
                                 height: 0,
+                                naturalWidth: 0,
+                                naturalHeight: 0,
+                                renderedWidth: 0,
+                                renderedHeight: 0,
                                 formattedSize: '0 B',
                                 format: getImgFormat(fullUrl),
                                 isLazy: source.getAttribute('loading') === 'lazy' || !!source.getAttribute('data-srcset'),

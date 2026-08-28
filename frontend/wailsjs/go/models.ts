@@ -127,6 +127,13 @@ export namespace analytics {
 	    pages: string[];
 	    width: number;
 	    height: number;
+	    naturalWidth: number;
+	    naturalHeight: number;
+	    maxRenderedWidth: number;
+	    maxRenderedHeight: number;
+	    recommendedRetinaWidth: number;
+	    recommendedRetinaHeight: number;
+	    isOversized: boolean;
 	    format: string;
 	    isHeavy: boolean;
 	    isLazy: boolean;
@@ -151,6 +158,13 @@ export namespace analytics {
 	        this.pages = source["pages"];
 	        this.width = source["width"];
 	        this.height = source["height"];
+	        this.naturalWidth = source["naturalWidth"];
+	        this.naturalHeight = source["naturalHeight"];
+	        this.maxRenderedWidth = source["maxRenderedWidth"];
+	        this.maxRenderedHeight = source["maxRenderedHeight"];
+	        this.recommendedRetinaWidth = source["recommendedRetinaWidth"];
+	        this.recommendedRetinaHeight = source["recommendedRetinaHeight"];
+	        this.isOversized = source["isOversized"];
 	        this.format = source["format"];
 	        this.isHeavy = source["isHeavy"];
 	        this.isLazy = source["isLazy"];
@@ -198,6 +212,7 @@ export namespace analytics {
 	    totalImagePayloadFormatted: string;
 	    totalImageCount: number;
 	    heavyImagesCount: number;
+	    oversizedImagesCount: number;
 	    nonWebPCount: number;
 	    missingLazyCount: number;
 	    totalWebPSavingsBytes: number;
@@ -234,6 +249,7 @@ export namespace analytics {
 	        this.totalImagePayloadFormatted = source["totalImagePayloadFormatted"];
 	        this.totalImageCount = source["totalImageCount"];
 	        this.heavyImagesCount = source["heavyImagesCount"];
+	        this.oversizedImagesCount = source["oversizedImagesCount"];
 	        this.nonWebPCount = source["nonWebPCount"];
 	        this.missingLazyCount = source["missingLazyCount"];
 	        this.totalWebPSavingsBytes = source["totalWebPSavingsBytes"];
@@ -768,6 +784,10 @@ export namespace scanner {
 	    duration: number;
 	    width: number;
 	    height: number;
+	    naturalWidth: number;
+	    naturalHeight: number;
+	    renderedWidth: number;
+	    renderedHeight: number;
 	    formattedSize: string;
 	    format: string;
 	    isLazy: boolean;
@@ -786,6 +806,10 @@ export namespace scanner {
 	        this.duration = source["duration"];
 	        this.width = source["width"];
 	        this.height = source["height"];
+	        this.naturalWidth = source["naturalWidth"];
+	        this.naturalHeight = source["naturalHeight"];
+	        this.renderedWidth = source["renderedWidth"];
+	        this.renderedHeight = source["renderedHeight"];
 	        this.formattedSize = source["formattedSize"];
 	        this.format = source["format"];
 	        this.isLazy = source["isLazy"];

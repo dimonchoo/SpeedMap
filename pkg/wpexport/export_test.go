@@ -3,6 +3,8 @@ package wpexport
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"SpeedMap/pkg/analytics"
 	"SpeedMap/pkg/config"
@@ -210,7 +213,7 @@ func TestWriteWebPFilesAndReviewZIP(t *testing.T) {
 	for _, f := range zr.File {
 		names[f.Name] = true
 	}
-	for _, want := range []string{"compare.html", "manifest.json", "images/001/original.png", "images/001/optimized.webp"} {
+	for _, want := range []string{"compare.html", "render-report.html", "manifest.json", "images/001/original.png", "images/001/optimized.webp"} {
 		if !names[want] {
 			t.Fatalf("zip missing %s (have %v)", want, names)
 		}
@@ -249,4 +252,145 @@ func TestWebpRelFromHint(t *testing.T) {
 	if got != "2024/03/hero.webp" {
 		t.Fatalf("got %q", got)
 	}
+}
+
+func TestConcurrentHeavyExportSpeed(t *testing.T) {
+	// Create mock HTTP server serving a test image
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	for x := 0; x < 100; x++ {
+		for y := 0; y < 100; y++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 2), G: uint8(y * 2), B: 150, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(buf.Bytes())
+	}))
+	defer ts.Close()
+
+	// Simulate 50 heavy images
+	const testCount = 50
+	images := make([]ManifestImage, testCount)
+	for i := 0; i < testCount; i++ {
+		images[i] = ManifestImage{
+			SourceURL:              ts.URL + "/wp-content/uploads/2026/08/img-" + string(rune('a'+(i%26))) + ".png",
+			PathHint:               "2026/08/img.png",
+			Basename:               "img.png",
+			WebpRel:                "2026/08/img.webp",
+			Format:                 "png",
+			IsHeavy:                true,
+			MaxRenderedWidth:       350,
+			MaxRenderedHeight:      350,
+			RecommendedRetinaWidth: 700,
+		}
+	}
+
+	start := time.Now()
+	written, err := ConvertHeavyImagesWithThreshold(images, 80, 100*1024, true, "", "")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("ConvertHeavyImagesWithThreshold failed: %v", err)
+	}
+	if len(written) != testCount {
+		t.Fatalf("expected %d written images, got %d", testCount, len(written))
+	}
+
+	// Verify IDs and deterministic ordering
+	for i, w := range written {
+		expectedID := string(rune('0'+(i+1)/100)) + string(rune('0'+((i+1)/10)%10)) + string(rune('0'+(i+1)%10))
+		if w.ID != expectedID {
+			t.Errorf("expected ID %s for item %d, got %s", expectedID, i, w.ID)
+		}
+	}
+
+	t.Logf("=== EXPORT BENCHMARK: Converted %d images concurrently in %v (%.2f ms/image) ===",
+		testCount, elapsed, float64(elapsed.Milliseconds())/float64(testCount))
+}
+
+func TestBenchmark137ImagesFromDump(t *testing.T) {
+	dumpDir := "/Users/dmytrobuhaiov/Downloads/speedmap-webp-20260812-192446"
+	if _, err := os.Stat(dumpDir); err != nil {
+		t.Skip("Dump directory not found, skipping dump benchmark")
+	}
+
+	// Serve the dump directory via mock HTTP
+	ts := httptest.NewServer(http.FileServer(http.Dir(dumpDir)))
+	defer ts.Close()
+
+	// Read manifest
+	manifestData, err := os.ReadFile(filepath.Join(dumpDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("failed to read manifest: %v", err)
+	}
+
+	type rawMani struct {
+		Images []struct {
+			ID        string   `json:"id"`
+			SourceURL string   `json:"sourceUrl"`
+			PathHint  string   `json:"pathHint"`
+			WebpRel   string   `json:"webpRel"`
+			Basename  string   `json:"basename"`
+			Pages     []string `json:"pages"`
+		} `json:"images"`
+	}
+
+	var m rawMani
+	if err := json.Unmarshal(manifestData, &m); err != nil {
+		t.Fatalf("failed to unmarshal manifest: %v", err)
+	}
+
+	manifestImages := make([]ManifestImage, len(m.Images))
+	for i, im := range m.Images {
+		// Map source to local HTTP server
+		localURL := fmt.Sprintf("%s/images/%s/original.png", ts.URL, im.ID)
+		if _, err := os.Stat(filepath.Join(dumpDir, "images", im.ID, "original.jpg")); err == nil {
+			localURL = fmt.Sprintf("%s/images/%s/original.jpg", ts.URL, im.ID)
+		}
+		manifestImages[i] = ManifestImage{
+			SourceURL:              localURL,
+			PathHint:               im.PathHint,
+			WebpRel:                im.WebpRel,
+			Basename:               im.Basename,
+			Format:                 "png",
+			IsHeavy:                true,
+			Pages:                  im.Pages,
+			MaxRenderedWidth:       350,
+			MaxRenderedHeight:      350,
+			RecommendedRetinaWidth: 700,
+		}
+	}
+
+	start := time.Now()
+	written, err := ConvertHeavyImagesWithThreshold(manifestImages, 80, 100*1024, true, "", "")
+	convElapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("ConvertHeavyImagesWithThreshold failed: %v", err)
+	}
+	if len(written) == 0 {
+		t.Fatalf("no images converted")
+	}
+
+	outDir := t.TempDir()
+	out, err := WriteDeployPackage(filepath.Join(outDir, "pkg"), "uat.infuse.com", config.ScanConfig{WebPQuality: 80}, written)
+	totalElapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("WriteDeployPackage failed: %v", err)
+	}
+
+	t.Logf("\n===========================================================")
+	t.Logf("🚀 FULL 137-IMAGE EXPORT BENCHMARK COMPLETED:")
+	t.Logf("  - Converted Images : %d / %d", len(written), len(manifestImages))
+	t.Logf("  - Conversion Time  : %v (%.2f ms/image)", convElapsed, float64(convElapsed.Milliseconds())/float64(len(written)))
+	t.Logf("  - Total Export Time: %v (including ZIP & Deploy package build)", totalElapsed)
+	t.Logf("  - Package Dir      : %s", out.PackageDir)
+	t.Logf("  - Review ZIP       : %s", out.ReviewZIP)
+	t.Logf("===========================================================\n")
 }

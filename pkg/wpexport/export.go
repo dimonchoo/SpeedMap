@@ -14,7 +14,9 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"SpeedMap/pkg/analytics"
@@ -29,16 +31,20 @@ var applyTemplate string
 var rollbackTemplate string
 
 type ManifestImage struct {
-	SourceURL   string   `json:"sourceUrl"`
-	PathHint    string   `json:"pathHint"`
-	WebpRel     string   `json:"webpRel"`
-	Basename    string   `json:"basename"`
-	Format      string   `json:"format"`
-	IsHeavy     bool     `json:"isHeavy"`
-	Bytes       int64    `json:"bytes"`
-	Pages       []string `json:"pages"`
-	ID          string   `json:"id,omitempty"`
-	PackageWebP string   `json:"packageWebp,omitempty"` // relative to apply.php, e.g. images/001/optimized.webp
+	SourceURL              string   `json:"sourceUrl"`
+	PathHint               string   `json:"pathHint"`
+	WebpRel                string   `json:"webpRel"`
+	Basename               string   `json:"basename"`
+	Format                 string   `json:"format"`
+	IsHeavy                bool     `json:"isHeavy"`
+	Bytes                  int64    `json:"bytes"`
+	Pages                  []string `json:"pages"`
+	ID                     string   `json:"id,omitempty"`
+	PackageWebP            string   `json:"packageWebp,omitempty"` // relative to apply.php, e.g. images/001/optimized.webp
+	MaxRenderedWidth        int      `json:"maxRenderedWidth,omitempty"`
+	MaxRenderedHeight       int      `json:"maxRenderedHeight,omitempty"`
+	RecommendedRetinaWidth  int      `json:"recommendedRetinaWidth,omitempty"`
+	RecommendedRetinaHeight int      `json:"recommendedRetinaHeight,omitempty"`
 }
 
 type Manifest struct {
@@ -119,6 +125,18 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 			if img.IsHeavy {
 				ex.IsHeavy = true
 			}
+			if img.MaxRenderedWidth > ex.MaxRenderedWidth {
+				ex.MaxRenderedWidth = img.MaxRenderedWidth
+			}
+			if img.MaxRenderedHeight > ex.MaxRenderedHeight {
+				ex.MaxRenderedHeight = img.MaxRenderedHeight
+			}
+			if img.RecommendedRetinaWidth > ex.RecommendedRetinaWidth {
+				ex.RecommendedRetinaWidth = img.RecommendedRetinaWidth
+			}
+			if img.RecommendedRetinaHeight > ex.RecommendedRetinaHeight {
+				ex.RecommendedRetinaHeight = img.RecommendedRetinaHeight
+			}
 			// Prefer larger source when same webpRel (png vs jpg collision)
 			if img.MaxTransferSize > ex.Bytes {
 				ex.Bytes = img.MaxTransferSize
@@ -135,14 +153,18 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 
 		byKey[key] = len(out)
 		out = append(out, ManifestImage{
-			SourceURL: sourceURL,
-			PathHint:  pathHint,
-			WebpRel:   webpRel,
-			Basename:  basename,
-			Format:    format,
-			IsHeavy:   img.IsHeavy,
-			Bytes:     img.MaxTransferSize,
-			Pages:     append([]string(nil), pages...),
+			SourceURL:               sourceURL,
+			PathHint:                pathHint,
+			WebpRel:                 webpRel,
+			Basename:                basename,
+			Format:                  format,
+			IsHeavy:                 img.IsHeavy,
+			Bytes:                   img.MaxTransferSize,
+			Pages:                   append([]string(nil), pages...),
+			MaxRenderedWidth:        img.MaxRenderedWidth,
+			MaxRenderedHeight:       img.MaxRenderedHeight,
+			RecommendedRetinaWidth:  img.RecommendedRetinaWidth,
+			RecommendedRetinaHeight: img.RecommendedRetinaHeight,
 		})
 	}
 
@@ -161,54 +183,113 @@ func ConvertHeavyImages(images []ManifestImage, quality float32, authUser, authP
 	return ConvertHeavyImagesWithThreshold(images, quality, 100*1024, true, authUser, authPass)
 }
 
-// ConvertHeavyImagesWithThreshold converts images with custom threshold byte budget.
+// ConvertHeavyImagesWithThreshold converts images with custom threshold byte budget using concurrent workers.
 func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, thresholdBytes int64, adaptive bool, authUser, authPass string) ([]WrittenImage, error) {
-	ok := make([]WrittenImage, 0, len(images))
+	if len(images) == 0 {
+		return nil, fmt.Errorf("no images to convert")
+	}
+
+	numWorkers := runtime.NumCPU() * 2
+	if numWorkers < 4 {
+		numWorkers = 4
+	}
+	if numWorkers > 24 {
+		numWorkers = 24
+	}
+	if numWorkers > len(images) {
+		numWorkers = len(images)
+	}
+
+	type convertTask struct {
+		index int
+		img   ManifestImage
+	}
+
+	type convertResult struct {
+		index int
+		item  *WrittenImage
+		err   error
+	}
+
+	tasks := make(chan convertTask, len(images))
+	resultsChan := make(chan convertResult, len(images))
+
+	var wg sync.WaitGroup
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range tasks {
+				img := task.img
+				res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(img.SourceURL, quality, thresholdBytes, adaptive, authUser, authPass)
+				if err != nil {
+					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: %w", img.SourceURL, err)}
+					continue
+				}
+				webpData, err := decodeDataURL(res.OptimizedWebPBase64)
+				if err != nil {
+					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("decode webp %s: %w", img.SourceURL, err)}
+					continue
+				}
+				origData, err := decodeDataURL(res.OriginalDataBase64)
+				if err != nil {
+					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("decode orig %s: %w", img.SourceURL, err)}
+					continue
+				}
+
+				rel := img.WebpRel
+				if rel == "" {
+					rel = webpRelFromHint(img.PathHint, img.Basename)
+				}
+				rel = filepath.ToSlash(rel)
+				img.WebpRel = rel
+
+				ext := path.Ext(img.Basename)
+				if ext == "" {
+					ext = "." + img.Format
+				}
+
+				written := &WrittenImage{
+					ManifestImage:      img,
+					OrigExt:            strings.TrimPrefix(strings.ToLower(ext), "."),
+					OrigData:           origData,
+					WebPData:           webpData,
+					OriginalBytes:      res.OriginalBytes,
+					OptimizedBytes:     res.OptimizedBytes,
+					SavingsPercent:     res.SavingsPercent,
+					OriginalFormatted:  res.OriginalFormatted,
+					OptimizedFormatted: res.OptimizedFormatted,
+				}
+				resultsChan <- convertResult{index: task.index, item: written}
+			}
+		}()
+	}
 
 	for i, img := range images {
-		res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(img.SourceURL, quality, thresholdBytes, adaptive, authUser, authPass)
-		if err != nil {
-			fmt.Printf("[wpexport] skip %s: %v\n", img.SourceURL, err)
+		tasks <- convertTask{index: i, img: img}
+	}
+	close(tasks)
+
+	wg.Wait()
+	close(resultsChan)
+
+	rawResults := make([]*WrittenImage, len(images))
+	for res := range resultsChan {
+		if res.err != nil {
+			fmt.Printf("[wpexport] %v\n", res.err)
 			continue
 		}
-		webpData, err := decodeDataURL(res.OptimizedWebPBase64)
-		if err != nil {
-			fmt.Printf("[wpexport] skip %s: %v\n", img.SourceURL, err)
-			continue
-		}
-		origData, err := decodeDataURL(res.OriginalDataBase64)
-		if err != nil {
-			fmt.Printf("[wpexport] skip %s (orig): %v\n", img.SourceURL, err)
-			continue
-		}
+		rawResults[res.index] = res.item
+	}
 
-		rel := img.WebpRel
-		if rel == "" {
-			rel = webpRelFromHint(img.PathHint, img.Basename)
+	ok := make([]WrittenImage, 0, len(images))
+	for _, item := range rawResults {
+		if item != nil {
+			id := fmt.Sprintf("%03d", len(ok)+1)
+			item.ID = id
+			item.PackageWebP = fmt.Sprintf("images/%s/optimized.webp", id)
+			ok = append(ok, *item)
 		}
-		rel = filepath.ToSlash(rel)
-		img.WebpRel = rel
-
-		id := fmt.Sprintf("%03d", len(ok)+1)
-		img.ID = id
-		img.PackageWebP = fmt.Sprintf("images/%s/optimized.webp", id)
-		_ = i
-
-		ext := path.Ext(img.Basename)
-		if ext == "" {
-			ext = "." + img.Format
-		}
-		ok = append(ok, WrittenImage{
-			ManifestImage:      img,
-			OrigExt:            strings.TrimPrefix(strings.ToLower(ext), "."),
-			OrigData:           origData,
-			WebPData:           webpData,
-			OriginalBytes:      res.OriginalBytes,
-			OptimizedBytes:     res.OptimizedBytes,
-			SavingsPercent:     res.SavingsPercent,
-			OriginalFormatted:  res.OriginalFormatted,
-			OptimizedFormatted: res.OptimizedFormatted,
-		})
 	}
 
 	if len(ok) == 0 {
@@ -288,7 +369,7 @@ func WriteDeployPackage(packageDir, domain string, cfg config.ScanConfig, writte
 		return nil, err
 	}
 	for _, f := range zr.File {
-		if f.Name != "compare.html" && f.Name != "manifest.json" {
+		if f.Name != "compare.html" && f.Name != "manifest.json" && f.Name != "render-report.html" {
 			continue
 		}
 		rc, err := f.Open()
@@ -334,19 +415,23 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	}
 
 	type zipEntry struct {
-		ID                 string   `json:"id"`
-		SourceURL          string   `json:"sourceUrl"`
-		PathHint           string   `json:"pathHint"`
-		WebpRel            string   `json:"webpRel"`
-		Basename           string   `json:"basename"`
-		Pages              []string `json:"pages"`
-		OriginalBytes      int64    `json:"originalBytes"`
-		OptimizedBytes     int64    `json:"optimizedBytes"`
-		SavingsPercent     float64  `json:"savingsPercent"`
-		OriginalFormatted  string   `json:"originalFormatted"`
-		OptimizedFormatted string   `json:"optimizedFormatted"`
-		OriginalPath       string   `json:"originalPath"`
-		OptimizedPath      string   `json:"optimizedPath"`
+		ID                      string   `json:"id"`
+		SourceURL               string   `json:"sourceUrl"`
+		PathHint                string   `json:"pathHint"`
+		WebpRel                 string   `json:"webpRel"`
+		Basename                string   `json:"basename"`
+		Pages                   []string `json:"pages"`
+		MaxRenderedWidth        int      `json:"maxRenderedWidth,omitempty"`
+		MaxRenderedHeight       int      `json:"maxRenderedHeight,omitempty"`
+		RecommendedRetinaWidth  int      `json:"recommendedRetinaWidth,omitempty"`
+		RecommendedRetinaHeight int      `json:"recommendedRetinaHeight,omitempty"`
+		OriginalBytes           int64    `json:"originalBytes"`
+		OptimizedBytes          int64    `json:"optimizedBytes"`
+		SavingsPercent          float64  `json:"savingsPercent"`
+		OriginalFormatted       string   `json:"originalFormatted"`
+		OptimizedFormatted      string   `json:"optimizedFormatted"`
+		OriginalPath            string   `json:"originalPath"`
+		OptimizedPath           string   `json:"optimizedPath"`
 	}
 
 	entries := make([]zipEntry, 0, len(images))
@@ -375,19 +460,23 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		}
 
 		entries = append(entries, zipEntry{
-			ID:                 id,
-			SourceURL:          im.SourceURL,
-			PathHint:           im.PathHint,
-			WebpRel:            im.WebpRel,
-			Basename:           im.Basename,
-			Pages:              im.Pages,
-			OriginalBytes:      im.OriginalBytes,
-			OptimizedBytes:     im.OptimizedBytes,
-			SavingsPercent:     im.SavingsPercent,
-			OriginalFormatted:  im.OriginalFormatted,
-			OptimizedFormatted: im.OptimizedFormatted,
-			OriginalPath:       origPath,
-			OptimizedPath:      webpPath,
+			ID:                      id,
+			SourceURL:               im.SourceURL,
+			PathHint:                im.PathHint,
+			WebpRel:                 im.WebpRel,
+			Basename:                im.Basename,
+			Pages:                   im.Pages,
+			MaxRenderedWidth:        im.MaxRenderedWidth,
+			MaxRenderedHeight:       im.MaxRenderedHeight,
+			RecommendedRetinaWidth:  im.RecommendedRetinaWidth,
+			RecommendedRetinaHeight: im.RecommendedRetinaHeight,
+			OriginalBytes:           im.OriginalBytes,
+			OptimizedBytes:          im.OptimizedBytes,
+			SavingsPercent:          im.SavingsPercent,
+			OriginalFormatted:       im.OriginalFormatted,
+			OptimizedFormatted:      im.OptimizedFormatted,
+			OriginalPath:            origPath,
+			OptimizedPath:           webpPath,
 		})
 	}
 
@@ -403,6 +492,57 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		return nil, err
 	}
 	if err := writeZipFile(zw, "manifest.json", maniJSON); err != nil {
+		_ = zw.Close()
+		return nil, err
+	}
+
+	// Generate render-report.html (documenting cross-page render optimization)
+	var renderReportBuf strings.Builder
+	renderReportBuf.WriteString("<!DOCTYPE html><html lang=\"uk\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>Звіт оптимізації рендеру зображень — ")
+	renderReportBuf.WriteString(esc(domain))
+	renderReportBuf.WriteString("</title><style>")
+	renderReportBuf.WriteString("body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:24px;background:#0f172a;color:#f8fafc}")
+	renderReportBuf.WriteString(".container{max-width:1400px;margin:0 auto}")
+	renderReportBuf.WriteString("h1{color:#38bdf8;font-size:24px;margin:0 0 8px}p.meta{color:#94a3b8;font-size:13px;margin:0 0 24px}")
+	renderReportBuf.WriteString("table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:12px;overflow:hidden;border:1px solid #334155;font-size:13px}")
+	renderReportBuf.WriteString("th{background:#090d16;color:#94a3b8;padding:12px;text-align:left;font-size:11px;text-transform:uppercase}")
+	renderReportBuf.WriteString("td{padding:12px;border-bottom:1px solid #334155;vertical-align:top}")
+	renderReportBuf.WriteString(".pages-list{font-size:12px;color:#cbd5e1;list-style:disc;padding-left:18px;margin:4px 0}")
+	renderReportBuf.WriteString(".pages-list a{color:#38bdf8;text-decoration:underline;word-break:break-all}")
+	renderReportBuf.WriteString(".badge-opt{color:#10b981;background:rgba(16,185,129,0.15);padding:2px 8px;border-radius:4px;font-weight:bold;font-size:11px}")
+	renderReportBuf.WriteString(".badge-dim{color:#38bdf8;font-family:monospace;font-size:12px;font-weight:bold}")
+	renderReportBuf.WriteString("</style></head><body><div class=\"container\">")
+	renderReportBuf.WriteString("<h1>📊 Звіт оптимізації за рендером на сторінках (Render-Aware WebP Optimization)</h1>")
+	renderReportBuf.WriteString(fmt.Sprintf("<p class=\"meta\">Домен: %s · Всього зображень: %d · Згенеровано: %s</p>", esc(domain), len(entries), time.Now().UTC().Format("2006-01-02 15:04:05 UTC")))
+	renderReportBuf.WriteString("<table><thead><tr><th>#</th><th>Зображення</th><th>Сторінки використання</th><th>Фактичний рендер</th><th>Retina 2x ціль</th><th>Оригінальний розмір</th><th>Оптимізований WebP</th><th>Економія</th></tr></thead><tbody>")
+
+	for idx, e := range entries {
+		pagesHTML := strings.Builder{}
+		if len(e.Pages) > 0 {
+			pagesHTML.WriteString("<ul class=\"pages-list\">")
+			for _, pg := range e.Pages {
+				pagesHTML.WriteString(fmt.Sprintf("<li><a href=\"%s\" target=\"_blank\">%s</a></li>", esc(pg), esc(pg)))
+			}
+			pagesHTML.WriteString("</ul>")
+		} else {
+			pagesHTML.WriteString("<span style=\"color:#64748b;\">—</span>")
+		}
+
+		rendText := "—"
+		if e.MaxRenderedWidth > 0 {
+			rendText = fmt.Sprintf("<span class=\"badge-dim\">%d×%d px</span>", e.MaxRenderedWidth, e.MaxRenderedHeight)
+		}
+		retinaText := "—"
+		if e.RecommendedRetinaWidth > 0 {
+			retinaText = fmt.Sprintf("<span class=\"badge-dim\" style=\"color:#10b981;\">%d×%d px</span>", e.RecommendedRetinaWidth, e.RecommendedRetinaHeight)
+		}
+
+		renderReportBuf.WriteString(fmt.Sprintf("<tr><td>%d</td><td><strong style=\"color:#f1f5f9;\">%s</strong><br><a href=\"%s\" target=\"_blank\" style=\"color:#64748b;font-size:11px;word-break:break-all;\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><strong style=\"color:#10b981;\">%s</strong></td><td><span class=\"badge-opt\">-%.1f%%</span></td></tr>",
+			idx+1, esc(e.Basename), esc(e.SourceURL), esc(e.SourceURL), pagesHTML.String(), rendText, retinaText, esc(e.OriginalFormatted), esc(e.OptimizedFormatted), e.SavingsPercent))
+	}
+	renderReportBuf.WriteString("</tbody></table></div></body></html>")
+
+	if err := writeZipFile(zw, "render-report.html", []byte(renderReportBuf.String())); err != nil {
 		_ = zw.Close()
 		return nil, err
 	}

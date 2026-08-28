@@ -210,3 +210,99 @@ func TestComputeSiteAnalytics(t *testing.T) {
 		t.Errorf("Report HTML seems unexpectedly small: %d chars", len(htmlReport))
 	}
 }
+
+func TestImageMultiPageRenderAggregationAndRetina(t *testing.T) {
+	// An image used across 3 different pages with different CSS render sizes:
+	// Page 1: Avatar render (83x83)
+	// Page 2: Bio card render (350x350)
+	// Page 3: Team grid render (200x200)
+	// Original file is 1200x1200 px
+	pages := []scanner.PageResult{
+		{
+			ID:  1,
+			URL: "https://example.com/page-avatar",
+			Diagnostics: scanner.PageDiagnostics{
+				LargestImages: []scanner.ImageDetail{
+					{
+						URL:            "https://example.com/img/author.png",
+						TransferSize:   800 * 1024,
+						Width:          1200,
+						Height:         1200,
+						NaturalWidth:   1200,
+						NaturalHeight:  1200,
+						RenderedWidth:  83,
+						RenderedHeight: 83,
+						Format:         "png",
+					},
+				},
+			},
+		},
+		{
+			ID:  2,
+			URL: "https://example.com/page-bio",
+			Diagnostics: scanner.PageDiagnostics{
+				LargestImages: []scanner.ImageDetail{
+					{
+						URL:            "https://example.com/img/author.png",
+						TransferSize:   800 * 1024,
+						Width:          1200,
+						Height:         1200,
+						NaturalWidth:   1200,
+						NaturalHeight:  1200,
+						RenderedWidth:  350,
+						RenderedHeight: 350,
+						Format:         "png",
+					},
+				},
+			},
+		},
+		{
+			ID:  3,
+			URL: "https://example.com/page-team",
+			Diagnostics: scanner.PageDiagnostics{
+				LargestImages: []scanner.ImageDetail{
+					{
+						URL:            "https://example.com/img/author.png",
+						TransferSize:   800 * 1024,
+						Width:          1200,
+						Height:         1200,
+						NaturalWidth:   1200,
+						NaturalHeight:  1200,
+						RenderedWidth:  200,
+						RenderedHeight: 200,
+						Format:         "png",
+					},
+				},
+			},
+		},
+	}
+
+	siteAnalytics := ComputeSiteAnalytics(pages)
+
+	if len(siteAnalytics.AllImages) != 1 {
+		t.Fatalf("Expected 1 aggregated image, got %d", len(siteAnalytics.AllImages))
+	}
+
+	img := siteAnalytics.AllImages[0]
+	if img.PageCount != 3 {
+		t.Errorf("Expected PageCount = 3, got %d", img.PageCount)
+	}
+	if img.MaxRenderedWidth != 350 {
+		t.Errorf("Expected MaxRenderedWidth = 350 (max across 83, 350, 200), got %d", img.MaxRenderedWidth)
+	}
+	if img.MaxRenderedHeight != 350 {
+		t.Errorf("Expected MaxRenderedHeight = 350, got %d", img.MaxRenderedHeight)
+	}
+	if img.RecommendedRetinaWidth != 700 { // 350 * 2
+		t.Errorf("Expected RecommendedRetinaWidth = 700 (2x Retina), got %d", img.RecommendedRetinaWidth)
+	}
+	if img.RecommendedRetinaHeight != 700 {
+		t.Errorf("Expected RecommendedRetinaHeight = 700, got %d", img.RecommendedRetinaHeight)
+	}
+	if !img.IsOversized { // 1200 > 700
+		t.Errorf("Expected IsOversized = true (1200 > 700)")
+	}
+	if siteAnalytics.OversizedImagesCount != 1 {
+		t.Errorf("Expected OversizedImagesCount = 1, got %d", siteAnalytics.OversizedImagesCount)
+	}
+}

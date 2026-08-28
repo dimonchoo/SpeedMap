@@ -19,16 +19,23 @@ type ResourceImpact struct {
 }
 
 type AggregatedImage struct {
-	URL                       string  `json:"url"`
-	MaxTransferSize           int64   `json:"maxTransferSize"` // bytes
-	FormattedSize             string  `json:"formattedSize"`   // e.g. "1.2 MB"
-	AvgDurationMs             float64 `json:"avgDurationMs"`   // ms
+	URL                       string   `json:"url"`
+	MaxTransferSize           int64    `json:"maxTransferSize"` // bytes
+	FormattedSize             string   `json:"formattedSize"`   // e.g. "1.2 MB"
+	AvgDurationMs             float64  `json:"avgDurationMs"`   // ms
 	PageCount                 int      `json:"pageCount"` // how many pages use this image
 	Pages                     []string `json:"pages"`     // page URLs where this image was seen
-	Width                     int      `json:"width"`
-	Height                    int      `json:"height"`
-	Format                    string   `json:"format"` // png, jpg, webp, svg, avif, gif
-	IsHeavy                   bool     `json:"isHeavy"` // > 100 KB
+	Width                     int      `json:"width"`     // intrinsic / natural width
+	Height                    int      `json:"height"`    // intrinsic / natural height
+	NaturalWidth              int      `json:"naturalWidth"`
+	NaturalHeight             int      `json:"naturalHeight"`
+	MaxRenderedWidth          int      `json:"maxRenderedWidth"`        // max CSS display width across all pages
+	MaxRenderedHeight         int      `json:"maxRenderedHeight"`       // max CSS display height across all pages
+	RecommendedRetinaWidth    int      `json:"recommendedRetinaWidth"`  // MaxRenderedWidth * 2 (optimal for Retina)
+	RecommendedRetinaHeight   int      `json:"recommendedRetinaHeight"` // MaxRenderedHeight * 2
+	IsOversized               bool     `json:"isOversized"`             // NaturalWidth > MaxRenderedWidth * 2
+	Format                    string   `json:"format"`                  // png, jpg, webp, svg, avif, gif
+	IsHeavy                   bool     `json:"isHeavy"`                 // > threshold
 	IsLazy                    bool     `json:"isLazy"`
 	IsLCP                     bool     `json:"isLCP"`
 	EstimatedWebPSize         int64    `json:"estimatedWebPSize"`
@@ -106,6 +113,7 @@ type SiteAnalytics struct {
 	TotalImagePayloadFormatted string         `json:"totalImagePayloadFormatted"`
 	TotalImageCount            int            `json:"totalImageCount"`
 	HeavyImagesCount           int            `json:"heavyImagesCount"`
+	OversizedImagesCount       int            `json:"oversizedImagesCount"`
 	NonWebPCount               int            `json:"nonWebPCount"`
 	MissingLazyCount           int            `json:"missingLazyCount"`
 	TotalWebPSavingsBytes      int64          `json:"totalWebPSavingsBytes"`
@@ -244,12 +252,23 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 				}
 			}
 
-			// Aggregate images across pages
+			// Aggregate images across pages (tracking max rendered size across all pages)
 			for _, img := range p.Diagnostics.LargestImages {
 				if img.URL == "" {
 					continue
 				}
 				key := img.URL
+				naturalW := img.NaturalWidth
+				if naturalW == 0 {
+					naturalW = img.Width
+				}
+				naturalH := img.NaturalHeight
+				if naturalH == 0 {
+					naturalH = img.Height
+				}
+				renderedW := img.RenderedWidth
+				renderedH := img.RenderedHeight
+
 				if existing, found := imageMap[key]; found {
 					if appendUniquePage(existing, p.URL) {
 						existing.PageCount = len(existing.Pages)
@@ -261,11 +280,24 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 					if img.IsLCP {
 						existing.IsLCP = true
 					}
+					if naturalW > existing.NaturalWidth {
+						existing.NaturalWidth = naturalW
+						existing.Width = naturalW
+					}
+					if naturalH > existing.NaturalHeight {
+						existing.NaturalHeight = naturalH
+						existing.Height = naturalH
+					}
+					// Always track the MAXIMUM rendered width & height across all pages where image is used
+					if renderedW > existing.MaxRenderedWidth {
+						existing.MaxRenderedWidth = renderedW
+					}
+					if renderedH > existing.MaxRenderedHeight {
+						existing.MaxRenderedHeight = renderedH
+					}
 					if img.TransferSize > existing.MaxTransferSize {
 						existing.MaxTransferSize = img.TransferSize
 						existing.FormattedSize = img.FormattedSize
-						existing.Width = img.Width
-						existing.Height = img.Height
 						if img.Format != "" {
 							existing.Format = img.Format
 						}
@@ -276,15 +308,19 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 						fmtStr = detectFormatFromURL(img.URL)
 					}
 					agg := &AggregatedImage{
-						URL:             img.URL,
-						MaxTransferSize: img.TransferSize,
-						FormattedSize:   img.FormattedSize,
-						AvgDurationMs:   img.Duration,
-						Width:           img.Width,
-						Height:          img.Height,
-						Format:          fmtStr,
-						IsLazy:          img.IsLazy,
-						IsLCP:           img.IsLCP,
+						URL:               img.URL,
+						MaxTransferSize:   img.TransferSize,
+						FormattedSize:     img.FormattedSize,
+						AvgDurationMs:     img.Duration,
+						Width:             naturalW,
+						Height:            naturalH,
+						NaturalWidth:      naturalW,
+						NaturalHeight:     naturalH,
+						MaxRenderedWidth:  renderedW,
+						MaxRenderedHeight: renderedH,
+						Format:            fmtStr,
+						IsLazy:            img.IsLazy,
+						IsLCP:             img.IsLCP,
 					}
 					appendUniquePage(agg, p.URL)
 					agg.PageCount = len(agg.Pages)
@@ -434,7 +470,7 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 	var allImages []AggregatedImage
 	formatBreakdown := make(map[string]int)
 	var totalPayloadBytes int64
-	var heavyCount, nonWebPCount, missingLazyCount int
+	var heavyCount, oversizedCount, nonWebPCount, missingLazyCount int
 	var totalSavingsBytes int64
 
 	for _, img := range imageMap {
@@ -447,6 +483,30 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 
 		if img.Format == "" {
 			img.Format = detectFormatFromURL(img.URL)
+		}
+
+		// Calculate Recommended Retina Dimensions (MaxRenderedWidth * 2, strictly capped at Natural dimensions)
+		if img.MaxRenderedWidth > 0 {
+			retinaW := img.MaxRenderedWidth * 2
+			retinaH := img.MaxRenderedHeight * 2
+			// NEVER upscale beyond natural original dimensions
+			if img.NaturalWidth > 0 && retinaW > img.NaturalWidth {
+				retinaW = img.NaturalWidth
+			}
+			if img.NaturalHeight > 0 && retinaH > img.NaturalHeight {
+				retinaH = img.NaturalHeight
+			}
+			img.RecommendedRetinaWidth = retinaW
+			img.RecommendedRetinaHeight = retinaH
+
+			// Image is oversized if its intrinsic natural width exceeds 2x Retina display requirements
+			if img.NaturalWidth > (img.MaxRenderedWidth * 2) {
+				img.IsOversized = true
+				oversizedCount++
+			}
+		} else {
+			img.RecommendedRetinaWidth = img.NaturalWidth
+			img.RecommendedRetinaHeight = img.NaturalHeight
 		}
 
 		formatBreakdown[img.Format]++
@@ -655,6 +715,7 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		TotalImagePayloadFormatted: formatBytes(totalPayloadBytes),
 		TotalImageCount:            len(allImages),
 		HeavyImagesCount:           heavyCount,
+		OversizedImagesCount:       oversizedCount,
 		NonWebPCount:               nonWebPCount,
 		MissingLazyCount:           missingLazyCount,
 		TotalWebPSavingsBytes:      totalSavingsBytes,
@@ -797,6 +858,15 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 		// Escape URL quotes for JS function parameter
 		escapedURL := strings.ReplaceAll(img.URL, "'", "\\'")
 
+		dimBadge := fmt.Sprintf(`<span style="color: #94a3b8; font-size: 12px;">%dx%d px</span>`, img.Width, img.Height)
+		if img.MaxRenderedWidth > 0 {
+			retinaBadge := fmt.Sprintf(`<div style="font-size: 11px; color: #38bdf8; margin-top: 2px;">Рендер: %d×%d (Retina 2x: %d×%d)</div>`, img.MaxRenderedWidth, img.MaxRenderedHeight, img.RecommendedRetinaWidth, img.RecommendedRetinaHeight)
+			if img.IsOversized {
+				retinaBadge += fmt.Sprintf(`<div style="font-size: 10px; color: #ef4444; background: rgba(239,68,68,0.15); padding: 1px 4px; border-radius: 3px; display: inline-block; margin-top: 2px;">⚠️ Завелике для рендеру</div>`)
+			}
+			dimBadge += retinaBadge
+		}
+
 		rowsHTML.WriteString(fmt.Sprintf(`
 		<tr style="%s border-bottom: 1px solid #334155;">
 			<td style="padding: 12px; font-family: monospace; font-size: 12px;">%d</td>
@@ -810,7 +880,7 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 			<td style="padding: 12px; text-align: center;">
 				<span style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-family: monospace; uppercase; %s">%s</span>
 			</td>
-			<td style="padding: 12px; text-align: center; color: #94a3b8; font-size: 12px;">%dx%d px</td>
+			<td style="padding: 12px; text-align: center;">%s</td>
 			<td style="padding: 12px; text-align: center; color: #38bdf8; font-weight: bold; font-size: 12px;">%d стор.</td>
 			<td style="padding: 12px; text-align: right; color: #f1f5f9; font-weight: bold; font-family: monospace; font-size: 13px;">%s</td>
 			<td style="padding: 12px; text-align: right; color: #10b981; font-weight: bold; font-family: monospace; font-size: 13px;">%s</td>
@@ -820,7 +890,7 @@ func GenerateImageComparisonHTML(analytics SiteAnalytics, domain string) string 
 				<button onclick="openModal('%s', '%s', '%s', '%.1f%%')" style="background: #0284c7; color: white; border: none; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: bold; cursor: pointer;">👁️ Порівняти</button>
 			</td>
 		</tr>
-		`, heavyStyle, idx+1, img.URL, escapedURL, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsPercent, img.URL, img.URL, lcpBadge, fmtBadgeClass, strings.ToUpper(img.Format), img.Width, img.Height, img.PageCount, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsFormatted, img.EstimatedSavingsPercent, lazyBadge, escapedURL, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsPercent))
+		`, heavyStyle, idx+1, img.URL, escapedURL, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsPercent, img.URL, img.URL, lcpBadge, fmtBadgeClass, strings.ToUpper(img.Format), dimBadge, img.PageCount, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsFormatted, img.EstimatedSavingsPercent, lazyBadge, escapedURL, img.FormattedSize, img.EstimatedWebPFormatted, img.EstimatedSavingsPercent))
 	}
 
 	html := fmt.Sprintf(`<!DOCTYPE html>
