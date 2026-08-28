@@ -39,6 +39,36 @@
     ::-webkit-scrollbar-track { background: #0f172a; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    @keyframes pokemon-march {
+      0% { transform: translateX(380px); }
+      100% { transform: translateX(-560px); }
+    }
+
+    .pokemon-sprint-track {
+      display: flex;
+      align-items: flex-end;
+      position: absolute;
+      bottom: 2px;
+      white-space: nowrap;
+      animation: pokemon-march 4.5s linear infinite;
+      will-change: transform;
+    }
+
+    .pokemon-sprite {
+      image-rendering: pixelated;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+    }
+
+    .pokemon-sprite:hover {
+      transform: translateY(-6px) scale(1.25);
+    }
+
+    .ground-line {
+      background: linear-gradient(90deg, #10b981 0%, #059669 50%, #047857 100%);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-100 h-full font-sans antialiased selection:bg-emerald-500 selection:text-white" x-data="speedMapApp()" x-init="initApp()">
@@ -302,6 +332,37 @@
                 class="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500/20 h-4 w-4">
               <span class="truncate text-slate-300 group-hover:text-white font-mono flex-1" x-text="item.url"></span>
             </label>
+          </template>
+        </div>
+
+        <!-- POKÉMON PARADE STRIP (Directly above Start Button) -->
+        <div class="relative overflow-hidden h-14 bg-slate-950/90 border-t border-slate-800/80 px-2 select-none shrink-0">
+          <!-- Ground Line -->
+          <div class="absolute bottom-0 left-0 right-0 h-[2px] ground-line"></div>
+
+          <!-- STATE 1: IDLE ROW (High-Quality Gen 5 Showdown GIFs) -->
+          <template x-if="!isScanning">
+            <div class="absolute inset-0 pt-2 px-2 flex items-end justify-between">
+              <img src="pokemon/idle/squirtle.gif" class="h-9 w-auto object-contain pokemon-sprite cursor-pointer" title="Сквіртл 🐢" />
+              <img src="pokemon/idle/bulbasaur.gif" class="h-9 w-auto object-contain pokemon-sprite cursor-pointer" title="Бульбазавр 🍃" />
+              <img src="pokemon/idle/pikachu.gif" @click="playNotificationSound('page')" class="h-10 w-auto object-contain pokemon-sprite cursor-pointer" title="Пікачу ⚡ (Клікніть для звуку!)" />
+              <img src="pokemon/idle/charmander.gif" class="h-9 w-auto object-contain pokemon-sprite cursor-pointer" title="Чармандер 🔥" />
+              <img src="pokemon/idle/eevee.gif" class="h-9 w-auto object-contain pokemon-sprite cursor-pointer" title="Іві 🦊" />
+              <img src="pokemon/idle/gengar.gif" class="h-9 w-auto object-contain pokemon-sprite cursor-pointer" title="Генгар 👻" />
+            </div>
+          </template>
+
+          <!-- STATE 2: ACTIVE SCANNING (Running Parade Across the Track) -->
+          <template x-if="isScanning">
+            <div class="pokemon-sprint-track space-x-5">
+              <img src="pokemon/run/pikachu.gif" class="h-8 w-auto object-contain pokemon-sprite" title="Пікачу біжить ⚡" />
+              <img src="pokemon/run/bulbasaur.gif" class="h-7 w-auto object-contain pokemon-sprite" title="Бульбазавр біжить 🍃" />
+              <img src="pokemon/run/charmander.gif" class="h-7 w-auto object-contain pokemon-sprite" title="Чармандер біжить 🔥" />
+              <img src="pokemon/run/squirtle.gif" class="h-7 w-auto object-contain pokemon-sprite" title="Сквіртл біжить 🐢" />
+              <img src="pokemon/run/eevee.gif" class="h-7 w-auto object-contain pokemon-sprite" title="Іві біжить 🦊" />
+              <img src="pokemon/run/gengar.gif" class="h-7 w-auto object-contain pokemon-sprite" title="Генгар біжить 👻" />
+              <img src="pokemon/run/snorlax.gif" class="h-8 w-auto object-contain pokemon-sprite" title="Снорлакс біжить 💤" />
+            </div>
           </template>
         </div>
 
