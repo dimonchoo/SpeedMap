@@ -531,6 +531,13 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	renderReportBuf.WriteString(".badge-opt{color:#10b981;background:rgba(16,185,129,0.15);padding:2px 8px;border-radius:4px;font-weight:bold;font-size:11px;white-space:nowrap}")
 	renderReportBuf.WriteString(".badge-dim{color:#38bdf8;font-family:monospace;font-size:12px;font-weight:bold;white-space:nowrap}")
 	renderReportBuf.WriteString(".badge-orig-dim{color:#f59e0b;font-family:monospace;font-size:12px;font-weight:bold;white-space:nowrap}")
+	renderReportBuf.WriteString(".preview-box{display:flex;gap:10px;margin-top:10px;align-items:center}")
+	renderReportBuf.WriteString(".thumb-card{position:relative;background:#0b1120;border:1px solid #334155;border-radius:6px;padding:4px;display:inline-flex;flex-direction:column;align-items:center}")
+	renderReportBuf.WriteString(".thumb-badge{font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;margin-bottom:4px;letter-spacing:0.04em}")
+	renderReportBuf.WriteString(".thumb-orig{background:rgba(245,158,11,0.2);color:#f59e0b;border:1px solid rgba(245,158,11,0.4)}")
+	renderReportBuf.WriteString(".thumb-webp{background:rgba(16,185,129,0.2);color:#10b981;border:1px solid rgba(16,185,129,0.4)}")
+	renderReportBuf.WriteString(".thumb-img{max-width:110px;max-height:75px;width:auto;height:auto;object-fit:contain;border-radius:4px;background:#1e293b;transition:transform 0.15s ease;cursor:zoom-in}")
+	renderReportBuf.WriteString(".thumb-img:hover{transform:scale(1.06)}")
 	renderReportBuf.WriteString("</style></head><body><div class=\"container\">")
 	renderReportBuf.WriteString("<h1>📊 Звіт оптимізації за рендером на сторінках (Render-Aware WebP Optimization)</h1>")
 	renderReportBuf.WriteString(fmt.Sprintf("<p class=\"meta\">Домен: %s · Всього зображень: %d · Згенеровано: %s</p>", esc(domain), len(entries), time.Now().UTC().Format("2006-01-02 15:04:05 UTC")))
@@ -561,8 +568,11 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			retinaText = fmt.Sprintf("<span class=\"badge-dim\" style=\"color:#10b981;\">%d×%d px</span>", e.RecommendedRetinaWidth, e.RecommendedRetinaHeight)
 		}
 
-		renderReportBuf.WriteString(fmt.Sprintf("<tr><td>%d</td><td><strong style=\"color:#f1f5f9;\">%s</strong><br><a href=\"%s\" target=\"_blank\" style=\"color:#64748b;font-size:11px;word-break:break-all;\">%s</a></td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><strong style=\"color:#10b981;\">%s</strong></td><td><span class=\"badge-opt\">-%.1f%%</span></td></tr>",
-			idx+1, esc(e.Basename), esc(e.SourceURL), esc(e.SourceURL), pagesHTML.String(), origDimText, rendText, retinaText, esc(e.OriginalFormatted), esc(e.OptimizedFormatted), e.SavingsPercent))
+		previewHTML := fmt.Sprintf("<div class=\"preview-box\"><div class=\"thumb-card\"><span class=\"thumb-badge thumb-orig\">Оригінал (Before)</span><a href=\"%s\" target=\"_blank\"><img src=\"%s\" loading=\"lazy\" class=\"thumb-img\" alt=\"Original\" /></a></div><div class=\"thumb-card\"><span class=\"thumb-badge thumb-webp\">WebP (After)</span><a href=\"%s\" target=\"_blank\"><img src=\"%s\" loading=\"lazy\" class=\"thumb-img\" alt=\"WebP\" /></a></div></div>",
+			esc(e.OriginalPath), esc(e.OriginalPath), esc(e.OptimizedPath), esc(e.OptimizedPath))
+
+		renderReportBuf.WriteString(fmt.Sprintf("<tr><td>%d</td><td><strong style=\"color:#f1f5f9;font-size:14px;\">%s</strong><br><a href=\"%s\" target=\"_blank\" style=\"color:#64748b;font-size:11px;word-break:break-all;\">%s</a>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><strong style=\"color:#10b981;\">%s</strong></td><td><span class=\"badge-opt\">-%.1f%%</span></td></tr>",
+			idx+1, esc(e.Basename), esc(e.SourceURL), esc(e.SourceURL), previewHTML, pagesHTML.String(), origDimText, rendText, retinaText, esc(e.OriginalFormatted), esc(e.OptimizedFormatted), e.SavingsPercent))
 	}
 	renderReportBuf.WriteString("</tbody></table></div></body></html>")
 
