@@ -235,9 +235,9 @@ func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, th
 				img := task.img
 				maxW := 0
 				maxH := 0
-				if resizeToRetina && img.RecommendedRetinaWidth > 0 && img.RecommendedRetinaHeight > 0 {
-					maxW = img.RecommendedRetinaWidth
-					maxH = img.RecommendedRetinaHeight
+				if resizeToRetina && img.MaxRenderedWidth > 0 {
+					maxW = img.MaxRenderedWidth * 2
+					maxH = img.MaxRenderedHeight * 2
 				}
 
 				res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuthResize(img.SourceURL, quality, thresholdBytes, adaptive, maxW, maxH, authUser, authPass)
@@ -254,6 +254,25 @@ func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, th
 				if err != nil {
 					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("decode orig %s: %w", img.SourceURL, err)}
 					continue
+				}
+
+				if res.OriginalWidth > 0 {
+					img.NaturalWidth = res.OriginalWidth
+				}
+				if res.OriginalHeight > 0 {
+					img.NaturalHeight = res.OriginalHeight
+				}
+				if img.MaxRenderedWidth > 0 {
+					retW := img.MaxRenderedWidth * 2
+					retH := img.MaxRenderedHeight * 2
+					if img.NaturalWidth > 0 && retW > img.NaturalWidth {
+						retW = img.NaturalWidth
+					}
+					if img.NaturalHeight > 0 && retH > img.NaturalHeight {
+						retH = img.NaturalHeight
+					}
+					img.RecommendedRetinaWidth = retW
+					img.RecommendedRetinaHeight = retH
 				}
 
 				rel := img.WebpRel

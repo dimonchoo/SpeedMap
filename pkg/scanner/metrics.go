@@ -234,8 +234,8 @@ new Promise(async (resolve) => {
                 const rect = img.getBoundingClientRect();
                 const renderedW = Math.round(rect.width || img.clientWidth || img.offsetWidth || 0);
                 const renderedH = Math.round(rect.height || img.clientHeight || img.offsetHeight || 0);
-                const naturalW = img.naturalWidth || img.width || 0;
-                const naturalH = img.naturalHeight || img.height || 0;
+                const naturalW = img.naturalWidth || 0;
+                const naturalH = img.naturalHeight || 0;
 
                 const prev = domImgMap.get(fullUrl);
                 if (prev) {
@@ -276,10 +276,10 @@ new Promise(async (resolve) => {
                     transferSize: size,
                     encodedSize: r.encodedBodySize || 0,
                     duration: Math.round(r.duration || 0),
-                    width: domInfo.width || domInfo.naturalWidth || 0,
-                    height: domInfo.height || domInfo.naturalHeight || 0,
-                    naturalWidth: domInfo.naturalWidth || domInfo.width || 0,
-                    naturalHeight: domInfo.naturalHeight || domInfo.height || 0,
+                    width: domInfo.naturalWidth || 0,
+                    height: domInfo.naturalHeight || 0,
+                    naturalWidth: domInfo.naturalWidth || 0,
+                    naturalHeight: domInfo.naturalHeight || 0,
                     renderedWidth: domInfo.renderedWidth || 0,
                     renderedHeight: domInfo.renderedHeight || 0,
                     formattedSize: formatBytes(size),
@@ -304,10 +304,10 @@ new Promise(async (resolve) => {
                         transferSize: 0,
                         encodedSize: 0,
                         duration: 0,
-                        width: domInfo.width || domInfo.naturalWidth || 0,
-                        height: domInfo.height || domInfo.naturalHeight || 0,
-                        naturalWidth: domInfo.naturalWidth || domInfo.width || 0,
-                        naturalHeight: domInfo.naturalHeight || domInfo.height || 0,
+                        width: domInfo.naturalWidth || 0,
+                        height: domInfo.naturalHeight || 0,
+                        naturalWidth: domInfo.naturalWidth || 0,
+                        naturalHeight: domInfo.naturalHeight || 0,
                         renderedWidth: domInfo.renderedWidth || 0,
                         renderedHeight: domInfo.renderedHeight || 0,
                         formattedSize: '0 B',
