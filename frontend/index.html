@@ -3171,7 +3171,7 @@
           <div class="absolute inset-0 rounded-full bg-radial from-blue-500/20 to-transparent pointer-events-none"></div>
           
           <template x-if="pokemonGame.current">
-            <img :src="`pokemon/art/${pokemonGame.current.id}.png`"
+            <img :src="`pokemon/art/${pokemonGame.current.id}.webp`"
                  :class="pokemonGame.isRevealed ? 'poke-revealed' : 'poke-silhouette'"
                  class="max-h-32 max-w-32 w-auto h-auto object-contain transition-all duration-300 select-none pointer-events-none" />
           </template>
