@@ -584,9 +584,28 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	renderReportBuf.WriteString(".thumb-webp{background:rgba(16,185,129,0.2);color:#10b981;border:1px solid rgba(16,185,129,0.4)}")
 	renderReportBuf.WriteString(".thumb-img{max-width:110px;max-height:75px;width:auto;height:auto;object-fit:contain;border-radius:4px;background:#1e293b;transition:transform 0.15s ease;cursor:zoom-in}")
 	renderReportBuf.WriteString(".thumb-img:hover{transform:scale(1.06)}")
+	renderReportBuf.WriteString(".toolbar{display:flex;gap:10px;margin:16px 0 20px;align-items:center;flex-wrap:wrap}")
+	renderReportBuf.WriteString(".search-input{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:8px 14px;color:#f8fafc;font-size:13px;width:300px;outline:none}")
+	renderReportBuf.WriteString(".search-input:focus{border-color:#38bdf8;box-shadow:0 0 0 2px rgba(56,189,248,0.2)}")
+	renderReportBuf.WriteString(".filter-btn{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:7px 12px;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s ease}")
+	renderReportBuf.WriteString(".filter-btn:hover{background:#334155;color:#f8fafc}")
+	renderReportBuf.WriteString(".filter-btn.active{background:#0284c7;border-color:#38bdf8;color:#fff;font-weight:700}")
+	renderReportBuf.WriteString(".filter-btn.btn-resized.active{background:#9333ea;border-color:#c084fc;color:#fff}")
+	renderReportBuf.WriteString(".filter-btn.btn-native.active{background:#0d9488;border-color:#2dd4bf;color:#fff}")
+	renderReportBuf.WriteString(".filter-btn.btn-heavy.active{background:#e11d48;border-color:#fb7185;color:#fff}")
 	renderReportBuf.WriteString("</style></head><body><div class=\"container\">")
 	renderReportBuf.WriteString("<h1>📊 Звіт оптимізації за рендером на сторінках (Render-Aware WebP Optimization)</h1>")
 	renderReportBuf.WriteString(fmt.Sprintf("<p class=\"meta\">Домен: %s · Всього зображень: %d · Згенеровано: %s</p>", esc(domain), len(entries), time.Now().UTC().Format("2006-01-02 15:04:05 UTC")))
+
+	renderReportBuf.WriteString("<div class=\"toolbar\">")
+	renderReportBuf.WriteString("<input type=\"text\" id=\"searchInput\" placeholder=\"🔍 Пошук за назвою або URL...\" oninput=\"filterReport()\" class=\"search-input\" />")
+	renderReportBuf.WriteString("<button type=\"button\" class=\"filter-btn active\" onclick=\"setFilter('all', this)\">Всі (<span id=\"countAll\">0</span>)</button>")
+	renderReportBuf.WriteString("<button type=\"button\" class=\"filter-btn btn-resized\" onclick=\"setFilter('resized', this)\">📐 Ресайз під рендер (<span id=\"countResized\">0</span>)</button>")
+	renderReportBuf.WriteString("<button type=\"button\" class=\"filter-btn btn-native\" onclick=\"setFilter('native', this)\">⚡ 100% оригінал (<span id=\"countNative\">0</span>)</button>")
+	renderReportBuf.WriteString("<button type=\"button\" class=\"filter-btn btn-heavy\" onclick=\"setFilter('heavy', this)\">🔥 > 1 MB (<span id=\"countHeavy\">0</span>)</button>")
+	renderReportBuf.WriteString("<span id=\"visibleCount\" style=\"color:#94a3b8;font-size:12px;margin-left:auto;font-weight:600;\"></span>")
+	renderReportBuf.WriteString("</div>")
+
 	renderReportBuf.WriteString("<table><thead><tr><th>#</th><th>Зображення</th><th>Сторінки використання</th><th>Оригінальні розміри (W×H)</th><th>Фактичний рендер</th><th>Retina 2x ціль</th><th>Оригінал (вага)</th><th>Оптимізований WebP</th><th>Економія</th></tr></thead><tbody>")
 
 	for idx, e := range entries {
@@ -631,7 +650,15 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		renderReportBuf.WriteString(fmt.Sprintf("<tr><td>%d</td><td><strong style=\"color:#f1f5f9;font-size:14px;\">%s</strong><br><a href=\"%s\" target=\"_blank\" style=\"color:#64748b;font-size:11px;word-break:break-all;\">%s</a>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td><strong style=\"color:#10b981;\">%s</strong>%s</td><td><span class=\"badge-opt\">-%.1f%%</span></td></tr>",
 			idx+1, esc(e.Basename), esc(e.SourceURL), esc(e.SourceURL), previewHTML, pagesHTML.String(), origDimText, rendText, retinaText, esc(e.OriginalFormatted), esc(e.OptimizedFormatted), optDimText, e.SavingsPercent))
 	}
-	renderReportBuf.WriteString("</tbody></table></div></body></html>")
+	renderReportBuf.WriteString("</tbody></table></div>")
+
+	// Vanilla JS filter & search script
+	renderReportBuf.WriteString("<script>")
+	renderReportBuf.WriteString("let currentFilter='all';")
+	renderReportBuf.WriteString("function setFilter(f,btn){currentFilter=f;document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');filterReport();}")
+	renderReportBuf.WriteString("function filterReport(){const q=document.getElementById('searchInput').value.toLowerCase().trim();const rows=document.querySelectorAll('tbody tr');let visible=0;rows.forEach(tr=>{const text=tr.innerText.toLowerCase();const isResized=tr.querySelector('.badge-resized')!==null;const origSizeText=tr.children[6]?.innerText||'';const isHeavy=origSizeText.includes('MB');let mf=true;if(currentFilter==='resized')mf=isResized;else if(currentFilter==='native')mf=!isResized;else if(currentFilter==='heavy')mf=isHeavy;const mq=!q||text.includes(q);if(mf&&mq){tr.style.display='';visible++;}else{tr.style.display='none';}});document.getElementById('visibleCount').innerText=`Відображено: ${visible} з ${rows.length}`;}")
+	renderReportBuf.WriteString("window.addEventListener('DOMContentLoaded',()=>{const rows=document.querySelectorAll('tbody tr');let r=0,n=0,h=0;rows.forEach(tr=>{if(tr.querySelector('.badge-resized'))r++;else n++;if((tr.children[6]?.innerText||'').includes('MB'))h++;});document.getElementById('countAll').innerText=rows.length;document.getElementById('countResized').innerText=r;document.getElementById('countNative').innerText=n;document.getElementById('countHeavy').innerText=h;document.getElementById('visibleCount').innerText=`Відображено: ${rows.length} з ${rows.length}`;});")
+	renderReportBuf.WriteString("</script></body></html>")
 
 	if err := writeZipFile(zw, "render-report.html", []byte(renderReportBuf.String())); err != nil {
 		_ = zw.Close()
