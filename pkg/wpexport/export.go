@@ -574,6 +574,9 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	renderReportBuf.WriteString(".badge-opt{color:#10b981;background:rgba(16,185,129,0.15);padding:2px 8px;border-radius:4px;font-weight:bold;font-size:11px;white-space:nowrap}")
 	renderReportBuf.WriteString(".badge-dim{color:#38bdf8;font-family:monospace;font-size:12px;font-weight:bold;white-space:nowrap}")
 	renderReportBuf.WriteString(".badge-orig-dim{color:#f59e0b;font-family:monospace;font-size:12px;font-weight:bold;white-space:nowrap}")
+	renderReportBuf.WriteString(".badge-tag{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;margin-top:4px;white-space:nowrap;letter-spacing:0.03em}")
+	renderReportBuf.WriteString(".badge-resized{background:rgba(168,85,247,0.2);color:#c084fc;border:1px solid rgba(168,85,247,0.4)}")
+	renderReportBuf.WriteString(".badge-native{background:rgba(56,189,248,0.15);color:#38bdf8;border:1px solid rgba(56,189,248,0.3)}")
 	renderReportBuf.WriteString(".preview-box{display:flex;gap:10px;margin-top:10px;align-items:center}")
 	renderReportBuf.WriteString(".thumb-card{position:relative;background:#0b1120;border:1px solid #334155;border-radius:6px;padding:4px;display:inline-flex;flex-direction:column;align-items:center}")
 	renderReportBuf.WriteString(".thumb-badge{font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;margin-bottom:4px;letter-spacing:0.04em}")
@@ -613,7 +616,13 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 
 		optDimText := ""
 		if e.OptimizedWidth > 0 && e.OptimizedHeight > 0 {
-			optDimText = fmt.Sprintf("<br><span class=\"badge-dim\" style=\"color:#10b981;font-size:11px;\">%d×%d px</span>", e.OptimizedWidth, e.OptimizedHeight)
+			tagHTML := ""
+			if e.NaturalWidth > 0 && e.OptimizedWidth < e.NaturalWidth {
+				tagHTML = "<br><span class=\"badge-tag badge-resized\">📐 Ресайз під рендер</span>"
+			} else {
+				tagHTML = "<br><span class=\"badge-tag badge-native\">⚡ 100% оригінал</span>"
+			}
+			optDimText = fmt.Sprintf("%s<br><span class=\"badge-dim\" style=\"color:#10b981;font-size:11px;\">%d×%d px</span>", tagHTML, e.OptimizedWidth, e.OptimizedHeight)
 		}
 
 		previewHTML := fmt.Sprintf("<div class=\"preview-box\"><div class=\"thumb-card\"><span class=\"thumb-badge thumb-orig\">Оригінал (Before)</span><a href=\"%s\" target=\"_blank\"><img src=\"%s\" loading=\"lazy\" class=\"thumb-img\" alt=\"Original\" /></a></div><div class=\"thumb-card\"><span class=\"thumb-badge thumb-webp\">WebP (After)</span><a href=\"%s\" target=\"_blank\"><img src=\"%s\" loading=\"lazy\" class=\"thumb-img\" alt=\"WebP\" /></a></div></div>",
