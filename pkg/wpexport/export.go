@@ -505,7 +505,7 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	renderReportBuf.WriteString(".container{max-width:1400px;margin:0 auto}")
 	renderReportBuf.WriteString("h1{color:#38bdf8;font-size:24px;margin:0 0 8px}p.meta{color:#94a3b8;font-size:13px;margin:0 0 24px}")
 	renderReportBuf.WriteString("table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:12px;overflow:hidden;border:1px solid #334155;font-size:13px}")
-	renderReportBuf.WriteString("th{background:#090d16;color:#94a3b8;padding:12px;text-align:left;font-size:11px;text-transform:uppercase}")
+	renderReportBuf.WriteString("thead th{position:sticky;top:0;background:#090d16;color:#94a3b8;padding:12px;text-align:left;font-size:11px;text-transform:uppercase;z-index:10;box-shadow:0 2px 4px rgba(0,0,0,0.4)}")
 	renderReportBuf.WriteString("td{padding:12px;border-bottom:1px solid #334155;vertical-align:top}")
 	renderReportBuf.WriteString(".pages-list{font-size:12px;color:#cbd5e1;list-style:disc;padding-left:18px;margin:4px 0}")
 	renderReportBuf.WriteString(".pages-list a{color:#38bdf8;text-decoration:underline;word-break:break-all}")
