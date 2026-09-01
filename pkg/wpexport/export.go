@@ -183,11 +183,10 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 
 	heavy := make([]ManifestImage, 0, len(out))
 	for _, im := range out {
-		// Include if:
-		// 1. Marked heavy from network (IsHeavy == true)
-		// 2. TransferSize was 0 (lazy-loaded in DOM, actual size verified on download)
-		// 3. Candidate was a resized thumbnail (hasSizeSuffix == true) where master image on server may exceed threshold
-		if im.IsHeavy || im.Bytes == 0 || hasSizeSuffix(im.SourceURL) {
+		// Include strictly what impacts PageSpeed on the frontend:
+		// 1. Confirmed heavy on network during scan (IsHeavy == true)
+		// 2. Or lazy-loaded in DOM where network transferSize was 0 (verified on download)
+		if im.IsHeavy || im.Bytes == 0 {
 			heavy = append(heavy, im)
 		}
 	}
