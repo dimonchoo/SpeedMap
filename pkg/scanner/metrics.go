@@ -447,6 +447,38 @@ new Promise(async (resolve) => {
             }
         });
 
+        // F. Extract Video Posters, Link Preloads, and OpenGraph/Meta Images
+        document.querySelectorAll('video[poster], link[rel="preload"][as="image"], meta[property="og:image"], meta[name="twitter:image"], [data-image], [data-img], [data-thumb], [data-slide], [data-slide-bg], [data-original-src], [data-lazy]').forEach(el => {
+            const rawUrl = el.getAttribute('poster') || el.getAttribute('href') || el.getAttribute('content') ||
+                           el.getAttribute('data-image') || el.getAttribute('data-img') || el.getAttribute('data-thumb') ||
+                           el.getAttribute('data-slide') || el.getAttribute('data-slide-bg') || el.getAttribute('data-original-src') ||
+                           el.getAttribute('data-lazy');
+            if (rawUrl && !rawUrl.startsWith('data:') && /\.(?:png|jpg|jpeg|webp|avif|gif|bmp)(\?.*)?$/i.test(rawUrl)) {
+                try {
+                    const fullUrl = new URL(rawUrl, document.baseURI).href;
+                    if (!imageMap.has(fullUrl)) {
+                        imageMap.set(fullUrl, {
+                            url: fullUrl,
+                            transferSize: 0,
+                            encodedSize: 0,
+                            duration: 0,
+                            width: 0,
+                            height: 0,
+                            naturalWidth: 0,
+                            naturalHeight: 0,
+                            renderedWidth: 0,
+                            renderedHeight: 0,
+                            formattedSize: '0 B',
+                            format: getImgFormat(fullUrl),
+                            isLazy: true,
+                            alt: '',
+                            isLCP: data.diagnostics.lcpUrl === fullUrl
+                        });
+                    }
+                } catch(e) {}
+            }
+        });
+
         const imageList = Array.from(imageMap.values())
             .sort((a, b) => (b.transferSize - a.transferSize) || (b.duration - a.duration));
 
