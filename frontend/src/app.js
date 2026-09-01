@@ -684,6 +684,18 @@ function speedMapApp() {
       }
     },
 
+    toggleDeviceMode() {
+      this.config.isMobile = !this.config.isMobile;
+      this.saveConfig();
+      if (this.config.isMobile) {
+        this.showToast('info', 'Режим змінено 📱', 'Mobile (375×812, емуляція 4G)');
+        this.addLog('info', '📱 Увімкнено режим Mobile (375×812, 4G Slowdown, 4x CPU throttling).');
+      } else {
+        this.showToast('info', 'Режим змінено 🖥️', 'Desktop (1920×1080, повна швидкість)');
+        this.addLog('info', '🖥️ Увімкнено режим Desktop (1920×1080, Full Bandwidth).');
+      }
+    },
+
     copyToClipboard(text) {
       if (!text) return;
       navigator.clipboard.writeText(text);

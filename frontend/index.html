@@ -190,11 +190,12 @@
           </template>
         </button>
 
-        <!-- Device mode: icon only -->
-        <button type="button" @click="showSettings = true"
-          class="flex items-center justify-center w-9 h-9 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition text-base"
-          :title="config.isMobile ? 'Mobile (375×812)' : 'Desktop (1920×1080)'">
-          <span x-text="config.isMobile ? '📱' : '🖥️'"></span>
+        <!-- Device mode: 1-click direct toggle in header -->
+        <button type="button" @click="toggleDeviceMode()"
+          class="flex items-center justify-center px-3 h-9 bg-slate-900 hover:bg-slate-800 border rounded-lg transition text-xs font-semibold space-x-1.5 shadow-sm"
+          :class="config.isMobile ? 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10' : 'text-amber-300 border-amber-500/40 bg-amber-500/10'"
+          :title="config.isMobile ? 'Активний режим: Mobile 📱 (375×812, 4G Slowdown). Клікніть щоб перемкнути на Desktop' : 'Активний режим: Desktop 🖥️ (1920×1080, Full Speed). Клікніть щоб перемкнути на Mobile'">
+          <span x-text="config.isMobile ? '📱 Mobile 4G' : '🖥️ Desktop'"></span>
         </button>
 
         <!-- Settings: icon only -->

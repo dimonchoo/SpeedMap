@@ -250,19 +250,41 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 	// Device Emulation (Mobile vs Desktop)
 	if s.cfg.IsMobile {
 		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-			err := emulation.SetDeviceMetricsOverride(375, 812, 3.0, true).Do(ctx)
-			if err != nil {
+			// 1. Mobile Viewport (375x812, DPR 3.0, mobile screen orientation)
+			if err := emulation.SetDeviceMetricsOverride(375, 812, 3.0, true).Do(ctx); err != nil {
 				return err
 			}
+			_ = emulation.SetTouchEmulationEnabled(true).Do(ctx)
+
+			// 2. Mobile User Agent
 			mobileUA := "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 SpeedMap/1.0"
-			return emulation.SetUserAgentOverride(mobileUA).Do(ctx)
+			if err := emulation.SetUserAgentOverride(mobileUA).Do(ctx); err != nil {
+				return err
+			}
+
+			// 3. Google Lighthouse Simulated 4G Throttling (1.638 Mbps download, 150ms RTT latency)
+			cond := &network.Conditions{
+				URLPattern:         "", // match all URLs
+				Latency:            150,
+				DownloadThroughput: 204800, // 1.6384 Mbps = 204.8 KB/s
+				UploadThroughput:   93750,  // 750 Kbps
+				ConnectionType:     network.ConnectionTypeCellular4g,
+			}
+			_, _ = network.EmulateNetworkConditionsByRule([]*network.Conditions{cond}).Do(ctx)
+
+			// 4. CPU Throttling: 4x slowdown emulating mid-tier mobile hardware
+			_ = emulation.SetCPUThrottlingRate(4.0).Do(ctx)
+
+			return nil
 		}))
 	} else {
 		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-			err := emulation.SetDeviceMetricsOverride(1920, 1080, 1.0, false).Do(ctx)
-			if err != nil {
+			if err := emulation.SetDeviceMetricsOverride(1920, 1080, 1.0, false).Do(ctx); err != nil {
 				return err
 			}
+			_ = emulation.SetTouchEmulationEnabled(false).Do(ctx)
+			_ = emulation.SetCPUThrottlingRate(1.0).Do(ctx)
+
 			desktopUA := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SpeedMap/1.0"
 			return emulation.SetUserAgentOverride(desktopUA).Do(ctx)
 		}))
