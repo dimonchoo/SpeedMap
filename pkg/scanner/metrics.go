@@ -264,8 +264,20 @@ new Promise(async (resolve) => {
             }
         });
 
+        const isTrackingBeacon = (u) => {
+            if (!u) return false;
+            const l = u.toLowerCase();
+            return l.includes('/pagead/') || l.includes('googleadservices.com') ||
+                   l.includes('doubleclick.net') || l.includes('facebook.com/tr') ||
+                   l.includes('bat.bing.com') || l.includes('clarity.ms') ||
+                   l.includes('px.ads.linkedin.com') || l.includes('analytics.google.com') ||
+                   l.includes('google-analytics.com') || l.includes('t.co/1/i/adsct') ||
+                   l.includes('stats.wp.com');
+        };
+
         // B. Extract Network Performance Resources
         resources.forEach(r => {
+            if (isTrackingBeacon(r.name)) return;
             const isImgType = r.initiatorType === 'img' || r.initiatorType === 'image' || r.initiatorType === 'css' || r.initiatorType === 'picture';
             const isImgExt = /\.(jpg|jpeg|png|webp|avif|gif|svg|ico|bmp)(\?.*)?$/i.test(r.name);
             if (isImgType || isImgExt) {
