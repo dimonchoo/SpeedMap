@@ -74,6 +74,8 @@ function speedMapApp() {
     currentScanningUrl: '',
     scanResults: [],
     statusFilter: 'all',
+    pagesPage: 1,
+    pagesPerPage: 50,
     selectedDetail: null,
     rescanLoadingMap: {},
     w3cLoadingMap: {},
@@ -88,16 +90,25 @@ function speedMapApp() {
     siteAnalytics: null,
     runComparison: null,
     isComputingAnalytics: false,
+    analyticsDirty: true,
 
     // Font Inspector Hub State
     fontSearchQuery: '',
     fontFilterTab: 'all',
     fontSortKey: 'pages',
     fontViewMode: 'by-page', // 'by-page' | 'by-font'
+    fontPage: 1,
+    fontPerPage: 25,
 
     // Iframe Inspector Hub State
     iframeSearchQuery: '',
     iframeViewMode: 'by-page', // 'by-page' | 'by-src'
+    iframePage: 1,
+    iframePerPage: 25,
+
+    // Form Hub State
+    formPage: 1,
+    formPerPage: 25,
 
     // Image Optimization & Comparison Hub State (SEOAEO-235)
     imageSearchQuery: '',
@@ -519,6 +530,14 @@ function speedMapApp() {
       window.addEventListener('keydown', unlockOnce, true);
 
       if (this.$watch) {
+        this.$watch('pageSearchQuery', () => { this.pagesPage = 1; });
+        this.$watch('statusFilter', () => { this.pagesPage = 1; });
+        this.$watch('fontSearchQuery', () => { this.fontPage = 1; });
+        this.$watch('fontFilterTab', () => { this.fontPage = 1; });
+        this.$watch('fontSortKey', () => { this.fontPage = 1; });
+        this.$watch('iframeSearchQuery', () => { this.iframePage = 1; });
+        this.$watch('formSearchQuery', () => { this.formPage = 1; });
+        this.$watch('formEngineFilter', () => { this.formPage = 1; });
         this.$watch('imageSearchQuery', () => { this.imagePage = 1; this.updateFilteredImages(); });
         this.$watch('imageFilterTab', () => { this.imagePage = 1; this.updateFilteredImages(); });
         this.$watch('imageSortKey', () => { this.imagePage = 1; this.updateFilteredImages(); });
@@ -593,8 +612,9 @@ function speedMapApp() {
       }, 5000);
     },
 
-    async updateAnalytics() {
+    async updateAnalytics(force = false) {
       if (this.scanResults.length === 0) return;
+      if (!force && !this.analyticsDirty && this.siteAnalytics) return;
       this.isComputingAnalytics = true;
       try {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.ComputeSiteAnalytics) {
@@ -603,9 +623,9 @@ function speedMapApp() {
             this.siteAnalytics = res.analytics;
             this.runComparison = res.comparison;
             this.updateFilteredImages();
+            this.analyticsDirty = false;
             this.addLog('info', `Оновлено загальну статистику сайту: Health Score = ${this.siteAnalytics.healthScore}%`);
           }
-
         }
       } catch (err) {
         console.error("Failed to compute analytics:", err);
@@ -900,9 +920,21 @@ function speedMapApp() {
       return Math.round((this.processedCount / this.totalToScan) * 100);
     },
 
-    // Filtering & Counts
+    // Filtering & Counts (Optimized Single-Pass Counting)
+    get statusCounts() {
+      const counts = { good: 0, 'needs-improvement': 0, poor: 0, error: 0, critical: 0 };
+      const list = this.scanResults || [];
+      for (let i = 0; i < list.length; i++) {
+        const st = list[i].overallStatus;
+        if (st in counts) counts[st]++;
+        if (st === 'poor' || st === 'error') counts.critical++;
+      }
+      return counts;
+    },
+
     countByStatus(status) {
-      return this.scanResults.filter(r => r.overallStatus === status).length;
+      if (status === 'critical') return this.statusCounts.critical;
+      return this.statusCounts[status] || 0;
     },
 
     get filteredResults() {
@@ -924,6 +956,43 @@ function speedMapApp() {
       }
 
       return results;
+    },
+
+    get totalPagesCount() {
+      return Math.max(1, Math.ceil(this.filteredResults.length / this.pagesPerPage));
+    },
+
+    get paginatedResults() {
+      const results = this.filteredResults;
+      const start = (this.pagesPage - 1) * this.pagesPerPage;
+      return results.slice(start, start + this.pagesPerPage);
+    },
+
+    get totalFontPagesCount() {
+      return Math.max(1, Math.ceil(this.pageFontsList.length / this.fontPerPage));
+    },
+
+    get paginatedFontPages() {
+      const start = (this.fontPage - 1) * this.fontPerPage;
+      return this.pageFontsList.slice(start, start + this.fontPerPage);
+    },
+
+    get totalIframePagesCount() {
+      return Math.max(1, Math.ceil(this.pageIframesList.length / this.iframePerPage));
+    },
+
+    get paginatedIframePages() {
+      const start = (this.iframePage - 1) * this.iframePerPage;
+      return this.pageIframesList.slice(start, start + this.iframePerPage);
+    },
+
+    get totalFormPagesCount() {
+      return Math.max(1, Math.ceil(this.pageFormsList.length / this.formPerPage));
+    },
+
+    get paginatedFormPages() {
+      const start = (this.formPage - 1) * this.formPerPage;
+      return this.pageFormsList.slice(start, start + this.formPerPage);
     },
 
     updateFilteredImages() {

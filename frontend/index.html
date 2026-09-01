@@ -599,7 +599,7 @@
                         </td>
                       </tr>
                     </template>
-                    <template x-for="item in filteredResults" :key="item.id">
+                    <template x-for="item in paginatedResults" :key="item.id">
                       <tr @click="selectedDetail = item" class="hover:bg-slate-800/50 cursor-pointer transition group relative"
                         :class="rescanLoadingMap[item.id] ? 'bg-cyan-950/30 ring-1 ring-cyan-500/50' : (item.overallStatus === 'error' ? 'bg-rose-950/10' : '')">
                         <td class="py-3 px-6 text-slate-500" x-text="item.id"></td>
@@ -716,6 +716,41 @@
                 </table>
               </template>
             </div>
+
+            <!-- Pages High-Performance Pagination Bar -->
+            <template x-if="filteredResults.length > 0">
+              <div class="px-6 py-3 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shrink-0 shadow-lg">
+                <div>
+                  Показано <span class="font-bold text-cyan-400" x-text="filteredResults.length > 0 ? ((pagesPage - 1) * pagesPerPage + 1) : 0"></span> - 
+                  <span class="font-bold text-cyan-400" x-text="Math.min(pagesPage * pagesPerPage, filteredResults.length)"></span> з 
+                  <span class="font-bold text-slate-100" x-text="filteredResults.length"></span> сторінок
+                </div>
+
+                <div class="flex items-center space-x-2">
+                  <button @click="pagesPage = Math.max(1, pagesPage - 1)" :disabled="pagesPage === 1"
+                    class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                    ◄ Попередня
+                  </button>
+
+                  <span class="px-2 font-bold text-slate-200">
+                    Стор. <span x-text="pagesPage"></span> / <span x-text="totalPagesCount"></span>
+                  </span>
+
+                  <button @click="pagesPage = Math.min(totalPagesCount, pagesPage + 1)" :disabled="pagesPage >= totalPagesCount"
+                    class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                    Наступна ►
+                  </button>
+
+                  <select x-model.number="pagesPerPage" @change="pagesPage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                    <option value="25">25 / стор.</option>
+                    <option value="50">50 / стор.</option>
+                    <option value="100">100 / стор.</option>
+                    <option value="250">250 / стор.</option>
+                    <option value="500">500 / стор.</option>
+                  </select>
+                </div>
+              </div>
+            </template>
           </div>
         </template>
 
@@ -1340,27 +1375,24 @@
                   </div>
                 </template>
 
-                <template x-for="item in pageFontsList" :key="item.id">
+                <template x-for="item in paginatedFontPages" :key="item.id">
                   <div class="bg-slate-950/90 rounded-2xl border border-slate-800/90 p-4 space-y-3 shadow-xl hover:border-slate-700 transition">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
-                      <div class="flex items-center space-x-2 truncate">
-                        <span class="text-amber-400 font-bold text-base">📄</span>
-                        <a :href="item.url" target="_blank" class="font-mono font-bold text-xs text-slate-100 hover:text-emerald-400 underline truncate" :title="item.url" x-text="item.url"></a>
+                      <div class="flex items-center space-x-2.5 truncate">
+                        <span class="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 font-bold font-mono text-xs shrink-0" x-text="`#${item.id}`"></span>
+                        <a :href="item.url" target="_blank" class="font-mono font-bold text-xs text-slate-100 hover:text-amber-400 underline truncate" x-text="item.url"></a>
                       </div>
-                      <span class="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0" x-text="item.fontCount + ' шрифтів'"></span>
+                      <div class="flex items-center gap-2 shrink-0 text-[10px] font-mono">
+                        <span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30" x-text="item.fontCount + ' гарнітур'"></span>
+                      </div>
                     </div>
-
-                    <!-- Fonts List for this Page -->
                     <template x-if="item.fonts.length > 0">
-                      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                         <template x-for="f in item.fonts" :key="f.family + f.url">
-                          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2 text-xs font-sans">
-                            <div class="flex items-center justify-between">
-                              <div class="flex items-center space-x-2 truncate">
-                                <span class="text-amber-400">🔤</span>
-                                <span class="font-bold text-slate-100 truncate" :style="'font-family: ' + f.family + ', sans-serif'" x-text="f.family"></span>
-                              </div>
-                              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0" x-text="f.type || 'font'"></span>
+                          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 text-xs space-y-2">
+                            <div class="flex items-center justify-between gap-2">
+                              <span class="font-bold text-slate-200 truncate" x-text="f.family"></span>
+                              <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 shrink-0" x-text="f.type || 'font'"></span>
                             </div>
 
                             <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-slate-800">
@@ -1378,6 +1410,39 @@
                     <template x-if="item.fonts.length === 0">
                       <p class="text-xs text-slate-500 italic">Зовнішніх файлів шрифтів на цій сторінці не виявлено (використовуються системні шрифти).</p>
                     </template>
+                  </div>
+                </template>
+
+                <!-- Font Hub Pagination Bar -->
+                <template x-if="pageFontsList.length > 0">
+                  <div class="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                    <div>
+                      Показано <span class="font-bold text-amber-400" x-text="pageFontsList.length > 0 ? ((fontPage - 1) * fontPerPage + 1) : 0"></span> - 
+                      <span class="font-bold text-amber-400" x-text="Math.min(fontPage * fontPerPage, pageFontsList.length)"></span> з 
+                      <span class="font-bold text-slate-100" x-text="pageFontsList.length"></span> сторінок
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                      <button @click="fontPage = Math.max(1, fontPage - 1)" :disabled="fontPage === 1"
+                        class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                        ◄ Попередня
+                      </button>
+
+                      <span class="px-2 font-bold text-slate-200">
+                        Стор. <span x-text="fontPage"></span> / <span x-text="totalFontPagesCount"></span>
+                      </span>
+
+                      <button @click="fontPage = Math.min(totalFontPagesCount, fontPage + 1)" :disabled="fontPage >= totalFontPagesCount"
+                        class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                        Наступна ►
+                      </button>
+
+                      <select x-model.number="fontPerPage" @change="fontPage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                        <option value="25">25 / стор.</option>
+                        <option value="50">50 / стор.</option>
+                        <option value="100">100 / стор.</option>
+                      </select>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -1568,7 +1633,7 @@
 
             <template x-if="iframeViewMode === 'by-page'">
               <div class="space-y-4">
-                <template x-for="item in pageIframesList" :key="item.id">
+                <template x-for="item in paginatedIframePages" :key="item.id">
                   <div class="bg-slate-950/90 rounded-2xl border border-slate-800/90 p-4 space-y-3 shadow-xl">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
                       <a :href="item.url" target="_blank" class="font-mono font-bold text-xs text-slate-100 hover:text-emerald-400 underline truncate" x-text="item.url"></a>
@@ -1598,6 +1663,39 @@
                           </div>
                         </div>
                       </template>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Iframes Hub Pagination Bar -->
+                <template x-if="pageIframesList.length > 0">
+                  <div class="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                    <div>
+                      Показано <span class="font-bold text-rose-400" x-text="pageIframesList.length > 0 ? ((iframePage - 1) * iframePerPage + 1) : 0"></span> - 
+                      <span class="font-bold text-rose-400" x-text="Math.min(iframePage * iframePerPage, pageIframesList.length)"></span> з 
+                      <span class="font-bold text-slate-100" x-text="pageIframesList.length"></span> сторінок
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                      <button @click="iframePage = Math.max(1, iframePage - 1)" :disabled="iframePage === 1"
+                        class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                        ◄ Попередня
+                      </button>
+
+                      <span class="px-2 font-bold text-slate-200">
+                        Стор. <span x-text="iframePage"></span> / <span x-text="totalIframePagesCount"></span>
+                      </span>
+
+                      <button @click="iframePage = Math.min(totalIframePagesCount, iframePage + 1)" :disabled="iframePage >= totalIframePagesCount"
+                        class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                        Наступна ►
+                      </button>
+
+                      <select x-model.number="iframePerPage" @change="iframePage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                        <option value="25">25 / стор.</option>
+                        <option value="50">50 / стор.</option>
+                        <option value="100">100 / стор.</option>
+                      </select>
                     </div>
                   </div>
                 </template>
@@ -1761,7 +1859,7 @@
             <!-- MODE 1: BY-PAGE LIST -->
             <template x-if="pageFormsList.length > 0 && formViewMode === 'by-page'">
               <div class="space-y-4">
-                <template x-for="item in pageFormsList" :key="item.url">
+                <template x-for="item in paginatedFormPages" :key="item.url">
                   <div class="bg-slate-950/80 rounded-2xl border border-slate-800 shadow-lg p-5 space-y-4 transition hover:border-slate-700">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/60 pb-3">
                       <div class="flex items-center space-x-2.5 min-w-0">
@@ -1828,6 +1926,39 @@
                           </div>
                         </div>
                       </template>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Forms Hub Pagination Bar -->
+                <template x-if="pageFormsList.length > 0">
+                  <div class="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                    <div>
+                      Показано <span class="font-bold text-blue-400" x-text="pageFormsList.length > 0 ? ((formPage - 1) * formPerPage + 1) : 0"></span> - 
+                      <span class="font-bold text-blue-400" x-text="Math.min(formPage * formPerPage, pageFormsList.length)"></span> з 
+                      <span class="font-bold text-slate-100" x-text="pageFormsList.length"></span> сторінок
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                      <button @click="formPage = Math.max(1, formPage - 1)" :disabled="formPage === 1"
+                        class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                        ◄ Попередня
+                      </button>
+
+                      <span class="px-2 font-bold text-slate-200">
+                        Стор. <span x-text="formPage"></span> / <span x-text="totalFormPagesCount"></span>
+                      </span>
+
+                      <button @click="formPage = Math.min(totalFormPagesCount, formPage + 1)" :disabled="formPage >= totalFormPagesCount"
+                        class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                        Наступна ►
+                      </button>
+
+                      <select x-model.number="formPerPage" @change="formPage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                        <option value="25">25 / стор.</option>
+                        <option value="50">50 / стор.</option>
+                        <option value="100">100 / стор.</option>
+                      </select>
                     </div>
                   </div>
                 </template>
