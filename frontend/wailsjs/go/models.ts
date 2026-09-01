@@ -964,6 +964,8 @@ export namespace scanner {
 	    statusCode: number;
 	    pluginCacheStatus: string;
 	    cloudflareCacheStatus: string;
+	    cloudflarePop?: string;
+	    cloudflareRay?: string;
 	    metrics: WebVitals;
 	    grades: DetailedGrades;
 	    diagnostics: PageDiagnostics;
@@ -983,6 +985,8 @@ export namespace scanner {
 	        this.statusCode = source["statusCode"];
 	        this.pluginCacheStatus = source["pluginCacheStatus"];
 	        this.cloudflareCacheStatus = source["cloudflareCacheStatus"];
+	        this.cloudflarePop = source["cloudflarePop"];
+	        this.cloudflareRay = source["cloudflareRay"];
 	        this.metrics = this.convertValues(source["metrics"], WebVitals);
 	        this.grades = this.convertValues(source["grades"], DetailedGrades);
 	        this.diagnostics = this.convertValues(source["diagnostics"], PageDiagnostics);
