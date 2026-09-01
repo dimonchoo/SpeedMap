@@ -406,7 +406,25 @@ func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, 
 		return nil, fmt.Errorf("no heavy convertible images in scan")
 	}
 
-	written, err := wpexport.ConvertHeavyImagesWithThreshold(heavy, cfg.NormalizedWebPQuality(), cfg.NormalizedHeavyThresholdBytes(), cfg.IsAdaptiveQualityEnabled(), cfg.IsResizeToRetinaEnabled(), cfg.AuthUser, cfg.AuthPass)
+	written, err := wpexport.ConvertHeavyImagesWithProgress(
+		heavy,
+		cfg.NormalizedWebPQuality(),
+		cfg.NormalizedHeavyThresholdBytes(),
+		cfg.IsAdaptiveQualityEnabled(),
+		cfg.IsResizeToRetinaEnabled(),
+		cfg.AuthUser,
+		cfg.AuthPass,
+		func(done, total int, name string) {
+			if a.ctx != nil {
+				runtime.EventsEmit(a.ctx, "export:progress", map[string]interface{}{
+					"current":  done,
+					"total":    total,
+					"filename": name,
+					"percent":  int(float64(done) / float64(total) * 100),
+				})
+			}
+		},
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"SpeedMap/pkg/analytics"
@@ -198,16 +199,21 @@ func ConvertHeavyImages(images []ManifestImage, quality float32, authUser, authP
 
 // ConvertHeavyImagesWithThreshold converts images with custom threshold byte budget using concurrent workers.
 func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, thresholdBytes int64, adaptive bool, resizeToRetina bool, authUser, authPass string) ([]WrittenImage, error) {
+	return ConvertHeavyImagesWithProgress(images, quality, thresholdBytes, adaptive, resizeToRetina, authUser, authPass, nil)
+}
+
+// ConvertHeavyImagesWithProgress converts images with custom threshold byte budget and reports live progress.
+func ConvertHeavyImagesWithProgress(images []ManifestImage, quality float32, thresholdBytes int64, adaptive bool, resizeToRetina bool, authUser, authPass string, onProgress func(done, total int, name string)) ([]WrittenImage, error) {
 	if len(images) == 0 {
 		return nil, fmt.Errorf("no images to convert")
 	}
 
-	numWorkers := runtime.NumCPU() * 2
-	if numWorkers < 4 {
-		numWorkers = 4
+	numWorkers := runtime.NumCPU() * 4
+	if numWorkers < 8 {
+		numWorkers = 8
 	}
-	if numWorkers > 24 {
-		numWorkers = 24
+	if numWorkers > 32 {
+		numWorkers = 32
 	}
 	if numWorkers > len(images) {
 		numWorkers = len(images)
@@ -226,6 +232,8 @@ func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, th
 
 	tasks := make(chan convertTask, len(images))
 	resultsChan := make(chan convertResult, len(images))
+	var processed int32
+	totalImages := len(images)
 
 	var wg sync.WaitGroup
 	for w := 0; w < numWorkers; w++ {
@@ -234,89 +242,98 @@ func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, th
 			defer wg.Done()
 			for task := range tasks {
 				img := task.img
-				maxW := 0
-				maxH := 0
-				if resizeToRetina && img.MaxRenderedWidth > 0 {
-					maxW = img.MaxRenderedWidth * 2
-					maxH = img.MaxRenderedHeight * 2
-				}
+				func() {
+					defer func() {
+						done := int(atomic.AddInt32(&processed, 1))
+						if onProgress != nil {
+							onProgress(done, totalImages, img.Basename)
+						}
+					}()
 
-				res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuthResize(img.SourceURL, quality, thresholdBytes, adaptive, maxW, maxH, authUser, authPass)
-				if err != nil {
-					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: %w", img.SourceURL, err)}
-					continue
-				}
-				webpData, err := decodeDataURL(res.OptimizedWebPBase64)
-				if err != nil {
-					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("decode webp %s: %w", img.SourceURL, err)}
-					continue
-				}
-				origData, err := decodeDataURL(res.OriginalDataBase64)
-				if err != nil {
-					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("decode orig %s: %w", img.SourceURL, err)}
-					continue
-				}
-
-				// If thresholdBytes is set, ensure the actual downloaded original meets the heavy threshold
-				if thresholdBytes > 0 && int64(len(origData)) < thresholdBytes {
-					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: downloaded size %d B < threshold %d B", img.SourceURL, len(origData), thresholdBytes)}
-					continue
-				}
-
-				if res.OriginalWidth > 0 {
-					img.NaturalWidth = res.OriginalWidth
-				}
-				if res.OriginalHeight > 0 {
-					img.NaturalHeight = res.OriginalHeight
-				}
-				if img.MaxRenderedWidth > 0 {
-					retW := img.MaxRenderedWidth * 2
-					retH := img.MaxRenderedHeight * 2
-					if img.NaturalWidth > 0 && retW > img.NaturalWidth {
-						retW = img.NaturalWidth
+					maxW := 0
+					maxH := 0
+					if resizeToRetina && img.MaxRenderedWidth > 0 {
+						maxW = img.MaxRenderedWidth * 2
+						maxH = img.MaxRenderedHeight * 2
 					}
-					if img.NaturalHeight > 0 && retH > img.NaturalHeight {
-						retH = img.NaturalHeight
+
+					res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuthResize(img.SourceURL, quality, thresholdBytes, adaptive, maxW, maxH, authUser, authPass)
+					if err != nil {
+						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: %w", img.SourceURL, err)}
+						return
 					}
-					img.RecommendedRetinaWidth = retW
-					img.RecommendedRetinaHeight = retH
-				}
+					webpData, err := decodeDataURL(res.OptimizedWebPBase64)
+					if err != nil {
+						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("decode webp %s: %w", img.SourceURL, err)}
+						return
+					}
+					origData, err := decodeDataURL(res.OriginalDataBase64)
+					if err != nil {
+						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("decode orig %s: %w", img.SourceURL, err)}
+						return
+					}
 
-				rel := img.WebpRel
-				if rel == "" {
-					rel = webpRelFromHint(img.PathHint, img.Basename)
-				}
-				rel = filepath.ToSlash(rel)
-				img.WebpRel = rel
+					// If thresholdBytes is set, ensure the actual downloaded original meets the heavy threshold
+					if thresholdBytes > 0 && int64(len(origData)) < thresholdBytes {
+						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: downloaded size %d B < threshold %d B", img.SourceURL, len(origData), thresholdBytes)}
+						return
+					}
 
-				ext := path.Ext(img.Basename)
-				if ext == "" {
-					ext = "." + img.Format
-				}
+					if res.OriginalWidth > 0 {
+						img.NaturalWidth = res.OriginalWidth
+					}
+					if res.OriginalHeight > 0 {
+						img.NaturalHeight = res.OriginalHeight
+					}
+					if img.MaxRenderedWidth > 0 {
+						retW := img.MaxRenderedWidth * 2
+						retH := img.MaxRenderedHeight * 2
+						if img.NaturalWidth > 0 && retW > img.NaturalWidth {
+							retW = img.NaturalWidth
+						}
+						if img.NaturalHeight > 0 && retH > img.NaturalHeight {
+							retH = img.NaturalHeight
+						}
+						img.RecommendedRetinaWidth = retW
+						img.RecommendedRetinaHeight = retH
+					}
 
-				optW := res.OptimizedWidth
-				optH := res.OptimizedHeight
-				if optW == 0 {
-					optW = img.NaturalWidth
-				}
-				if optH == 0 {
-					optH = img.NaturalHeight
-				}
+					rel := img.WebpRel
+					if rel == "" {
+						rel = webpRelFromHint(img.PathHint, img.Basename)
+					}
+					rel = filepath.ToSlash(rel)
+					img.WebpRel = rel
 
-				written := &WrittenImage{
-					ManifestImage:      img,
-					OrigExt:            strings.TrimPrefix(strings.ToLower(ext), "."),
-					OrigData:           origData,
-					WebPData:           webpData,
-					OptimizedWidth:     optW,
-					OptimizedHeight:    optH,
-					OriginalBytes:      res.OriginalBytes,
-					OptimizedBytes:     res.OptimizedBytes,
-					SavingsPercent:     res.SavingsPercent,
-					OriginalFormatted:  res.OriginalFormatted,
-					OptimizedFormatted: res.OptimizedFormatted,
-				}
-				resultsChan <- convertResult{index: task.index, item: written}
+					ext := path.Ext(img.Basename)
+					if ext == "" {
+						ext = "." + img.Format
+					}
+
+					optW := res.OptimizedWidth
+					optH := res.OptimizedHeight
+					if optW == 0 {
+						optW = img.NaturalWidth
+					}
+					if optH == 0 {
+						optH = img.NaturalHeight
+					}
+
+					written := &WrittenImage{
+						ManifestImage:      img,
+						OrigExt:            strings.TrimPrefix(strings.ToLower(ext), "."),
+						OrigData:           origData,
+						WebPData:           webpData,
+						OptimizedWidth:     optW,
+						OptimizedHeight:    optH,
+						OriginalBytes:      res.OriginalBytes,
+						OptimizedBytes:     res.OptimizedBytes,
+						SavingsPercent:     res.SavingsPercent,
+						OriginalFormatted:  res.OriginalFormatted,
+						OptimizedFormatted: res.OptimizedFormatted,
+					}
+					resultsChan <- convertResult{index: task.index, item: written}
+				}()
 			}
 		}()
 	}

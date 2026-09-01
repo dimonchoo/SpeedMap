@@ -3119,6 +3119,37 @@
       </div>
     </div>
 
+    <!-- Live WebP Export Progress Modal Overlay -->
+    <div x-show="isExportingWPApply" x-cloak
+      x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+      x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+      class="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
+      
+      <div class="bg-slate-900 border border-emerald-500/40 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 text-center space-y-4">
+        <div class="w-14 h-14 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-2xl animate-pulse shadow-lg shadow-emerald-500/10 border border-emerald-500/30">
+          ⚡
+        </div>
+        
+        <div>
+          <h3 class="text-base font-bold text-slate-100">Генерація WebP релізу</h3>
+          <p class="text-xs text-slate-400 mt-1 truncate max-w-xs mx-auto" x-text="exportProgress?.filename ? 'Файл: ' + exportProgress.filename : 'Конвертація важких зображень...'"></p>
+        </div>
+
+        <div class="space-y-2">
+          <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800 p-0.5">
+            <div class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-500 h-full rounded-full transition-all duration-150"
+              :style="'width: ' + (exportProgress?.percent || 0) + '%'"></div>
+          </div>
+          <div class="flex items-center justify-between text-xs font-mono text-slate-400 px-1">
+            <span x-text="(exportProgress?.current || 0) + ' / ' + (exportProgress?.total || 0) + ' зображень'"></span>
+            <span class="text-emerald-400 font-bold" x-text="(exportProgress?.percent || 0) + '%'"></span>
+          </div>
+        </div>
+        
+        <p class="text-[11px] text-slate-500">Завантаження та паралельне стиснення в 32 потоки</p>
+      </div>
+    </div>
+
     <!-- Create / Edit Site Profile Modal -->
     <div x-show="showProfileModal" x-cloak
       x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"

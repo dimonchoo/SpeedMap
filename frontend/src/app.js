@@ -121,8 +121,9 @@ function speedMapApp() {
 
 
     selectedImageComparison: null, // { url, conversionResult, isConverting, error }
-	isBatchDownloadingZIP: false,
+    isBatchDownloadingZIP: false,
     isExportingWPApply: false,
+    exportProgress: null,
     showWPPathModal: false,
     wpPathInput: '/var/www/site',
     wpApplyConfirmed: false,
@@ -591,6 +592,10 @@ function speedMapApp() {
           this.isScanning = false;
           this.showToast('warning', 'Сканування скасовано', 'Сканування зупинено за запитом.');
           this.addLog('warning', 'Сканування скасовано користувачем.');
+        });
+
+        window.runtime.EventsOn("export:progress", (data) => {
+          this.exportProgress = data;
         });
       }
     },
@@ -1776,6 +1781,7 @@ function speedMapApp() {
       this.showWPPathModal = false;
       const domain = this.config.sitemapUrl || this.sitemapInput || 'site';
       this.isExportingWPApply = true;
+      this.exportProgress = { current: 0, total: 0, percent: 0, filename: 'Підготовка файлів...' };
       this.addLog('info', `WP package: convert → folder → ${wordpressPath}...`);
       try {
         if (window.go?.main?.App?.ExportWordPressWebPApplyPHP) {
@@ -1803,6 +1809,7 @@ function speedMapApp() {
         this.showToast('error', 'Помилка WP apply PHP', err.message);
       } finally {
         this.isExportingWPApply = false;
+        this.exportProgress = null;
       }
     },
 
