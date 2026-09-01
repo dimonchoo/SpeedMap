@@ -79,6 +79,11 @@ func SaveScanRun(domain string, results []scanner.PageResult, siteAnalytics anal
 		return nil, fmt.Errorf("failed to write history file: %w", err)
 	}
 
+	// Trigger async auto-pruning to keep history directory clean
+	go func() {
+		_ = AutoPruneHistory(20, 30)
+	}()
+
 	return &run, nil
 }
 
@@ -168,6 +173,92 @@ func CompareRuns(current *ScanRun, previous *ScanRun) RunComparison {
 		SummaryStatus: status,
 		SummaryText:   text,
 	}
+}
+
+// AutoPruneHistory cleans up old or excessive history run files in ~/.speedmap/history/.
+// Retains at most maxRunsPerDomain (default 20) runs per domain and removes runs older
+// than maxAgeDays (default 30 days), always preserving the latest run.
+func AutoPruneHistory(maxRunsPerDomain, maxAgeDays int) error {
+	dir, err := getHistoryDir()
+	if err != nil {
+		return err
+	}
+	return AutoPruneHistoryInDir(dir, maxRunsPerDomain, maxAgeDays)
+}
+
+// AutoPruneHistoryInDir cleans up history runs within a specific directory.
+func AutoPruneHistoryInDir(dir string, maxRunsPerDomain, maxAgeDays int) error {
+	if maxRunsPerDomain <= 0 {
+		maxRunsPerDomain = 20
+	}
+	if maxAgeDays <= 0 {
+		maxAgeDays = 30
+	}
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	type runFile struct {
+		path      string
+		domain    string
+		timestamp time.Time
+	}
+
+	domainFiles := make(map[string][]runFile)
+	cutoffTime := time.Now().AddDate(0, 0, -maxAgeDays)
+
+	for _, f := range files {
+		if f.IsDir() || !strings.HasPrefix(f.Name(), "run_") || !strings.HasSuffix(f.Name(), ".json") {
+			continue
+		}
+
+		filePath := filepath.Join(dir, f.Name())
+		info, err := f.Info()
+		if err != nil {
+			continue
+		}
+
+		base := strings.TrimPrefix(f.Name(), "run_")
+		base = strings.TrimSuffix(base, ".json")
+		lastUnderscore := strings.LastIndex(base, "_")
+
+		domainKey := "unknown"
+		ts := info.ModTime()
+
+		if lastUnderscore > 0 {
+			domainKey = base[:lastUnderscore]
+			var unixSec int64
+			if _, err := fmt.Sscanf(base[lastUnderscore+1:], "%d", &unixSec); err == nil && unixSec > 0 {
+				ts = time.Unix(unixSec, 0)
+			}
+		}
+
+		domainFiles[domainKey] = append(domainFiles[domainKey], runFile{
+			path:      filePath,
+			domain:    domainKey,
+			timestamp: ts,
+		})
+	}
+
+	for _, runs := range domainFiles {
+		sort.Slice(runs, func(i, j int) bool {
+			return runs[i].timestamp.After(runs[j].timestamp)
+		})
+
+		for idx, rf := range runs {
+			if idx == 0 {
+				continue // Always preserve the newest run
+			}
+
+			if idx >= maxRunsPerDomain || rf.timestamp.Before(cutoffTime) {
+				_ = os.Remove(rf.path)
+			}
+		}
+	}
+
+	return nil
 }
 
 func sanitizeDomain(rawURL string) string {

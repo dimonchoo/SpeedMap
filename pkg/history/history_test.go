@@ -1,6 +1,10 @@
 package history
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,5 +68,53 @@ func TestSaveAndFetchHistory(t *testing.T) {
 
 	if run.Domain != "test-domain_com" {
 		t.Errorf("Expected sanitized domain 'test-domain_com', got %s", run.Domain)
+	}
+}
+
+func TestAutoPruneHistory(t *testing.T) {
+	tempDir := t.TempDir()
+	now := time.Now()
+
+	// Create 25 runs for domain "example_com"
+	for i := 1; i <= 25; i++ {
+		runTime := now.Add(time.Duration(-i) * time.Hour)
+		fileName := fmt.Sprintf("run_example_com_%d.json", runTime.Unix())
+		runData := fmt.Sprintf(`{"id": "example_com_%d", "domain": "example_com"}`, runTime.Unix())
+		_ = os.WriteFile(filepath.Join(tempDir, fileName), []byte(runData), 0644)
+	}
+
+	// Create 1 very old run (40 days old) for domain "old_site_com"
+	oldTime := now.AddDate(0, 0, -40)
+	oldFileName := fmt.Sprintf("run_old_site_com_%d.json", oldTime.Unix())
+	_ = os.WriteFile(filepath.Join(tempDir, oldFileName), []byte(`{"id": "old_site"}`), 0644)
+
+	// Run AutoPrune with maxRuns=20, maxAgeDays=30
+	if err := AutoPruneHistoryInDir(tempDir, 20, 30); err != nil {
+		t.Fatalf("AutoPruneHistoryInDir failed: %v", err)
+	}
+
+	files, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+
+	exampleCount := 0
+	oldSiteCount := 0
+	for _, f := range files {
+		if strings.Contains(f.Name(), "example_com") {
+			exampleCount++
+		}
+		if strings.Contains(f.Name(), "old_site_com") {
+			oldSiteCount++
+		}
+	}
+
+	if exampleCount != 20 {
+		t.Errorf("Expected exactly 20 runs for example_com, got %d", exampleCount)
+	}
+
+	// The old site run is the ONLY run for old_site_com, so it must be preserved
+	if oldSiteCount != 1 {
+		t.Errorf("Expected latest run of old_site_com to be preserved, got %d", oldSiteCount)
 	}
 }

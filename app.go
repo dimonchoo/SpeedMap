@@ -58,6 +58,11 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	fmt.Println("[GO LOG] SpeedMap backend started successfully.")
+
+	// Auto-prune old scan runs in background
+	go func() {
+		_ = history.AutoPruneHistory(20, 30)
+	}()
 }
 
 // shutdown is called when the application closes to ensure all Chrome processes are killed
