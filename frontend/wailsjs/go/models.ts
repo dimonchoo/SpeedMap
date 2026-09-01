@@ -344,6 +344,9 @@ export namespace config {
 	    gdriveClientSecret: string;
 	    adaptiveQuality?: boolean;
 	    resizeToRetina?: boolean;
+	    autoPruneHistory?: boolean;
+	    historyRetentionRuns: number;
+	    historyRetentionDays: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanConfig(source);
@@ -368,6 +371,9 @@ export namespace config {
 	        this.gdriveClientSecret = source["gdriveClientSecret"];
 	        this.adaptiveQuality = source["adaptiveQuality"];
 	        this.resizeToRetina = source["resizeToRetina"];
+	        this.autoPruneHistory = source["autoPruneHistory"];
+	        this.historyRetentionRuns = source["historyRetentionRuns"];
+	        this.historyRetentionDays = source["historyRetentionDays"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

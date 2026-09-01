@@ -23,6 +23,9 @@ type ScanConfig struct {
 	GDriveClientSecret    string         `json:"gdriveClientSecret"`
 	AdaptiveQuality       *bool          `json:"adaptiveQuality"`       // true by default: automatically adjusts quality for gradients/transparency
 	ResizeToRetina        *bool          `json:"resizeToRetina"`        // true by default: resize oversized images to max rendered Retina 2x bounds
+	AutoPruneHistory      *bool          `json:"autoPruneHistory"`      // true by default: auto-prunes old history runs
+	HistoryRetentionRuns  int            `json:"historyRetentionRuns"`  // default 20 (max runs per domain, 0 = unlimited)
+	HistoryRetentionDays  int            `json:"historyRetentionDays"`  // default 30 (max age in days, 0 = unlimited)
 }
 
 func (c *ScanConfig) IsAdaptiveQualityEnabled() bool {
@@ -37,6 +40,33 @@ func (c *ScanConfig) IsResizeToRetinaEnabled() bool {
 		return true // Default true
 	}
 	return *c.ResizeToRetina
+}
+
+func (c *ScanConfig) IsAutoPruneEnabled() bool {
+	if c.AutoPruneHistory == nil {
+		return true // Default true
+	}
+	return *c.AutoPruneHistory
+}
+
+func (c *ScanConfig) NormalizedRetentionRuns() int {
+	if c.HistoryRetentionRuns < 0 {
+		return 0
+	}
+	if c.HistoryRetentionRuns == 0 {
+		return 20
+	}
+	return c.HistoryRetentionRuns
+}
+
+func (c *ScanConfig) NormalizedRetentionDays() int {
+	if c.HistoryRetentionDays < 0 {
+		return 0
+	}
+	if c.HistoryRetentionDays == 0 {
+		return 30
+	}
+	return c.HistoryRetentionDays
 }
 
 

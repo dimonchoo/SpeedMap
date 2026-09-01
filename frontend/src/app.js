@@ -8,6 +8,9 @@ function speedMapApp() {
       webpQuality: 80, // WebP compression quality (1 - 100)
       adaptiveQuality: true, // Auto-adjust quality for gradients & lossless for transparent graphics
       resizeToRetina: true, // Downscale oversized images to max rendered Retina 2x bounds (Properly size images)
+      autoPruneHistory: true, // Auto-prune old history runs
+      historyRetentionRuns: 20, // Max runs per domain (0 = unlimited)
+      historyRetentionDays: 30, // Max retention age in days (0 = unlimited)
       pngWebPRatio: 30, // Default 30% of original (70% savings)
       jpgWebPRatio: 60, // Default 60% of original (40% savings)
       gifWebPRatio: 50, // Default 50% of original (50% savings)
@@ -308,6 +311,15 @@ function speedMapApp() {
       if (this.config.resizeToRetina !== false) {
         this.config.resizeToRetina = true;
       }
+      if (this.config.autoPruneHistory !== false) {
+        this.config.autoPruneHistory = true;
+      }
+      if (this.config.historyRetentionRuns === undefined || this.config.historyRetentionRuns === null) {
+        this.config.historyRetentionRuns = 20;
+      }
+      if (this.config.historyRetentionDays === undefined || this.config.historyRetentionDays === null) {
+        this.config.historyRetentionDays = 30;
+      }
       this.saveConfig();
     },
 
@@ -443,6 +455,15 @@ function speedMapApp() {
           }
           if (this.config.resizeToRetina !== false) {
             this.config.resizeToRetina = true;
+          }
+          if (this.config.autoPruneHistory !== false) {
+            this.config.autoPruneHistory = true;
+          }
+          if (this.config.historyRetentionRuns === undefined || this.config.historyRetentionRuns === null) {
+            this.config.historyRetentionRuns = 20;
+          }
+          if (this.config.historyRetentionDays === undefined || this.config.historyRetentionDays === null) {
+            this.config.historyRetentionDays = 30;
           }
           if (this.config.sitemapUrl && !this.sitemapInput) {
             this.sitemapInput = this.config.sitemapUrl;

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"SpeedMap/pkg/analytics"
+	"SpeedMap/pkg/config"
 	"SpeedMap/pkg/scanner"
 )
 
@@ -49,6 +50,10 @@ func getHistoryDir() (string, error) {
 }
 
 func SaveScanRun(domain string, results []scanner.PageResult, siteAnalytics analytics.SiteAnalytics) (*ScanRun, error) {
+	return SaveScanRunWithConfig(domain, results, siteAnalytics, config.ScanConfig{})
+}
+
+func SaveScanRunWithConfig(domain string, results []scanner.PageResult, siteAnalytics analytics.SiteAnalytics, cfg config.ScanConfig) (*ScanRun, error) {
 	dir, err := getHistoryDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get history directory: %w", err)
@@ -79,10 +84,14 @@ func SaveScanRun(domain string, results []scanner.PageResult, siteAnalytics anal
 		return nil, fmt.Errorf("failed to write history file: %w", err)
 	}
 
-	// Trigger async auto-pruning to keep history directory clean
-	go func() {
-		_ = AutoPruneHistory(20, 30)
-	}()
+	// Trigger async auto-pruning if enabled
+	if cfg.IsAutoPruneEnabled() {
+		maxRuns := cfg.NormalizedRetentionRuns()
+		maxDays := cfg.NormalizedRetentionDays()
+		go func() {
+			_ = AutoPruneHistory(maxRuns, maxDays)
+		}()
+	}
 
 	return &run, nil
 }
@@ -187,14 +196,8 @@ func AutoPruneHistory(maxRunsPerDomain, maxAgeDays int) error {
 }
 
 // AutoPruneHistoryInDir cleans up history runs within a specific directory.
+// Set maxRunsPerDomain = 0 or maxAgeDays = 0 for unlimited.
 func AutoPruneHistoryInDir(dir string, maxRunsPerDomain, maxAgeDays int) error {
-	if maxRunsPerDomain <= 0 {
-		maxRunsPerDomain = 20
-	}
-	if maxAgeDays <= 0 {
-		maxAgeDays = 30
-	}
-
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -207,7 +210,10 @@ func AutoPruneHistoryInDir(dir string, maxRunsPerDomain, maxAgeDays int) error {
 	}
 
 	domainFiles := make(map[string][]runFile)
-	cutoffTime := time.Now().AddDate(0, 0, -maxAgeDays)
+	var cutoffTime time.Time
+	if maxAgeDays > 0 {
+		cutoffTime = time.Now().AddDate(0, 0, -maxAgeDays)
+	}
 
 	for _, f := range files {
 		if f.IsDir() || !strings.HasPrefix(f.Name(), "run_") || !strings.HasSuffix(f.Name(), ".json") {
@@ -252,7 +258,15 @@ func AutoPruneHistoryInDir(dir string, maxRunsPerDomain, maxAgeDays int) error {
 				continue // Always preserve the newest run
 			}
 
-			if idx >= maxRunsPerDomain || rf.timestamp.Before(cutoffTime) {
+			shouldDelete := false
+			if maxRunsPerDomain > 0 && idx >= maxRunsPerDomain {
+				shouldDelete = true
+			}
+			if maxAgeDays > 0 && !cutoffTime.IsZero() && rf.timestamp.Before(cutoffTime) {
+				shouldDelete = true
+			}
+
+			if shouldDelete {
 				_ = os.Remove(rf.path)
 			}
 		}

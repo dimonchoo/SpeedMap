@@ -136,7 +136,7 @@ func (a *App) ComputeSiteAnalytics(domain string, cfg config.ScanConfig, results
 	// Fetch previous run for comparison BEFORE saving current run
 	prevRun, _ := history.GetPreviousRun(domain, "")
 
-	currentRun, err := history.SaveScanRun(domain, results, siteAnalytics)
+	currentRun, err := history.SaveScanRunWithConfig(domain, results, siteAnalytics, cfg)
 	if err != nil {
 		return AnalyticsResult{
 			Analytics:  siteAnalytics,

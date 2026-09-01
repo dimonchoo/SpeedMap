@@ -326,7 +326,7 @@ func TestBenchmark137ImagesFromDump(t *testing.T) {
 	// Read manifest
 	manifestData, err := os.ReadFile(filepath.Join(dumpDir, "manifest.json"))
 	if err != nil {
-		t.Fatalf("failed to read manifest: %v", err)
+		t.Skipf("skipping dump benchmark: %v", err)
 	}
 
 	type rawMani struct {

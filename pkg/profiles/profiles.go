@@ -70,6 +70,15 @@ func listProfilesInternal() ([]SiteProfile, error) {
 		if list[i].Config.ResizeToRetina == nil {
 			list[i].Config.ResizeToRetina = &trueVal
 		}
+		if list[i].Config.AutoPruneHistory == nil {
+			list[i].Config.AutoPruneHistory = &trueVal
+		}
+		if list[i].Config.HistoryRetentionRuns == 0 {
+			list[i].Config.HistoryRetentionRuns = 20
+		}
+		if list[i].Config.HistoryRetentionDays == 0 {
+			list[i].Config.HistoryRetentionDays = 30
+		}
 	}
 
 	sort.Slice(list, func(i, j int) bool {
