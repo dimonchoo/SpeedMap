@@ -321,7 +321,7 @@ new Promise(async (resolve) => {
         });
 
         // D. Extract <picture> <source srcset="..."> and <img srcset="...">
-        const pictureSources = Array.from(document.querySelectorAll('picture source, img[srcset]'));
+        const pictureSources = Array.from(document.querySelectorAll('picture source, img[srcset], img[data-srcset], [data-lazy-src], [data-original], [data-hi-res], [data-full-url]'));
         pictureSources.forEach(source => {
             const srcset = source.getAttribute('srcset') || source.getAttribute('data-srcset');
             if (srcset) {
@@ -344,13 +344,106 @@ new Promise(async (resolve) => {
                                 renderedHeight: 0,
                                 formattedSize: '0 B',
                                 format: getImgFormat(fullUrl),
-                                isLazy: source.getAttribute('loading') === 'lazy' || !!source.getAttribute('data-srcset'),
+                                isLazy: true,
                                 alt: '',
                                 isLCP: data.diagnostics.lcpUrl === fullUrl
                             });
                         }
                     }
                 });
+            }
+            const extraSrc = source.getAttribute('data-lazy-src') || source.getAttribute('data-original') || source.getAttribute('data-hi-res') || source.getAttribute('data-full-url');
+            if (extraSrc && !extraSrc.startsWith('data:')) {
+                try {
+                    const fullUrl = new URL(extraSrc, document.baseURI).href;
+                    if (!imageMap.has(fullUrl)) {
+                        imageMap.set(fullUrl, {
+                            url: fullUrl,
+                            transferSize: 0,
+                            encodedSize: 0,
+                            duration: 0,
+                            width: 0,
+                            height: 0,
+                            naturalWidth: 0,
+                            naturalHeight: 0,
+                            renderedWidth: 0,
+                            renderedHeight: 0,
+                            formattedSize: '0 B',
+                            format: getImgFormat(fullUrl),
+                            isLazy: true,
+                            alt: '',
+                            isLCP: data.diagnostics.lcpUrl === fullUrl
+                        });
+                    }
+                } catch(e){}
+            }
+        });
+
+        // E. Extract CSS background images from inline styles and <style> tags
+        const bgRegex = /url\(\s*['"]?([^'")]+?\.(?:png|jpg|jpeg|webp|avif|gif|bmp))['"]?\s*\)/gi;
+        document.querySelectorAll('[style*="url"], [data-bg], [data-background], [data-bg-url]').forEach(el => {
+            const styleAttr = el.getAttribute('style') || '';
+            const dataBg = el.getAttribute('data-bg') || el.getAttribute('data-background') || el.getAttribute('data-bg-url') || '';
+            const combined = styleAttr + ' ' + dataBg;
+            let match;
+            while ((match = bgRegex.exec(combined)) !== null) {
+                let rawUrl = match[1];
+                if (rawUrl && !rawUrl.startsWith('data:')) {
+                    try {
+                        const fullUrl = new URL(rawUrl, document.baseURI).href;
+                        if (!imageMap.has(fullUrl)) {
+                            imageMap.set(fullUrl, {
+                                url: fullUrl,
+                                transferSize: 0,
+                                encodedSize: 0,
+                                duration: 0,
+                                width: 0,
+                                height: 0,
+                                naturalWidth: 0,
+                                naturalHeight: 0,
+                                renderedWidth: 0,
+                                renderedHeight: 0,
+                                formattedSize: '0 B',
+                                format: getImgFormat(fullUrl),
+                                isLazy: true,
+                                alt: '',
+                                isLCP: data.diagnostics.lcpUrl === fullUrl
+                            });
+                        }
+                    } catch(e) {}
+                }
+            }
+        });
+
+        document.querySelectorAll('style').forEach(st => {
+            const cssText = st.textContent || '';
+            let match;
+            while ((match = bgRegex.exec(cssText)) !== null) {
+                let rawUrl = match[1];
+                if (rawUrl && !rawUrl.startsWith('data:')) {
+                    try {
+                        const fullUrl = new URL(rawUrl, document.baseURI).href;
+                        if (!imageMap.has(fullUrl)) {
+                            imageMap.set(fullUrl, {
+                                url: fullUrl,
+                                transferSize: 0,
+                                encodedSize: 0,
+                                duration: 0,
+                                width: 0,
+                                height: 0,
+                                naturalWidth: 0,
+                                naturalHeight: 0,
+                                renderedWidth: 0,
+                                renderedHeight: 0,
+                                formattedSize: '0 B',
+                                format: getImgFormat(fullUrl),
+                                isLazy: true,
+                                alt: '',
+                                isLCP: data.diagnostics.lcpUrl === fullUrl
+                            });
+                        }
+                    } catch(e) {}
+                }
             }
         });
 
