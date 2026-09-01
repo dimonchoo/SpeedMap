@@ -181,6 +181,8 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 	var statusCode int = 200
 	var pluginCacheStatus string = "NONE"
 	var cfCacheStatus string = "NONE"
+	var cfPop string = ""
+	var cfRay string = ""
 
 	chromedp.ListenTarget(timeoutCtx, func(ev interface{}) {
 		switch e := ev.(type) {
@@ -191,6 +193,7 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 					for k, v := range e.Response.Headers {
 						lk := strings.ToLower(k)
 						val := strings.ToUpper(fmt.Sprintf("%v", v))
+						rawVal := fmt.Sprintf("%v", v)
 
 						// 1. Plugin / Redis Cache Header Detection
 						if status, ok := parsePluginCacheHeader(lk, val); ok {
@@ -200,6 +203,15 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 						// 2. Cloudflare Cache Header Detection
 						if lk == "cf-cache-status" {
 							cfCacheStatus = val
+						}
+
+						// 3. Cloudflare Ray and Data Center (PoP) Detection
+						if lk == "cf-ray" {
+							cfRay = rawVal
+							parts := strings.Split(rawVal, "-")
+							if len(parts) > 1 {
+								cfPop = strings.ToUpper(strings.TrimSpace(parts[len(parts)-1]))
+							}
 						}
 					}
 				}
@@ -388,6 +400,8 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 	res.StatusCode = statusCode
 	res.PluginCacheStatus = pluginCacheStatus
 	res.CloudflareCacheStatus = cfCacheStatus
+	res.CloudflarePop = cfPop
+	res.CloudflareRay = cfRay
 	res.Metrics = vitals
 
 	// Calculate Grades

@@ -615,12 +615,12 @@
                                   x-text="'⚡ ' + item.pluginCacheStatus"></span>
                               </template>
 
-                              <!-- Cloudflare Cache Badge -->
+                              <!-- Cloudflare Cache Badge with PoP / Datacenter -->
                               <template x-if="item.cloudflareCacheStatus && item.cloudflareCacheStatus !== 'NONE'">
                                 <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-extrabold border shrink-0"
                                   :class="item.cloudflareCacheStatus === 'HIT' ? 'bg-sky-500/20 text-sky-300 border-sky-500/30' : (item.cloudflareCacheStatus === 'MISS' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30')"
-                                  :title="'Cloudflare Cache Status: ' + item.cloudflareCacheStatus"
-                                  x-text="'☁️ ' + item.cloudflareCacheStatus"></span>
+                                  :title="'Cloudflare Cache: ' + item.cloudflareCacheStatus + (item.cloudflarePop ? ' · Дата-центр (PoP): ' + item.cloudflarePop : '') + (item.cloudflareRay ? '\nCF-Ray: ' + item.cloudflareRay : '')"
+                                  x-text="'☁️ ' + item.cloudflareCacheStatus + (item.cloudflarePop ? ' (' + item.cloudflarePop + ')' : '')"></span>
                               </template>
                             </div>
 
@@ -2734,13 +2734,23 @@
                   </div>
                 </div>
 
-                <!-- Cloudflare Cache -->
+                <!-- Cloudflare Cache & Datacenter -->
                 <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 space-y-1">
-                  <div class="text-[11px] text-slate-400 font-medium">☁️ Cloudflare Cache</div>
+                  <div class="text-[11px] text-slate-400 font-medium flex items-center justify-between">
+                    <span>☁️ Cloudflare Cache</span>
+                    <template x-if="selectedDetail?.cloudflarePop">
+                      <span class="text-[10px] font-mono bg-sky-950/80 text-sky-300 px-1.5 py-0.2 rounded border border-sky-800/60" :title="'CF-Ray: ' + (selectedDetail?.cloudflareRay || '')" x-text="'PoP: ' + selectedDetail?.cloudflarePop"></span>
+                    </template>
+                  </div>
                   <div class="font-mono font-bold text-sm">
                     <template x-if="selectedDetail?.cloudflareCacheStatus && selectedDetail?.cloudflareCacheStatus !== 'NONE'">
-                      <span :class="selectedDetail?.cloudflareCacheStatus === 'HIT' ? 'text-sky-400' : (selectedDetail?.cloudflareCacheStatus === 'MISS' ? 'text-amber-400' : 'text-indigo-300')"
-                        x-text="selectedDetail?.cloudflareCacheStatus"></span>
+                      <div class="flex items-center space-x-1.5">
+                        <span :class="selectedDetail?.cloudflareCacheStatus === 'HIT' ? 'text-sky-400' : (selectedDetail?.cloudflareCacheStatus === 'MISS' ? 'text-amber-400' : 'text-indigo-300')"
+                          x-text="selectedDetail?.cloudflareCacheStatus"></span>
+                        <template x-if="selectedDetail?.cloudflarePop">
+                          <span class="text-xs font-normal text-slate-400" x-text="'(' + selectedDetail?.cloudflarePop + ')'"></span>
+                        </template>
+                      </div>
                     </template>
                     <template x-if="!selectedDetail?.cloudflareCacheStatus || selectedDetail?.cloudflareCacheStatus === 'NONE'">
                       <span class="text-slate-500 font-normal text-xs">Не виявлено / NONE</span>

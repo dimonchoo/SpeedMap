@@ -147,6 +147,8 @@ type PageResult struct {
 	StatusCode            int             `json:"statusCode"`
 	PluginCacheStatus     string          `json:"pluginCacheStatus"`     // e.g. "HIT", "MISS", "BYPASS", "NONE"
 	CloudflareCacheStatus string          `json:"cloudflareCacheStatus"` // e.g. "HIT", "MISS", "DYNAMIC", "REVALIDATED", "BYPASS", "NONE"
+	CloudflarePop         string          `json:"cloudflarePop,omitempty"`         // e.g. "KBP", "WAW", "FRA", "LHR"
+	CloudflareRay         string          `json:"cloudflareRay,omitempty"`         // e.g. "92837264871638-WAW"
 	Metrics               WebVitals       `json:"metrics"`
 	Grades                DetailedGrades  `json:"grades"`
 	Diagnostics           PageDiagnostics `json:"diagnostics"`
