@@ -664,6 +664,28 @@ export namespace scanner {
 		    return a;
 		}
 	}
+	export class DomainResolution {
+	    domain: string;
+	    ips: string[];
+	    ip: string;
+	    isCloudflare: boolean;
+	    provider: string;
+	    serverHeader: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DomainResolution(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.ips = source["ips"];
+	        this.ip = source["ip"];
+	        this.isCloudflare = source["isCloudflare"];
+	        this.provider = source["provider"];
+	        this.serverHeader = source["serverHeader"];
+	    }
+	}
 	export class FontDetail {
 	    family: string;
 	    url: string;

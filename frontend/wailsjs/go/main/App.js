@@ -94,6 +94,10 @@ export function RescanSingleURL(arg1, arg2, arg3) {
   return window['go']['main']['App']['RescanSingleURL'](arg1, arg2, arg3);
 }
 
+export function ResolveDomain(arg1) {
+  return window['go']['main']['App']['ResolveDomain'](arg1);
+}
+
 export function SaveGDriveCredentials(arg1, arg2) {
   return window['go']['main']['App']['SaveGDriveCredentials'](arg1, arg2);
 }

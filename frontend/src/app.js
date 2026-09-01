@@ -39,6 +39,17 @@ function speedMapApp() {
     isParsing: false,
     parseError: '',
 
+    // Domain & IP resolution state
+    domainInfo: {
+      domain: '',
+      ip: '',
+      ips: [],
+      isCloudflare: false,
+      provider: '',
+      serverHeader: '',
+      isLoading: false
+    },
+
     // Form Hub State
     formSearchQuery: '',
     formEngineFilter: 'all', // 'all' | 'contact-form-7' | 'greenhouse' | 'pardot' | 'hubspot' | 'native-html' | 'has-captcha' | 'no-captcha' | 'file-upload'
@@ -301,6 +312,7 @@ function speedMapApp() {
       if (profile.sitemapUrl) {
         this.sitemapInput = profile.sitemapUrl;
         this.config.sitemapUrl = profile.sitemapUrl;
+        this.resolveCurrentDomain(profile.sitemapUrl);
       }
       if (profile.config) {
         this.config = { ...this.config, ...profile.config };
@@ -640,6 +652,42 @@ function speedMapApp() {
       } finally {
         this.isParsing = false;
       }
+    },
+
+    async resolveCurrentDomain(url) {
+      const target = url || this.sitemapInput || this.config.sitemapUrl;
+      if (!target) {
+        this.domainInfo = { domain: '', ip: '', ips: [], isCloudflare: false, provider: '', serverHeader: '', isLoading: false };
+        return;
+      }
+      this.domainInfo.isLoading = true;
+      try {
+        if (window.go && window.go.main && window.go.main.App && window.go.main.App.ResolveDomain) {
+          const res = await window.go.main.App.ResolveDomain(target);
+          if (res && res.ip) {
+            this.domainInfo = {
+              domain: res.domain || '',
+              ip: res.ip || '',
+              ips: res.ips || [],
+              isCloudflare: !!res.isCloudflare,
+              provider: res.provider || (res.isCloudflare ? 'Cloudflare Proxy' : 'Direct Server'),
+              serverHeader: res.serverHeader || '',
+              isLoading: false
+            };
+            return;
+          }
+        }
+        this.domainInfo.isLoading = false;
+      } catch (err) {
+        console.warn("[JS LOG] Domain IP resolution error:", err);
+        this.domainInfo.isLoading = false;
+      }
+    },
+
+    copyToClipboard(text) {
+      if (!text) return;
+      navigator.clipboard.writeText(text);
+      this.showToast('info', 'Скопійовано 📋', text);
     },
 
     get filteredDiscoveredUrls() {

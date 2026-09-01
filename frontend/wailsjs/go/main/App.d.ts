@@ -55,6 +55,8 @@ export function PreviewImageComparisonHTML(arg1:string,arg2:config.ScanConfig,ar
 
 export function RescanSingleURL(arg1:config.ScanConfig,arg2:string,arg3:number):Promise<scanner.PageResult>;
 
+export function ResolveDomain(arg1:string):Promise<scanner.DomainResolution>;
+
 export function SaveGDriveCredentials(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSiteProfile(arg1:profiles.SiteProfile):Promise<profiles.SiteProfile>;

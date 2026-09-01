@@ -71,6 +71,12 @@ func (a *App) shutdown(ctx context.Context) {
 	a.CancelScan()
 }
 
+// ResolveDomain resolves the domain's IP addresses and detects Cloudflare CDN proxying
+func (a *App) ResolveDomain(targetURL string) (scanner.DomainResolution, error) {
+	fmt.Printf("[GO LOG] ResolveDomain called: %s\n", targetURL)
+	return scanner.ResolveDomain(targetURL)
+}
+
 // ParseSitemap fetches and parses the given sitemap URL
 func (a *App) ParseSitemap(sitemapUrl string, cfg config.ScanConfig) ([]string, error) {
 	fmt.Printf("[GO LOG] ParseSitemap called: %s\n", sitemapUrl)
