@@ -182,7 +182,8 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 
 	heavy := make([]ManifestImage, 0, len(out))
 	for _, im := range out {
-		if im.IsHeavy {
+		// Include if confirmed heavy from network OR if transferSize was 0 (lazy-loaded in DOM, actual size verified on download)
+		if im.IsHeavy || im.Bytes == 0 {
 			heavy = append(heavy, im)
 		}
 	}
@@ -192,7 +193,7 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 // ConvertHeavyImages downloads and converts each image via pkg/optimizer.
 // Does NOT write into WordPress uploads — PHP apply copies from the package.
 func ConvertHeavyImages(images []ManifestImage, quality float32, authUser, authPass string) ([]WrittenImage, error) {
-	return ConvertHeavyImagesWithThreshold(images, quality, 100*1024, true, true, authUser, authPass)
+	return ConvertHeavyImagesWithThreshold(images, quality, 0, true, true, authUser, authPass)
 }
 
 // ConvertHeavyImagesWithThreshold converts images with custom threshold byte budget using concurrent workers.
@@ -253,6 +254,12 @@ func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, th
 				origData, err := decodeDataURL(res.OriginalDataBase64)
 				if err != nil {
 					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("decode orig %s: %w", img.SourceURL, err)}
+					continue
+				}
+
+				// If thresholdBytes is set, ensure the actual downloaded original meets the heavy threshold
+				if thresholdBytes > 0 && int64(len(origData)) < thresholdBytes {
+					resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: downloaded size %d B < threshold %d B", img.SourceURL, len(origData), thresholdBytes)}
 					continue
 				}
 

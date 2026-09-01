@@ -91,7 +91,7 @@ func TestCollectHeavyImagesWebpRelDedupe(t *testing.T) {
 		{URL: "https://ex.com/wp-content/uploads/2024/12/Hero-BG-Mobile.png", Format: "png", IsHeavy: true, MaxTransferSize: 200000},
 		{URL: "https://ex.com/wp-content/uploads/2024/12/Hero-BG-Mobile.jpg", Format: "jpg", IsHeavy: true, MaxTransferSize: 100000},
 		{URL: "https://ex.com/wp-content/uploads/a.png", Format: "png", IsHeavy: true, MaxTransferSize: 150000},
-		{URL: "https://ex.com/wp-content/uploads/b.png", Format: "png", IsHeavy: false},
+		{URL: "https://ex.com/wp-content/uploads/b.png", Format: "png", IsHeavy: false, MaxTransferSize: 50000},
 	}
 	got := CollectHeavyImages(images)
 	if len(got) != 2 {
@@ -291,7 +291,7 @@ func TestConcurrentHeavyExportSpeed(t *testing.T) {
 	}
 
 	start := time.Now()
-	written, err := ConvertHeavyImagesWithThreshold(images, 80, 100*1024, true, true, "", "")
+	written, err := ConvertHeavyImagesWithThreshold(images, 80, 0, true, true, "", "")
 	elapsed := time.Since(start)
 
 	if err != nil {
