@@ -26,6 +26,8 @@ type ScanConfig struct {
 	AutoPruneHistory      *bool          `json:"autoPruneHistory"`      // true by default: auto-prunes old history runs
 	HistoryRetentionRuns  int            `json:"historyRetentionRuns"`  // default 20 (max runs per domain, 0 = unlimited)
 	HistoryRetentionDays  int            `json:"historyRetentionDays"`  // default 30 (max age in days, 0 = unlimited)
+	FilterTrackingBeacons *bool          `json:"filterTrackingBeacons"` // true by default: filter 1x1 ad & tracking beacons
+	ExcludedImagePatterns []string       `json:"excludedImagePatterns"` // custom substrings/patterns to exclude from image discovery
 }
 
 func (c *ScanConfig) IsAdaptiveQualityEnabled() bool {
@@ -120,4 +122,36 @@ func (c *ScanConfig) NormalizedTimeout() int {
 		return 30
 	}
 	return c.TimeoutSec
+}
+
+func (c *ScanConfig) IsFilterTrackingBeaconsEnabled() bool {
+	if c.FilterTrackingBeacons == nil {
+		return true // Default true
+	}
+	return *c.FilterTrackingBeacons
+}
+
+func (c *ScanConfig) GetExcludedImagePatterns() []string {
+	if c.FilterTrackingBeacons != nil && !*c.FilterTrackingBeacons {
+		if c.ExcludedImagePatterns == nil {
+			return []string{}
+		}
+		return c.ExcludedImagePatterns
+	}
+	if len(c.ExcludedImagePatterns) > 0 {
+		return c.ExcludedImagePatterns
+	}
+	return []string{
+		"googleadservices.com",
+		"doubleclick.net",
+		"facebook.com/tr",
+		"bat.bing.com",
+		"clarity.ms",
+		"px.ads.linkedin.com",
+		"analytics.google.com",
+		"google-analytics.com",
+		"t.co/1/i/adsct",
+		"stats.wp.com",
+		"/pagead/",
+	}
 }

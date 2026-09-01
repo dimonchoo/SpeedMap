@@ -11,6 +11,20 @@ function speedMapApp() {
       autoPruneHistory: true, // Auto-prune old history runs
       historyRetentionRuns: 20, // Max runs per domain (0 = unlimited)
       historyRetentionDays: 30, // Max retention age in days (0 = unlimited)
+      filterTrackingBeacons: true, // Auto-filter 1x1 ad & tracking beacons (Google Ads, Facebook, etc.)
+      excludedImagePatterns: [
+        'googleadservices.com',
+        'doubleclick.net',
+        'facebook.com/tr',
+        'bat.bing.com',
+        'clarity.ms',
+        'px.ads.linkedin.com',
+        'analytics.google.com',
+        'google-analytics.com',
+        't.co/1/i/adsct',
+        'stats.wp.com',
+        '/pagead/'
+      ],
       pngWebPRatio: 30, // Default 30% of original (70% savings)
       jpgWebPRatio: 60, // Default 60% of original (40% savings)
       gifWebPRatio: 50, // Default 50% of original (50% savings)
@@ -162,6 +176,17 @@ function speedMapApp() {
         (p.name && p.name.toLowerCase().includes(q)) || 
         (p.sitemapUrl && p.sitemapUrl.toLowerCase().includes(q))
       );
+    },
+
+    get excludedPatternsText() {
+      if (!this.config.excludedImagePatterns || !Array.isArray(this.config.excludedImagePatterns)) {
+        return '';
+      }
+      return this.config.excludedImagePatterns.join('\n');
+    },
+    set excludedPatternsText(val) {
+      if (typeof val !== 'string') return;
+      this.config.excludedImagePatterns = val.split('\n').map(s => s.trim()).filter(Boolean);
     },
 
     async checkGDriveStatus() {

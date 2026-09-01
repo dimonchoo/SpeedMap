@@ -2411,6 +2411,37 @@
                       class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
                   </div>
                 </div>
+
+                <hr class="border-slate-800">
+
+                <!-- Tracking Beacons & URL Pattern Exclusions -->
+                <div class="space-y-4">
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
+                      <span>🛡️ Фільтрація Трекерів та Виключення Зображень</span>
+                    </h3>
+                  </div>
+
+                  <!-- Toggle Filter Tracking Beacons -->
+                  <div class="flex items-start justify-between bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-x-3">
+                    <div class="space-y-0.5">
+                      <label class="font-semibold text-slate-200 text-xs flex items-center space-x-1.5 cursor-pointer">
+                        <span>Фільтрувати службові трекінгові пікселі (Ad / Analytics Beacons)</span>
+                      </label>
+                      <p class="text-[11px] text-slate-400">Автоматично відсікає 1x1 службові пікселі Google Ads, Facebook, DoubleClick, LinkedIn, Clarity з динамічними таймстемпами. Запити в браузері виконуються для чесних Web Vitals, але не потрапляють у список картинок сайту.</p>
+                    </div>
+                    <input type="checkbox" x-model="config.filterTrackingBeacons"
+                      class="rounded border-slate-700 text-emerald-500 focus:ring-emerald-500/20 bg-slate-900 h-4 w-4 mt-0.5 shrink-0 cursor-pointer">
+                  </div>
+
+                  <!-- Custom Excluded Patterns Textarea -->
+                  <div class="space-y-1.5">
+                    <label class="block font-semibold text-slate-300 text-xs">Шаблони URL для виключення зі списку зображень (по одному на рядок)</label>
+                    <textarea x-model="excludedPatternsText" rows="4" placeholder="googleadservices.com&#10;doubleclick.net&#10;facebook.com/tr&#10;/pagead/"
+                      class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-100 placeholder-slate-600 focus:border-emerald-500 focus:outline-none font-mono"></textarea>
+                    <p class="text-[11px] text-slate-500">Якщо URL ресурсу містить будь-який із цих фрагментів, він не додаватиметься до списку медіа-ресурсів сайту.</p>
+                  </div>
+                </div>
               </div>
             </template>
 
