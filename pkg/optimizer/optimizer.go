@@ -112,11 +112,19 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 		return false
 	}
 
+	// Must be a wide banner proportion (e.g. aspect ratio >= 2.8 for horizontal page section banners like CTA/GTS).
+	// Standard photos and content graphics (16:9, 16:10, 4:3, 1:1) are excluded so they stay in high-efficiency Lossy WebP.
+	aspect := float64(w) / float64(h)
+	if aspect < 2.8 {
+		return false
+	}
+
 	stepY := (h / 60) + 1
 	stepX := (w / 60) + 1
 
 	var totalDelta float64
 	var count int
+	var highDeltaCount int
 	var sumR, sumG, sumB float64
 	var pixelCount float64
 
@@ -140,6 +148,13 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 			deltaX := absDiff(r1, r2) + absDiff(g1, g2) + absDiff(b1, b2)
 			deltaY := absDiff(r1, r3) + absDiff(g1, g3) + absDiff(b1, b3)
 
+			if deltaX > 20.0 {
+				highDeltaCount++
+			}
+			if deltaY > 20.0 {
+				highDeltaCount++
+			}
+
 			totalDelta += deltaX + deltaY
 			count += 2
 
@@ -158,12 +173,18 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 	meanG := sumG / pixelCount
 	meanB := sumB / pixelCount
 
-	// Blue/Cyan/Teal/Dark smooth gradients have low meanDelta (< 6.0) and blue/green chroma dominance over red.
+	// High edge density indicates photographic content, people, furniture, or complex icons.
+	highEdgeRatio := float64(highDeltaCount) / float64(count)
+	if highEdgeRatio > 0.03 {
+		return false
+	}
+
+	// Blue/Cyan/Teal/Dark smooth gradients have low meanDelta (< 5.0) and blue/green chroma dominance over red.
 	// These are the exact conditions where YUV 4:2:0 subsampling destroys smooth transitions with banding stripes.
 	// Real-world gradients like gts-bg1.png have meanDelta ~1.34, CTA-BG-8.png has ~4.81.
 	isBlueCyanDominant := (meanB > meanR+5.0) || (meanG > meanR+15.0)
 
-	return meanDelta < 6.0 && isBlueCyanDominant
+	return meanDelta < 5.0 && isBlueCyanDominant
 }
 
 // toStraightRGBA converts any decoded image into *image.RGBA with STRAIGHT (unpremultiplied) RGBA bytes,
