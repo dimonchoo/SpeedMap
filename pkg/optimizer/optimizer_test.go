@@ -280,3 +280,91 @@ func TestOfflineRetinaResizingProportional(t *testing.T) {
 	}
 }
 
+func TestOfflineQualityStepDownFallback(t *testing.T) {
+	// Create an already compact PNG where high quality (95%) would result in WebP >= Original
+	img := image.NewRGBA(image.Rect(0, 0, 200, 200))
+	for y := 0; y < 200; y++ {
+		for x := 0; x < 200; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: 100, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(buf.Bytes())
+	}))
+	defer ts.Close()
+
+	// Request initial quality 95 with minQuality 70
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(ts.URL+"/stepdown.png", 95, 70, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Fatalf("ConvertImageURLToWebP failed: %v", err)
+	}
+
+	// Must never be larger than original
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected step-down quality to produce WebP < Original, got opt=%d, orig=%d", res.OptimizedBytes, res.OriginalBytes)
+	}
+	if !res.AdaptiveApplied {
+		t.Errorf("expected AdaptiveApplied to be true on step-down")
+	}
+}
+
+func TestOfflineSkipIfNoSavings(t *testing.T) {
+	// Create a tiny 5x5 monochrome PNG (e.g. 80 bytes) where WebP header overhead makes it larger
+	img := image.NewRGBA(image.Rect(0, 0, 5, 5))
+	for y := 0; y < 5; y++ {
+		for x := 0; x < 5; x++ {
+			img.Set(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(buf.Bytes())
+	}))
+	defer ts.Close()
+
+	// With skipIfNoSavings = true and high minQuality floor (90%)
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(ts.URL+"/tiny.png", 95, 90, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Fatalf("ConvertImageURLToWebP failed: %v", err)
+	}
+
+	// If WebP >= Original, it should be marked as skipped
+	if res.OptimizedBytes >= res.OriginalBytes && !res.IsSkipped {
+		t.Errorf("expected IsSkipped == true when WebP >= Original, got IsSkipped=false")
+	}
+}
+
+func TestStraightRGBAAlphaIntegrity(t *testing.T) {
+	// Test toStraightRGBA function with semi-transparent NRGBA pixels
+	nrgba := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+	// Bright cyan with 50% opacity
+	nrgba.SetNRGBA(0, 0, color.NRGBA{R: 0, G: 200, B: 255, A: 128})
+
+	straight := toStraightRGBA(nrgba)
+	if straight == nil {
+		t.Fatal("expected non-nil straight RGBA")
+	}
+
+	// RGB values must not be crushed/premultiplied to half (0, 100, 127)
+	r := straight.Pix[0]
+	g := straight.Pix[1]
+	b := straight.Pix[2]
+	a := straight.Pix[3]
+
+	if r != 0 || g != 200 || b != 255 || a != 128 {
+		t.Errorf("expected straight RGBA (0, 200, 255, 128), got (%d, %d, %d, %d)", r, g, b, a)
+	}
+}
+
+
