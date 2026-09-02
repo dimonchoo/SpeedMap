@@ -720,6 +720,16 @@ func (a *App) GetGDriveCredentials() map[string]string {
 	return a.gdriveManager.GetCredentials()
 }
 
+// GetAllHistoryRuns returns summaries of historical runs for a domain
+func (a *App) GetAllHistoryRuns(domain string) ([]history.ScanRunSummary, error) {
+	return history.GetAllHistoryRuns(domain)
+}
+
+// CompareHistoryRuns performs a file-by-file regression comparison between two run IDs
+func (a *App) CompareHistoryRuns(baseRunID, currentRunID string) (*history.RunsDiffResult, error) {
+	return history.CompareHistoryRuns(baseRunID, currentRunID)
+}
+
 
 
 

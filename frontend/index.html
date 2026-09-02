@@ -176,6 +176,15 @@
               <span class="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 text-[10px]" x-text="siteAnalytics.totalFormsCount"></span>
             </template>
           </button>
+
+          <button @click="activeTab = 'diff'; loadHistoryRunsForDiff()"
+            :class="activeTab === 'diff' ? 'bg-slate-800 text-fuchsia-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
+            <span>📈 Регресії</span>
+            <template x-if="runsDiffResult && runsDiffResult.degradedCount > 0">
+              <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="runsDiffResult.degradedCount"></span>
+            </template>
+          </button>
         </nav>
       </div>
 
@@ -2047,6 +2056,174 @@
                 </template>
               </div>
             </template>
+          </div>
+        </template>
+
+        <!-- ========================================== -->
+        <!-- TAB 7: RUNS DIFF & REGRESSION TRACKER      -->
+        <!-- ========================================== -->
+        <template x-if="activeTab === 'diff'">
+          <div class="space-y-6">
+            <!-- Header Bar with Run Selectors -->
+            <div class="bg-slate-950/80 rounded-2xl border border-slate-800 shadow-xl p-5 space-y-4">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 class="text-base font-bold text-slate-100 flex items-center space-x-2">
+                    <span class="text-fuchsia-400">📈</span>
+                    <span>Порівняння прогонів та Детектор регресій</span>
+                  </h2>
+                  <p class="text-xs text-slate-400 mt-1">Пофайлове зіставлення розміру та оптимізації між двома будь-якими запусками</p>
+                </div>
+
+                <!-- Run Pickers -->
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
+                    <select x-model="selectedBaseRunId" @change="runComparisonDiff()"
+                      class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                      <template x-for="r in historyRunsList" :key="r.id">
+                        <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
+                      </template>
+                    </select>
+                  </div>
+
+                  <span class="text-slate-500 font-bold">➔</span>
+
+                  <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
+                    <select x-model="selectedCurrentRunId" @change="runComparisonDiff()"
+                      class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                      <template x-for="r in historyRunsList" :key="r.id">
+                        <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
+                      </template>
+                    </select>
+                  </div>
+
+                  <button @click="runComparisonDiff()" :disabled="isLoadingDiff"
+                    class="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-lg shadow-fuchsia-600/20">
+                    <span :class="isLoadingDiff ? 'animate-spin' : ''">🔄</span>
+                    <span>Оновити</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Summary Stat Cards -->
+              <template x-if="runsDiffResult">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80">
+                    <div class="text-[11px] text-slate-400 font-medium">Всього файлів</div>
+                    <div class="text-lg font-bold font-mono text-slate-100 mt-0.5" x-text="runsDiffResult.totalFiles"></div>
+                  </div>
+
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-rose-500/20 bg-rose-500/5">
+                    <div class="text-[11px] text-rose-400 font-medium flex items-center space-x-1">
+                      <span>🔴 Регресії (+розмір)</span>
+                    </div>
+                    <div class="text-lg font-bold font-mono text-rose-400 mt-0.5" x-text="runsDiffResult.degradedCount"></div>
+                  </div>
+
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-emerald-500/20 bg-emerald-500/5">
+                    <div class="text-[11px] text-emerald-400 font-medium flex items-center space-x-1">
+                      <span>🟢 Покращення (-розмір)</span>
+                    </div>
+                    <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5" x-text="runsDiffResult.improvedCount"></div>
+                  </div>
+
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80">
+                    <div class="text-[11px] text-slate-400 font-medium">Загальна дельта ваги</div>
+                    <div class="text-lg font-bold font-mono mt-0.5"
+                      :class="runsDiffResult.deltaTotalBytes > 0 ? 'text-rose-400' : (runsDiffResult.deltaTotalBytes < 0 ? 'text-emerald-400' : 'text-slate-400')"
+                      x-text="`${runsDiffResult.deltaTotalBytes > 0 ? '+' : ''}${(runsDiffResult.deltaTotalBytes / 1024 / 1024).toFixed(2)} MB`"></div>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Toolbar Filters & Search -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+              <div class="flex flex-wrap items-center gap-2">
+                <button @click="runsDiffFilter = 'all'"
+                  :class="runsDiffFilter === 'all' ? 'bg-slate-800 text-fuchsia-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition">
+                  Всі файли
+                </button>
+                <button @click="runsDiffFilter = 'degraded'"
+                  :class="runsDiffFilter === 'degraded' ? 'bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30' : 'text-slate-400 hover:text-rose-400'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
+                  <span>🔴 Тільки регресії</span>
+                  <template x-if="runsDiffResult && runsDiffResult.degradedCount > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px]" x-text="runsDiffResult.degradedCount"></span>
+                  </template>
+                </button>
+                <button @click="runsDiffFilter = 'improved'"
+                  :class="runsDiffFilter === 'improved' ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-emerald-400'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
+                  <span>🟢 Тільки покращення</span>
+                  <template x-if="runsDiffResult && runsDiffResult.improvedCount > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px]" x-text="runsDiffResult.improvedCount"></span>
+                  </template>
+                </button>
+                <button @click="runsDiffFilter = 'same'"
+                  :class="runsDiffFilter === 'same' ? 'bg-slate-800 text-slate-200 font-bold' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition">
+                  ⚪ Без змін
+                </button>
+              </div>
+
+              <div class="relative w-full sm:w-72">
+                <input type="text" x-model="runsDiffSearch" placeholder="🔍 Пошук по назві або URL..."
+                  class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-fuchsia-500">
+              </div>
+            </div>
+
+            <!-- Table of File Diffs -->
+            <div class="bg-slate-950/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+              <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-semibold z-10">
+                    <tr>
+                      <th class="p-3 w-12 text-center">#</th>
+                      <th class="p-3">Файл / Посилання</th>
+                      <th class="p-3 text-right">Базовий запуск</th>
+                      <th class="p-3 text-right">Поточний запуск</th>
+                      <th class="p-3 text-right">Різниця (Дельта)</th>
+                      <th class="p-3 text-center w-28">Статус</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60 font-mono">
+                    <template x-if="filteredDiffFiles.length === 0">
+                      <tr>
+                        <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+                          Файлів за обраним фільтром не знайдено.
+                        </td>
+                      </tr>
+                    </template>
+
+                    <template x-for="(file, idx) in filteredDiffFiles" :key="file.url">
+                      <tr class="hover:bg-slate-900/50 transition">
+                        <td class="p-3 text-center text-slate-600" x-text="idx + 1"></td>
+                        <td class="p-3 font-sans">
+                          <a :href="file.url" target="_blank" class="font-bold text-slate-200 hover:text-fuchsia-400 truncate block max-w-lg underline" x-text="file.basename"></a>
+                          <div class="text-[10px] text-slate-500 font-mono truncate max-w-lg mt-0.5" x-text="file.url"></div>
+                        </td>
+                        <td class="p-3 text-right text-slate-300" x-text="file.baseFormatted"></td>
+                        <td class="p-3 text-right font-bold text-slate-100" x-text="file.currentFormatted"></td>
+                        <td class="p-3 text-right">
+                          <span class="px-2 py-0.5 rounded-full font-bold text-[11px]"
+                            :class="file.status === 'degraded' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : (file.status === 'improved' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400')"
+                            x-text="file.deltaFormatted"></span>
+                        </td>
+                        <td class="p-3 text-center font-sans">
+                          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                            :class="file.status === 'degraded' ? 'bg-rose-500/10 text-rose-400' : (file.status === 'improved' ? 'bg-emerald-500/10 text-emerald-400' : (file.status === 'new' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-slate-800 text-slate-500'))"
+                            x-text="file.status === 'degraded' ? '🔴 Регресія' : (file.status === 'improved' ? '🟢 Краще' : (file.status === 'new' ? '🆕 Новий' : '⚪ Норма'))"></span>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </template>
       </section>

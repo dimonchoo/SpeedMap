@@ -326,10 +326,9 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 
 	var webpData []byte
 
-	// 1. Transparent PNG / UI Graphics / Smooth Gradient Handling:
-	// Lossless WebP is ideal for UI graphics, smooth gradients, and icons to prevent color banding (banding lines).
-	// If the image is a smooth gradient/UI banner, has transparency, or fits within safeBudget,
-	// and Lossless WebP reduces file size compared to original, use Lossless WebP!
+	// 1. Adaptive Lossless vs Lossy Evaluation:
+	// Lossless WebP is ideal for UI graphics, icons, and smooth vector gradients to prevent color banding.
+	// For large photographic PNGs, Lossy WebP is preferred when it provides drastically better compression (e.g. 20KB vs 1.5MB).
 	if (formatName == "png" || isTransparent) && adaptive {
 		var losslessBuf bytes.Buffer
 		losslessOpts := &webp.Options{
@@ -340,8 +339,20 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 			losslessBytes := losslessBuf.Bytes()
 			losslessLen := int64(len(losslessBytes))
 			isGradient := isSmoothGradientOrUI(rawImg)
-			// Choose Lossless if it's smaller than original AND (fits in safe budget OR is a smooth gradient / transparent UI graphic)
-			if losslessLen < origSize && (losslessLen <= safeBudget || isGradient || isTransparent) {
+
+			// Use Lossless if:
+			// A) It fits comfortably within safe budget (<= 85KB) AND is smaller than original (icons, badges, UI elements)
+			// B) OR it is a smooth vector gradient banner (<= 650KB) to eliminate banding lines
+			shouldUseLossless := false
+			if losslessLen < origSize {
+				if losslessLen <= safeBudget {
+					shouldUseLossless = true
+				} else if isGradient && losslessLen <= 650*1024 {
+					shouldUseLossless = true
+				}
+			}
+
+			if shouldUseLossless {
 				webpData = losslessBytes
 				isLossless = true
 				adaptiveApplied = true

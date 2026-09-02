@@ -187,3 +187,30 @@ func TestCaseStudyImageOnline(t *testing.T) {
 		t.Errorf("OptimizedBytes (%d) >= OriginalBytes (%d)", res.OptimizedBytes, res.OriginalBytes)
 	}
 }
+
+func TestVoiceOfTheBuyerImageOnline(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2025/12/Voice-of-the-Buyer-2026.png"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("Voice-of-the-Buyer Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+	// Must be well under 100 KB in Lossy mode
+	if res.OptimizedBytes > 100*1024 {
+		t.Errorf("expected Voice-of-the-Buyer to use Lossy (<100KB), got %s", res.OptimizedFormatted)
+	}
+}
+
+func TestGtsBg1GradientOnline(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2023/12/gts-bg1.png"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("gts-bg1 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+	if !res.IsLossless {
+		t.Errorf("expected gts-bg1 to use Lossless to prevent banding lines")
+	}
+}

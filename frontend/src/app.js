@@ -73,6 +73,15 @@ function speedMapApp() {
     selectedFormDetail: null,
     showFormModal: false,
 
+    // Runs Diff & Regression Tracker State
+    historyRunsList: [],
+    selectedBaseRunId: '',
+    selectedCurrentRunId: '',
+    runsDiffResult: null,
+    runsDiffFilter: 'all', // 'all' | 'degraded' | 'improved' | 'same' | 'new'
+    runsDiffSearch: '',
+    isLoadingDiff: false,
+
     // Activity Log & Toast Feed
     activityLogs: [],
     toast: {
@@ -2053,6 +2062,59 @@ function speedMapApp() {
         const audio = new Audio(`pokemon/audio/${this.pokemonGame.current.id}.mp3`);
         audio.play().catch(() => {});
       } catch (e) {}
+    },
+
+    async loadHistoryRunsForDiff() {
+      try {
+        const domain = this.config.sitemapUrl || this.sitemapInput || '';
+        if (window.go?.main?.App?.GetAllHistoryRuns) {
+          const list = await window.go.main.App.GetAllHistoryRuns(domain);
+          this.historyRunsList = list || [];
+          if (this.historyRunsList.length >= 2 && !this.selectedBaseRunId) {
+            this.selectedCurrentRunId = this.historyRunsList[0].id;
+            this.selectedBaseRunId = this.historyRunsList[1].id;
+            await this.runComparisonDiff();
+          } else if (this.historyRunsList.length === 1 && !this.selectedCurrentRunId) {
+            this.selectedCurrentRunId = this.historyRunsList[0].id;
+            this.selectedBaseRunId = this.historyRunsList[0].id;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load history runs for diff:', e);
+      }
+    },
+
+    async runComparisonDiff() {
+      if (!this.selectedBaseRunId || !this.selectedCurrentRunId) return;
+      this.isLoadingDiff = true;
+      try {
+        if (window.go?.main?.App?.CompareHistoryRuns) {
+          const res = await window.go.main.App.CompareHistoryRuns(this.selectedBaseRunId, this.selectedCurrentRunId);
+          this.runsDiffResult = res;
+          this.addLog('info', `Порівняння прогонів: ${res.totalFiles} файлів (🔴 ${res.degradedCount} погіршилися, 🟢 ${res.improvedCount} покращилися)`);
+        }
+      } catch (e) {
+        console.error('Failed to compare runs:', e);
+        this.showToast('error', 'Помилка порівняння', e.message);
+      } finally {
+        this.isLoadingDiff = false;
+      }
+    },
+
+    get filteredDiffFiles() {
+      if (!this.runsDiffResult || !this.runsDiffResult.files) return [];
+      const q = (this.runsDiffSearch || '').toLowerCase().trim();
+      const f = this.runsDiffFilter;
+      return this.runsDiffResult.files.filter(item => {
+        let matchFilter = true;
+        if (f === 'degraded') matchFilter = item.status === 'degraded';
+        else if (f === 'improved') matchFilter = item.status === 'improved';
+        else if (f === 'same') matchFilter = item.status === 'same';
+        else if (f === 'new') matchFilter = item.status === 'new';
+
+        const matchQuery = !q || (item.basename && item.basename.toLowerCase().includes(q)) || (item.url && item.url.toLowerCase().includes(q));
+        return matchFilter && matchQuery;
+      });
     }
   };
 }

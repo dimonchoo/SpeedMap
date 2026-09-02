@@ -407,6 +407,40 @@ export namespace config {
 
 export namespace history {
 	
+	export class FileDiff {
+	    url: string;
+	    basename: string;
+	    originalBytes: number;
+	    originalFormatted: string;
+	    baseBytes: number;
+	    baseFormatted: string;
+	    currentBytes: number;
+	    currentFormatted: string;
+	    deltaBytes: number;
+	    deltaFormatted: string;
+	    status: string;
+	    pages?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FileDiff(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.basename = source["basename"];
+	        this.originalBytes = source["originalBytes"];
+	        this.originalFormatted = source["originalFormatted"];
+	        this.baseBytes = source["baseBytes"];
+	        this.baseFormatted = source["baseFormatted"];
+	        this.currentBytes = source["currentBytes"];
+	        this.currentFormatted = source["currentFormatted"];
+	        this.deltaBytes = source["deltaBytes"];
+	        this.deltaFormatted = source["deltaFormatted"];
+	        this.status = source["status"];
+	        this.pages = source["pages"];
+	    }
+	}
 	export class RunComparison {
 	    hasPrevious: boolean;
 	    previousTime: string;
@@ -432,6 +466,101 @@ export namespace history {
 	        this.summaryStatus = source["summaryStatus"];
 	        this.summaryText = source["summaryText"];
 	    }
+	}
+	export class RunsDiffResult {
+	    baseRunId: string;
+	    baseRunTime: string;
+	    currentRunId: string;
+	    currentRunTime: string;
+	    totalFiles: number;
+	    degradedCount: number;
+	    improvedCount: number;
+	    sameCount: number;
+	    baseTotalBytes: number;
+	    currentTotalBytes: number;
+	    deltaTotalBytes: number;
+	    files: FileDiff[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RunsDiffResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.baseRunId = source["baseRunId"];
+	        this.baseRunTime = source["baseRunTime"];
+	        this.currentRunId = source["currentRunId"];
+	        this.currentRunTime = source["currentRunTime"];
+	        this.totalFiles = source["totalFiles"];
+	        this.degradedCount = source["degradedCount"];
+	        this.improvedCount = source["improvedCount"];
+	        this.sameCount = source["sameCount"];
+	        this.baseTotalBytes = source["baseTotalBytes"];
+	        this.currentTotalBytes = source["currentTotalBytes"];
+	        this.deltaTotalBytes = source["deltaTotalBytes"];
+	        this.files = this.convertValues(source["files"], FileDiff);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ScanRunSummary {
+	    id: string;
+	    // Go type: time
+	    timestamp: any;
+	    formattedTime: string;
+	    domain: string;
+	    totalUrls: number;
+	    healthScore: number;
+	    totalImages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScanRunSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.formattedTime = source["formattedTime"];
+	        this.domain = source["domain"];
+	        this.totalUrls = source["totalUrls"];
+	        this.healthScore = source["healthScore"];
+	        this.totalImages = source["totalImages"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

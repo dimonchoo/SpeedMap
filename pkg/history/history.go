@@ -289,3 +289,261 @@ func sanitizeDomain(rawURL string) string {
 	}
 	return d
 }
+
+type ScanRunSummary struct {
+	ID            string    `json:"id"`
+	Timestamp     time.Time `json:"timestamp"`
+	FormattedTime string    `json:"formattedTime"`
+	Domain        string    `json:"domain"`
+	TotalURLs     int       `json:"totalUrls"`
+	HealthScore   int       `json:"healthScore"`
+	TotalImages   int       `json:"totalImages"`
+}
+
+type FileDiff struct {
+	URL               string   `json:"url"`
+	Basename          string   `json:"basename"`
+	OriginalBytes     int64    `json:"originalBytes"`
+	OriginalFormatted string   `json:"originalFormatted"`
+	BaseBytes         int64    `json:"baseBytes"`
+	BaseFormatted     string   `json:"baseFormatted"`
+	CurrentBytes      int64    `json:"currentBytes"`
+	CurrentFormatted  string   `json:"currentFormatted"`
+	DeltaBytes        int64    `json:"deltaBytes"`
+	DeltaFormatted    string   `json:"deltaFormatted"`
+	Status            string   `json:"status"` // "degraded", "improved", "same", "new", "removed"
+	Pages             []string `json:"pages,omitempty"`
+}
+
+type RunsDiffResult struct {
+	BaseRunID         string     `json:"baseRunId"`
+	BaseRunTime       string     `json:"baseRunTime"`
+	CurrentRunID      string     `json:"currentRunId"`
+	CurrentRunTime    string     `json:"currentRunTime"`
+	TotalFiles        int        `json:"totalFiles"`
+	DegradedCount     int        `json:"degradedCount"`
+	ImprovedCount     int        `json:"improvedCount"`
+	SameCount         int        `json:"sameCount"`
+	BaseTotalBytes    int64      `json:"baseTotalBytes"`
+	CurrentTotalBytes int64      `json:"currentTotalBytes"`
+	DeltaTotalBytes   int64      `json:"deltaTotalBytes"`
+	Files             []FileDiff `json:"files"`
+}
+
+// GetAllHistoryRuns returns summaries of all historical runs, sorted newest first
+func GetAllHistoryRuns(domain string) ([]ScanRunSummary, error) {
+	dir, err := getHistoryDir()
+	if err != nil {
+		return nil, err
+	}
+
+	cleanDomain := ""
+	if domain != "" {
+		cleanDomain = sanitizeDomain(domain)
+	}
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var summaries []ScanRunSummary
+	for _, f := range files {
+		if f.IsDir() || !strings.HasPrefix(f.Name(), "run_") || !strings.HasSuffix(f.Name(), ".json") {
+			continue
+		}
+		if cleanDomain != "" && !strings.HasPrefix(f.Name(), fmt.Sprintf("run_%s_", cleanDomain)) {
+			continue
+		}
+
+		filePath := filepath.Join(dir, f.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+
+		var run ScanRun
+		if err := json.Unmarshal(data, &run); err == nil {
+			imgCount := 0
+			for _, r := range run.Results {
+				imgCount += len(r.Diagnostics.LargestImages)
+			}
+			summaries = append(summaries, ScanRunSummary{
+				ID:            run.ID,
+				Timestamp:     run.Timestamp,
+				FormattedTime: run.FormattedTime,
+				Domain:        run.Domain,
+				TotalURLs:     run.TotalURLs,
+				HealthScore:   run.HealthScore,
+				TotalImages:   imgCount,
+			})
+		}
+	}
+
+	sort.Slice(summaries, func(i, j int) bool {
+		return summaries[i].Timestamp.After(summaries[j].Timestamp)
+	})
+
+	return summaries, nil
+}
+
+// CompareHistoryRuns performs a file-by-file regression comparison between two run IDs
+func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error) {
+	dir, err := getHistoryDir()
+	if err != nil {
+		return nil, err
+	}
+
+	loadRun := func(id string) (*ScanRun, error) {
+		path := filepath.Join(dir, fmt.Sprintf("run_%s.json", id))
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var r ScanRun
+		if err := json.Unmarshal(data, &r); err != nil {
+			return nil, err
+		}
+		return &r, nil
+	}
+
+	baseRun, err := loadRun(baseRunID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load base run %s: %w", baseRunID, err)
+	}
+	currentRun, err := loadRun(currentRunID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load current run %s: %w", currentRunID, err)
+	}
+
+	// Extract unique images from base run
+	baseImages := make(map[string]scanner.ImageDetail)
+	for _, p := range baseRun.Results {
+		for _, im := range p.Diagnostics.LargestImages {
+			if im.URL != "" {
+				baseImages[im.URL] = im
+			}
+		}
+	}
+
+	// Extract unique images from current run
+	currentImages := make(map[string]scanner.ImageDetail)
+	for _, p := range currentRun.Results {
+		for _, im := range p.Diagnostics.LargestImages {
+			if im.URL != "" {
+				currentImages[im.URL] = im
+			}
+		}
+	}
+
+	allURLs := make(map[string]bool)
+	for u := range baseImages {
+		allURLs[u] = true
+	}
+	for u := range currentImages {
+		allURLs[u] = true
+	}
+
+	formatKB := func(b int64) string {
+		if b >= 1024*1024 {
+			return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
+		}
+		return fmt.Sprintf("%.1f KB", float64(b)/1024)
+	}
+
+	var files []FileDiff
+	var degraded, improved, same int
+	var baseTotal, currentTotal int64
+
+	for u := range allURLs {
+		bIm, hasBase := baseImages[u]
+		cIm, hasCurr := currentImages[u]
+
+		basename := u
+		if idx := strings.LastIndex(u, "/"); idx != -1 && idx < len(u)-1 {
+			basename = u[idx+1:]
+		}
+
+		var bBytes, cBytes, origBytes int64
+		if hasBase {
+			bBytes = bIm.TransferSize
+			if bBytes == 0 {
+				bBytes = bIm.EncodedSize
+			}
+			origBytes = bBytes
+			baseTotal += bBytes
+		}
+		if hasCurr {
+			cBytes = cIm.TransferSize
+			if cBytes == 0 {
+				cBytes = cIm.EncodedSize
+			}
+			if origBytes == 0 {
+				origBytes = cBytes
+			}
+			currentTotal += cBytes
+		}
+
+		delta := cBytes - bBytes
+		status := "same"
+		if !hasBase && hasCurr {
+			status = "new"
+		} else if hasBase && !hasCurr {
+			status = "removed"
+		} else if delta > 5*1024 {
+			status = "degraded"
+			degraded++
+		} else if delta < -5*1024 {
+			status = "improved"
+			improved++
+		} else {
+			status = "same"
+			same++
+		}
+
+		deltaFormatted := formatKB(delta)
+		if delta > 0 {
+			deltaFormatted = "+" + deltaFormatted
+		}
+
+		files = append(files, FileDiff{
+			URL:               u,
+			Basename:          basename,
+			OriginalBytes:     origBytes,
+			OriginalFormatted: formatKB(origBytes),
+			BaseBytes:         bBytes,
+			BaseFormatted:     formatKB(bBytes),
+			CurrentBytes:      cBytes,
+			CurrentFormatted:  formatKB(cBytes),
+			DeltaBytes:        delta,
+			DeltaFormatted:    deltaFormatted,
+			Status:            status,
+		})
+	}
+
+	// Sort files: degraded first, then largest delta descending
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].Status == "degraded" && files[j].Status != "degraded" {
+			return true
+		}
+		if files[i].Status != "degraded" && files[j].Status == "degraded" {
+			return false
+		}
+		return files[i].DeltaBytes > files[j].DeltaBytes
+	})
+
+	return &RunsDiffResult{
+		BaseRunID:         baseRunID,
+		BaseRunTime:       baseRun.FormattedTime,
+		CurrentRunID:      currentRunID,
+		CurrentRunTime:    currentRun.FormattedTime,
+		TotalFiles:        len(files),
+		DegradedCount:     degraded,
+		ImprovedCount:     improved,
+		SameCount:         same,
+		BaseTotalBytes:    baseTotal,
+		CurrentTotalBytes: currentTotal,
+		DeltaTotalBytes:   currentTotal - baseTotal,
+		Files:             files,
+	}, nil
+}
