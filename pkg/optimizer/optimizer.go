@@ -98,6 +98,59 @@ func hasTransparency(img image.Image) bool {
 	return false
 }
 
+// isSmoothGradientOrUI detects whether an image is a flat/smooth gradient UI banner,
+// icon, or graphic with low high-frequency noise. These images suffer from color banding
+// under lossy compression and should be preserved in lossless WebP.
+func isSmoothGradientOrUI(img *image.RGBA) bool {
+	if img == nil {
+		return false
+	}
+	bounds := img.Bounds()
+	w := bounds.Dx()
+	h := bounds.Dy()
+	if w <= 1 || h <= 1 {
+		return true
+	}
+
+	stepY := (h / 60) + 1
+	stepX := (w / 60) + 1
+
+	var totalDelta float64
+	var count int
+
+	absDiff := func(a, b uint8) float64 {
+		if a > b {
+			return float64(a - b)
+		}
+		return float64(b - a)
+	}
+
+	for y := bounds.Min.Y; y < bounds.Max.Y-1; y += stepY {
+		for x := bounds.Min.X; x < bounds.Max.X-1; x += stepX {
+			idx := (y-bounds.Min.Y)*img.Stride + (x-bounds.Min.X)*4
+			idxRight := idx + 4
+			idxDown := idx + img.Stride
+
+			r1, g1, b1 := img.Pix[idx], img.Pix[idx+1], img.Pix[idx+2]
+			r2, g2, b2 := img.Pix[idxRight], img.Pix[idxRight+1], img.Pix[idxRight+2]
+			r3, g3, b3 := img.Pix[idxDown], img.Pix[idxDown+1], img.Pix[idxDown+2]
+
+			deltaX := absDiff(r1, r2) + absDiff(g1, g2) + absDiff(b1, b2)
+			deltaY := absDiff(r1, r3) + absDiff(g1, g3) + absDiff(b1, b3)
+
+			totalDelta += deltaX + deltaY
+			count += 2
+		}
+	}
+
+	if count == 0 {
+		return false
+	}
+	meanDelta := totalDelta / float64(count)
+	// Smooth gradients and UI banners typically have meanDelta < 5.0, while photos have > 15.0
+	return meanDelta < 6.0
+}
+
 // toStraightRGBA converts any decoded image into *image.RGBA with STRAIGHT (unpremultiplied) RGBA bytes,
 // avoiding Go's color.RGBAModel premultiplication bug from crushing anti-aliased edge colors to dark/black in libwebp C-API.
 func toStraightRGBA(m image.Image) *image.RGBA {
@@ -273,10 +326,10 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 
 	var webpData []byte
 
-	// 1. Transparent PNG / UI Graphics Handling:
-	// Lossless WebP is ideal for UI graphics and icons if it fits within safeBudget.
-	// For photographic/complex images with alpha, Lossy WebP (with straight RGBA) preserves alpha cleanly
-	// while providing 80-95% compression savings.
+	// 1. Transparent PNG / UI Graphics / Smooth Gradient Handling:
+	// Lossless WebP is ideal for UI graphics, smooth gradients, and icons to prevent color banding (banding lines).
+	// If the image is a smooth gradient/UI banner, has transparency, or fits within safeBudget,
+	// and Lossless WebP reduces file size compared to original, use Lossless WebP!
 	if (formatName == "png" || isTransparent) && adaptive {
 		var losslessBuf bytes.Buffer
 		losslessOpts := &webp.Options{
@@ -286,8 +339,9 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 		if err := webp.Encode(&losslessBuf, rawImg, losslessOpts); err == nil {
 			losslessBytes := losslessBuf.Bytes()
 			losslessLen := int64(len(losslessBytes))
-			// Only choose Lossless if it comfortably fits within safe budget AND is smaller than original
-			if losslessLen <= safeBudget && losslessLen < origSize {
+			isGradient := isSmoothGradientOrUI(rawImg)
+			// Choose Lossless if it's smaller than original AND (fits in safe budget OR is a smooth gradient / transparent UI graphic)
+			if losslessLen < origSize && (losslessLen <= safeBudget || isGradient || isTransparent) {
 				webpData = losslessBytes
 				isLossless = true
 				adaptiveApplied = true
