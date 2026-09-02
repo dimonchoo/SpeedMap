@@ -29,7 +29,15 @@ type ScanConfig struct {
 	HistoryRetentionRuns  int            `json:"historyRetentionRuns"`  // default 20 (max runs per domain, 0 = unlimited)
 	HistoryRetentionDays  int            `json:"historyRetentionDays"`  // default 30 (max age in days, 0 = unlimited)
 	FilterTrackingBeacons *bool          `json:"filterTrackingBeacons"` // true by default: filter 1x1 ad & tracking beacons
+	SystemNotifications   *bool          `json:"systemNotifications"`   // true by default: native OS notifications with app icon
 	ExcludedImagePatterns []string       `json:"excludedImagePatterns"` // custom substrings/patterns to exclude from image discovery
+}
+
+func (c *ScanConfig) IsSystemNotificationsEnabled() bool {
+	if c.SystemNotifications == nil {
+		return true // Default true
+	}
+	return *c.SystemNotifications
 }
 
 func (c *ScanConfig) IsAdaptiveQualityEnabled() bool {

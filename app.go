@@ -17,6 +17,7 @@ import (
 	"SpeedMap/pkg/cloud"
 	"SpeedMap/pkg/config"
 	"SpeedMap/pkg/history"
+	"SpeedMap/pkg/notify"
 	"SpeedMap/pkg/optimizer"
 	"SpeedMap/pkg/profiles"
 	"SpeedMap/pkg/scanner"
@@ -739,6 +740,13 @@ func (a *App) GetExportHistory(domain string) ([]wpexport.ExportRecord, error) {
 func (a *App) CompareExportPackages(baseManifestPath, currentManifestPath string) (*wpexport.ExportDiffReport, error) {
 	return wpexport.CompareExportPackages(baseManifestPath, currentManifestPath)
 }
+
+// SendSystemNotification sends a native OS notification with the application icon and sound
+func (a *App) SendSystemNotification(title, subtitle, message string) {
+	fmt.Printf("[GO LOG] SendSystemNotification: title=%q subtitle=%q message=%q\n", title, subtitle, message)
+	notify.Send(title, subtitle, message)
+}
+
 
 
 

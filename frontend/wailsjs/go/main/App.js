@@ -126,6 +126,10 @@ export function SelectDirectory(arg1) {
   return window['go']['main']['App']['SelectDirectory'](arg1);
 }
 
+export function SendSystemNotification(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SendSystemNotification'](arg1, arg2, arg3);
+}
+
 export function StartGDriveAuth(arg1, arg2) {
   return window['go']['main']['App']['StartGDriveAuth'](arg1, arg2);
 }

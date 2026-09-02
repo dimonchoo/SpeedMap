@@ -38,6 +38,7 @@ function speedMapApp() {
       isMobile: true, // Default to Mobile Emulation as requested
       autoScroll: false, // Disabled by default as requested
       soundEnabled: true, // Audio notifications toggle
+      systemNotifications: true, // Native OS notifications with SpeedMap icon
       timeoutSec: 30
     },
 
@@ -535,6 +536,9 @@ function speedMapApp() {
           if (this.config.historyRetentionDays === undefined || this.config.historyRetentionDays === null) {
             this.config.historyRetentionDays = 30;
           }
+          if (this.config.systemNotifications !== false) {
+            this.config.systemNotifications = true;
+          }
           if (this.config.sitemapUrl && !this.sitemapInput) {
             this.sitemapInput = this.config.sitemapUrl;
           }
@@ -627,6 +631,16 @@ function speedMapApp() {
             this.isScanning = false;
             this.showToast('success', 'Сканування завершено ⚡', `Всього перевірено ${this.scanResults.length} сторінок.`);
             this.addLog('success', `Сканування завершено! Усього оброблено ${this.scanResults.length} сторінок.`);
+
+            // Native OS Notification with SpeedMap App Icon
+            if (this.config.systemNotifications !== false && window.go?.main?.App?.SendSystemNotification) {
+              const pagesCount = this.scanResults.length;
+              window.go.main.App.SendSystemNotification(
+                "SpeedMap",
+                "Сканування завершено ⚡",
+                `Оброблено ${pagesCount} сторінок. Звіт готовий до перегляду!`
+              );
+            }
 
             if (this.totalToScan <= 3) {
               this.playPikaPageSound();
@@ -1839,6 +1853,15 @@ function speedMapApp() {
           this.addLog('info', `На Stage: розпакуй ZIP/залий папку, потім wp eval-file …/apply.php --path=/path/to/wp`);
           this.addLog('info', `PHP скопіює images/*/optimized.webp → uploads/{webpRel} і оновить attachment.`);
           this.showToast('success', `${count} WebP package`, reviewZIP || applyPHP);
+
+          // Native OS Notification with SpeedMap App Icon
+          if (this.config.systemNotifications !== false && window.go?.main?.App?.SendSystemNotification) {
+            window.go.main.App.SendSystemNotification(
+              "SpeedMap",
+              "Експорт WebP готовий 📦",
+              `Оптимізовано ${count} зображень!`
+            );
+          }
         } else {
           throw new Error('ExportWordPressWebPApplyPHP method not available');
         }

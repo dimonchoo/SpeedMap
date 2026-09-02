@@ -350,6 +350,7 @@ export namespace config {
 	    historyRetentionRuns: number;
 	    historyRetentionDays: number;
 	    filterTrackingBeacons?: boolean;
+	    systemNotifications?: boolean;
 	    excludedImagePatterns: string[];
 	
 	    static createFrom(source: any = {}) {
@@ -381,6 +382,7 @@ export namespace config {
 	        this.historyRetentionRuns = source["historyRetentionRuns"];
 	        this.historyRetentionDays = source["historyRetentionDays"];
 	        this.filterTrackingBeacons = source["filterTrackingBeacons"];
+	        this.systemNotifications = source["systemNotifications"];
 	        this.excludedImagePatterns = source["excludedImagePatterns"];
 	    }
 	
