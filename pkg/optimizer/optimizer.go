@@ -355,7 +355,14 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 			losslessBytes := losslessBuf.Bytes()
 			losslessLen := int64(len(losslessBytes))
 
-			if losslessLen < origSize && losslessLen <= safeBudget {
+			// Lossless WebP should only be chosen if:
+			// 1) It is smaller than or equal to Lossy (flat icons, logos, simple graphics), OR
+			// 2) It is a tiny UI asset (<= 25 KB) where the delta from lossy is minimal (<= 5 KB).
+			// Never replace a 4 KB Lossy with a 76 KB Lossless just because 76 KB <= safeBudget!
+			isSmallerThanLossy := losslessLen <= int64(len(lossyData))
+			isTinyAssetWithSmallDelta := losslessLen <= 25*1024 && (losslessLen-int64(len(lossyData))) <= 5*1024
+
+			if losslessLen < origSize && losslessLen <= safeBudget && (isSmallerThanLossy || isTinyAssetWithSmallDelta) {
 				webpData = losslessBytes
 				isLossless = true
 				adaptiveApplied = true
