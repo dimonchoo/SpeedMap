@@ -212,11 +212,29 @@ func TestGtsBg1GradientOnline(t *testing.T) {
 	}
 	t.Logf("gts-bg1 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
 		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
-	if res.OptimizedBytes > 100*1024 {
-		t.Errorf("expected gts-bg1 to optimize to <100KB, got %s", res.OptimizedFormatted)
+	// Smooth gradients in the blue/cyan spectrum MUST route to Lossless WebP to prevent visible YUV 4:2:0 color banding stripes.
+	if !res.IsLossless {
+		t.Errorf("expected gts-bg1 gradient to route to Lossless to avoid color banding, got Lossless=%v", res.IsLossless)
 	}
-	if res.SavingsPercent < 80.0 {
-		t.Errorf("expected >80%% savings for gts-bg1, got %.1f%%", res.SavingsPercent)
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected gts-bg1 lossless to save bytes vs original, got Opt=%s, Orig=%s", res.OptimizedFormatted, res.OriginalFormatted)
+	}
+}
+
+func TestCtaBg8GradientOnline(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2024/05/CTA-BG-8.png"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("CTA-BG-8 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+	// Smooth gradients in the blue/cyan spectrum MUST route to Lossless WebP to prevent visible YUV 4:2:0 color banding stripes.
+	if !res.IsLossless {
+		t.Errorf("expected CTA-BG-8 gradient to route to Lossless to avoid color banding, got Lossless=%v", res.IsLossless)
+	}
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected CTA-BG-8 lossless to save bytes vs original, got Opt=%s, Orig=%s", res.OptimizedFormatted, res.OriginalFormatted)
 	}
 }
 
