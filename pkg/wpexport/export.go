@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -474,6 +475,35 @@ func WriteDeployPackage(packageDir, domain string, cfg config.ScanConfig, writte
 			_ = os.WriteFile(zipPath, fullZip, 0644)
 		}
 	}
+
+	var totalOrig, totalWebP int64
+	for _, im := range written {
+		totalOrig += im.OriginalBytes
+		totalWebP += im.OptimizedBytes
+	}
+	savPct := 0.0
+	if totalOrig > 0 {
+		savPct = float64(totalOrig-totalWebP) / float64(totalOrig) * 100
+	}
+
+	_ = RecordExport(ExportRecord{
+		ID:             filepath.Base(pkg),
+		Domain:         domain,
+		Timestamp:      time.Now(),
+		FormattedTime:  time.Now().Format("02.01.2006 15:04:05"),
+		PackageDir:     pkg,
+		ManifestPath:   filepath.Join(pkg, "manifest.json"),
+		ReviewZIP:      zipPath,
+		ApplyPHP:       applyPath,
+		RollbackPHP:    rollbackPath,
+		CompareHTML:    filepath.Join(pkg, "compare.html"),
+		RenderReport:   filepath.Join(pkg, "render-report.html"),
+		ImageCount:     len(written),
+		OriginalBytes:  totalOrig,
+		OptimizedBytes: totalWebP,
+		SavingsPercent: savPct,
+		ExistsOnDisk:   true,
+	})
 
 	return &ExportResult{
 		ApplyPHP:      applyPath,
@@ -1207,4 +1237,297 @@ func shortPageLabel(raw string) string {
 		return p[:61] + "…"
 	}
 	return "/" + p
+}
+
+// ExportRecord tracks a generated WordPress WebP deploy package on disk
+type ExportRecord struct {
+	ID             string    `json:"id"`
+	Domain         string    `json:"domain"`
+	Timestamp      time.Time `json:"timestamp"`
+	FormattedTime  string    `json:"formattedTime"`
+	PackageDir     string    `json:"packageDir"`
+	ManifestPath   string    `json:"manifestPath"`
+	ReviewZIP      string    `json:"reviewZip"`
+	ApplyPHP       string    `json:"applyPhp"`
+	RollbackPHP    string    `json:"rollbackPhp"`
+	CompareHTML    string    `json:"compareHtml"`
+	RenderReport   string    `json:"renderReport"`
+	ImageCount     int       `json:"imageCount"`
+	OriginalBytes  int64     `json:"originalBytes"`
+	OptimizedBytes int64     `json:"optimizedBytes"`
+	SavingsPercent float64   `json:"savingsPercent"`
+	ExistsOnDisk   bool      `json:"existsOnDisk"`
+}
+
+type ExportFileDiff struct {
+	SourceURL         string   `json:"sourceUrl"`
+	Basename          string   `json:"basename"`
+	OriginalBytes     int64    `json:"originalBytes"`
+	OriginalFormatted string   `json:"originalFormatted"`
+	BaseWebPBytes     int64    `json:"baseWebpBytes"`
+	BaseWebPFormatted string   `json:"baseWebpFormatted"`
+	CurrWebPBytes     int64    `json:"currWebpBytes"`
+	CurrWebPFormatted string   `json:"currWebpFormatted"`
+	DeltaBytes        int64    `json:"deltaBytes"`
+	DeltaFormatted    string   `json:"deltaFormatted"`
+	Status            string   `json:"status"` // "degraded", "improved", "same", "new", "removed"
+	Pages             []string `json:"pages,omitempty"`
+}
+
+type ExportDiffReport struct {
+	BasePackageDir    string           `json:"basePackageDir"`
+	BaseTime          string           `json:"baseTime"`
+	CurrentPackageDir string           `json:"currentPackageDir"`
+	CurrentTime       string           `json:"currentTime"`
+	TotalFiles        int              `json:"totalFiles"`
+	DegradedCount     int              `json:"degradedCount"`
+	ImprovedCount     int              `json:"improvedCount"`
+	SameCount         int              `json:"sameCount"`
+	BaseTotalWebP     int64            `json:"baseTotalWebp"`
+	CurrentTotalWebP  int64            `json:"currentTotalWebp"`
+	DeltaTotalWebP    int64            `json:"deltaTotalWebp"`
+	Files             []ExportFileDiff `json:"files"`
+}
+
+func getExportsRegistryFile() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	dir := filepath.Join(home, ".speedmap")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "exports.json"), nil
+}
+
+// RecordExport writes/updates the global export record registry
+func RecordExport(record ExportRecord) error {
+	path, err := getExportsRegistryFile()
+	if err != nil {
+		return err
+	}
+
+	var records []ExportRecord
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &records)
+	}
+
+	// Update existing record with same ID or prepend new
+	found := false
+	for i, r := range records {
+		if r.ID == record.ID || r.PackageDir == record.PackageDir {
+			records[i] = record
+			found = true
+			break
+		}
+	}
+	if !found {
+		records = append([]ExportRecord{record}, records...)
+	}
+
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// GetExportHistory returns all tracked export records, verifying if their directories still exist on disk
+func GetExportHistory(domain string) ([]ExportRecord, error) {
+	path, err := getExportsRegistryFile()
+	if err != nil {
+		return nil, err
+	}
+
+	var records []ExportRecord
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &records)
+	}
+
+	var filtered []ExportRecord
+	cleanDomain := strings.ToLower(strings.TrimSpace(domain))
+
+	for i := range records {
+		r := &records[i]
+		if _, err := os.Stat(r.PackageDir); err == nil {
+			r.ExistsOnDisk = true
+		} else {
+			r.ExistsOnDisk = false
+		}
+
+		if cleanDomain == "" || strings.Contains(strings.ToLower(r.Domain), cleanDomain) || strings.Contains(strings.ToLower(r.PackageDir), cleanDomain) {
+			filtered = append(filtered, *r)
+		}
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].Timestamp.After(filtered[j].Timestamp)
+	})
+
+	return filtered, nil
+}
+
+// CompareExportPackages compares two on-disk export manifest.json files and produces a detailed diff
+func CompareExportPackages(baseManifestPath, currentManifestPath string) (*ExportDiffReport, error) {
+	type rawManifestItem struct {
+		SourceURL      string   `json:"sourceUrl"`
+		Basename       string   `json:"basename"`
+		OriginalBytes  int64    `json:"originalBytes"`
+		OptimizedBytes int64    `json:"optimizedBytes"`
+		Pages          []string `json:"pages"`
+	}
+
+	loadManifest := func(p string) (map[string]interface{}, map[string]rawManifestItem, error) {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to read %s: %w", p, err)
+		}
+		var meta struct {
+			Domain    string            `json:"domain"`
+			Generated string            `json:"generated"`
+			Count     int               `json:"count"`
+			Images    []rawManifestItem `json:"images"`
+		}
+		if err := json.Unmarshal(data, &meta); err != nil {
+			return nil, nil, fmt.Errorf("failed to parse %s: %w", p, err)
+		}
+		imgMap := make(map[string]rawManifestItem, len(meta.Images))
+		for _, im := range meta.Images {
+			imgMap[im.SourceURL] = im
+		}
+		info := map[string]interface{}{
+			"domain":    meta.Domain,
+			"generated": meta.Generated,
+			"count":     meta.Count,
+		}
+		return info, imgMap, nil
+	}
+
+	baseMeta, baseImgs, err := loadManifest(baseManifestPath)
+	if err != nil {
+		return nil, err
+	}
+	currMeta, currImgs, err := loadManifest(currentManifestPath)
+	if err != nil {
+		return nil, err
+	}
+
+	allURLs := make(map[string]bool)
+	for u := range baseImgs {
+		allURLs[u] = true
+	}
+	for u := range currImgs {
+		allURLs[u] = true
+	}
+
+	formatKB := func(b int64) string {
+		if b >= 1024*1024 {
+			return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
+		}
+		return fmt.Sprintf("%.1f KB", float64(b)/1024)
+	}
+
+	var files []ExportFileDiff
+	var degraded, improved, same int
+	var baseTotalWebP, currTotalWebP int64
+
+	for u := range allURLs {
+		bIm, hasBase := baseImgs[u]
+		cIm, hasCurr := currImgs[u]
+
+		basename := u
+		if hasCurr && cIm.Basename != "" {
+			basename = cIm.Basename
+		} else if hasBase && bIm.Basename != "" {
+			basename = bIm.Basename
+		} else if idx := strings.LastIndex(u, "/"); idx != -1 && idx < len(u)-1 {
+			basename = u[idx+1:]
+		}
+
+		var origBytes, bWebP, cWebP int64
+		var pages []string
+
+		if hasBase {
+			origBytes = bIm.OriginalBytes
+			bWebP = bIm.OptimizedBytes
+			baseTotalWebP += bWebP
+			pages = bIm.Pages
+		}
+		if hasCurr {
+			if origBytes == 0 {
+				origBytes = cIm.OriginalBytes
+			}
+			cWebP = cIm.OptimizedBytes
+			currTotalWebP += cWebP
+			if len(pages) == 0 {
+				pages = cIm.Pages
+			}
+		}
+
+		delta := cWebP - bWebP
+		status := "same"
+		if !hasBase && hasCurr {
+			status = "new"
+		} else if hasBase && !hasCurr {
+			status = "removed"
+		} else if delta > 5*1024 {
+			status = "degraded"
+			degraded++
+		} else if delta < -5*1024 {
+			status = "improved"
+			improved++
+		} else {
+			status = "same"
+			same++
+		}
+
+		deltaFormatted := formatKB(delta)
+		if delta > 0 {
+			deltaFormatted = "+" + deltaFormatted
+		}
+
+		files = append(files, ExportFileDiff{
+			SourceURL:         u,
+			Basename:          basename,
+			OriginalBytes:     origBytes,
+			OriginalFormatted: formatKB(origBytes),
+			BaseWebPBytes:     bWebP,
+			BaseWebPFormatted: formatKB(bWebP),
+			CurrWebPBytes:     cWebP,
+			CurrWebPFormatted: formatKB(cWebP),
+			DeltaBytes:        delta,
+			DeltaFormatted:    deltaFormatted,
+			Status:            status,
+			Pages:             pages,
+		})
+	}
+
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].Status == "degraded" && files[j].Status != "degraded" {
+			return true
+		}
+		if files[i].Status != "degraded" && files[j].Status == "degraded" {
+			return false
+		}
+		return files[i].DeltaBytes > files[j].DeltaBytes
+	})
+
+	baseTime := fmt.Sprintf("%v", baseMeta["generated"])
+	currTime := fmt.Sprintf("%v", currMeta["generated"])
+
+	return &ExportDiffReport{
+		BasePackageDir:    filepath.Dir(baseManifestPath),
+		BaseTime:          baseTime,
+		CurrentPackageDir: filepath.Dir(currentManifestPath),
+		CurrentTime:       currTime,
+		TotalFiles:        len(files),
+		DegradedCount:     degraded,
+		ImprovedCount:     improved,
+		SameCount:         same,
+		BaseTotalWebP:     baseTotalWebP,
+		CurrentTotalWebP:  currTotalWebP,
+		DeltaTotalWebP:    currTotalWebP - baseTotalWebP,
+		Files:             files,
+	}, nil
 }

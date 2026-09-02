@@ -78,6 +78,11 @@ function speedMapApp() {
     selectedBaseRunId: '',
     selectedCurrentRunId: '',
     runsDiffResult: null,
+    exportRecordsList: [],
+    selectedBaseExportPath: '',
+    selectedCurrentExportPath: '',
+    exportDiffReport: null,
+    diffViewMode: 'packages', // 'packages' | 'runs'
     runsDiffFilter: 'all', // 'all' | 'degraded' | 'improved' | 'same' | 'new'
     runsDiffSearch: '',
     isLoadingDiff: false,
@@ -2113,6 +2118,59 @@ function speedMapApp() {
         else if (f === 'new') matchFilter = item.status === 'new';
 
         const matchQuery = !q || (item.basename && item.basename.toLowerCase().includes(q)) || (item.url && item.url.toLowerCase().includes(q));
+        return matchFilter && matchQuery;
+      });
+    },
+
+    async loadExportHistoryForDiff() {
+      try {
+        const domain = this.config.sitemapUrl || this.sitemapInput || '';
+        if (window.go?.main?.App?.GetExportHistory) {
+          const list = await window.go.main.App.GetExportHistory(domain);
+          this.exportRecordsList = list || [];
+          if (this.exportRecordsList.length >= 2 && !this.selectedBaseExportPath) {
+            this.selectedCurrentExportPath = this.exportRecordsList[0].manifestPath;
+            this.selectedBaseExportPath = this.exportRecordsList[1].manifestPath;
+            await this.runExportPackageDiff();
+          } else if (this.exportRecordsList.length === 1 && !this.selectedCurrentExportPath) {
+            this.selectedCurrentExportPath = this.exportRecordsList[0].manifestPath;
+            this.selectedBaseExportPath = this.exportRecordsList[0].manifestPath;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load export history:', e);
+      }
+    },
+
+    async runExportPackageDiff() {
+      if (!this.selectedBaseExportPath || !this.selectedCurrentExportPath) return;
+      this.isLoadingDiff = true;
+      try {
+        if (window.go?.main?.App?.CompareExportPackages) {
+          const res = await window.go.main.App.CompareExportPackages(this.selectedBaseExportPath, this.selectedCurrentExportPath);
+          this.exportDiffReport = res;
+          this.addLog('info', `Порівняння пакетів експорту: ${res.totalFiles} файлів (🔴 ${res.degradedCount} погіршилися, 🟢 ${res.improvedCount} покращилися)`);
+        }
+      } catch (e) {
+        console.error('Failed to compare export packages:', e);
+        this.showToast('error', 'Помилка порівняння пакетів', e.message);
+      } finally {
+        this.isLoadingDiff = false;
+      }
+    },
+
+    get filteredExportDiffFiles() {
+      if (!this.exportDiffReport || !this.exportDiffReport.files) return [];
+      const q = (this.runsDiffSearch || '').toLowerCase().trim();
+      const f = this.runsDiffFilter;
+      return this.exportDiffReport.files.filter(item => {
+        let matchFilter = true;
+        if (f === 'degraded') matchFilter = item.status === 'degraded';
+        else if (f === 'improved') matchFilter = item.status === 'improved';
+        else if (f === 'same') matchFilter = item.status === 'same';
+        else if (f === 'new') matchFilter = item.status === 'new';
+
+        const matchQuery = !q || (item.basename && item.basename.toLowerCase().includes(q)) || (item.sourceUrl && item.sourceUrl.toLowerCase().includes(q));
         return matchFilter && matchQuery;
       });
     }

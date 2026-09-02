@@ -1234,6 +1234,154 @@ export namespace w3c {
 
 export namespace wpexport {
 	
+	export class ExportFileDiff {
+	    sourceUrl: string;
+	    basename: string;
+	    originalBytes: number;
+	    originalFormatted: string;
+	    baseWebpBytes: number;
+	    baseWebpFormatted: string;
+	    currWebpBytes: number;
+	    currWebpFormatted: string;
+	    deltaBytes: number;
+	    deltaFormatted: string;
+	    status: string;
+	    pages?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportFileDiff(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceUrl = source["sourceUrl"];
+	        this.basename = source["basename"];
+	        this.originalBytes = source["originalBytes"];
+	        this.originalFormatted = source["originalFormatted"];
+	        this.baseWebpBytes = source["baseWebpBytes"];
+	        this.baseWebpFormatted = source["baseWebpFormatted"];
+	        this.currWebpBytes = source["currWebpBytes"];
+	        this.currWebpFormatted = source["currWebpFormatted"];
+	        this.deltaBytes = source["deltaBytes"];
+	        this.deltaFormatted = source["deltaFormatted"];
+	        this.status = source["status"];
+	        this.pages = source["pages"];
+	    }
+	}
+	export class ExportDiffReport {
+	    basePackageDir: string;
+	    baseTime: string;
+	    currentPackageDir: string;
+	    currentTime: string;
+	    totalFiles: number;
+	    degradedCount: number;
+	    improvedCount: number;
+	    sameCount: number;
+	    baseTotalWebp: number;
+	    currentTotalWebp: number;
+	    deltaTotalWebp: number;
+	    files: ExportFileDiff[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportDiffReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.basePackageDir = source["basePackageDir"];
+	        this.baseTime = source["baseTime"];
+	        this.currentPackageDir = source["currentPackageDir"];
+	        this.currentTime = source["currentTime"];
+	        this.totalFiles = source["totalFiles"];
+	        this.degradedCount = source["degradedCount"];
+	        this.improvedCount = source["improvedCount"];
+	        this.sameCount = source["sameCount"];
+	        this.baseTotalWebp = source["baseTotalWebp"];
+	        this.currentTotalWebp = source["currentTotalWebp"];
+	        this.deltaTotalWebp = source["deltaTotalWebp"];
+	        this.files = this.convertValues(source["files"], ExportFileDiff);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ExportRecord {
+	    id: string;
+	    domain: string;
+	    // Go type: time
+	    timestamp: any;
+	    formattedTime: string;
+	    packageDir: string;
+	    manifestPath: string;
+	    reviewZip: string;
+	    applyPhp: string;
+	    rollbackPhp: string;
+	    compareHtml: string;
+	    renderReport: string;
+	    imageCount: number;
+	    originalBytes: number;
+	    optimizedBytes: number;
+	    savingsPercent: number;
+	    existsOnDisk: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.domain = source["domain"];
+	        this.timestamp = this.convertValues(source["timestamp"], null);
+	        this.formattedTime = source["formattedTime"];
+	        this.packageDir = source["packageDir"];
+	        this.manifestPath = source["manifestPath"];
+	        this.reviewZip = source["reviewZip"];
+	        this.applyPhp = source["applyPhp"];
+	        this.rollbackPhp = source["rollbackPhp"];
+	        this.compareHtml = source["compareHtml"];
+	        this.renderReport = source["renderReport"];
+	        this.imageCount = source["imageCount"];
+	        this.originalBytes = source["originalBytes"];
+	        this.optimizedBytes = source["optimizedBytes"];
+	        this.savingsPercent = source["savingsPercent"];
+	        this.existsOnDisk = source["existsOnDisk"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ExportResult {
 	    applyPHP: string;
 	    rollbackPHP: string;

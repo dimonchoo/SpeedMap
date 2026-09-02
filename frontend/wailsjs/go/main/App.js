@@ -6,6 +6,10 @@ export function CancelScan() {
   return window['go']['main']['App']['CancelScan']();
 }
 
+export function CompareExportPackages(arg1, arg2) {
+  return window['go']['main']['App']['CompareExportPackages'](arg1, arg2);
+}
+
 export function CompareHistoryRuns(arg1, arg2) {
   return window['go']['main']['App']['CompareHistoryRuns'](arg1, arg2);
 }
@@ -68,6 +72,10 @@ export function ExportWordPressWebPApplyPHP(arg1, arg2, arg3, arg4) {
 
 export function GetAllHistoryRuns(arg1) {
   return window['go']['main']['App']['GetAllHistoryRuns'](arg1);
+}
+
+export function GetExportHistory(arg1) {
+  return window['go']['main']['App']['GetExportHistory'](arg1);
 }
 
 export function GetGDriveCredentials() {

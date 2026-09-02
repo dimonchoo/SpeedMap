@@ -2064,76 +2064,126 @@
         <!-- ========================================== -->
         <template x-if="activeTab === 'diff'">
           <div class="space-y-6">
-            <!-- Header Bar with Run Selectors -->
+            <!-- Header Bar with Mode Toggle & Pickers -->
             <div class="bg-slate-950/80 rounded-2xl border border-slate-800 shadow-xl p-5 space-y-4">
               <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <h2 class="text-base font-bold text-slate-100 flex items-center space-x-2">
-                    <span class="text-fuchsia-400">📈</span>
-                    <span>Порівняння прогонів та Детектор регресій</span>
-                  </h2>
-                  <p class="text-xs text-slate-400 mt-1">Пофайлове зіставлення розміру та оптимізації між двома будь-якими запусками</p>
+                  <div class="flex items-center space-x-3">
+                    <h2 class="text-base font-bold text-slate-100 flex items-center space-x-2">
+                      <span class="text-fuchsia-400">📈</span>
+                      <span>Порівняння прогонів та Детектор регресій</span>
+                    </h2>
+                    <!-- View Mode Switcher -->
+                    <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                      <button @click="diffViewMode = 'packages'; loadExportHistoryForDiff()"
+                        :class="diffViewMode === 'packages' ? 'bg-fuchsia-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'"
+                        class="px-3 py-1 rounded-lg transition">
+                        📦 Пакети експорту (на диску)
+                      </button>
+                      <button @click="diffViewMode = 'runs'; loadHistoryRunsForDiff()"
+                        :class="diffViewMode === 'runs' ? 'bg-fuchsia-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'"
+                        class="px-3 py-1 rounded-lg transition">
+                        📊 Сканування сайту
+                      </button>
+                    </div>
+                  </div>
+                  <p class="text-xs text-slate-400 mt-1">Пофайлове зіставлення розміру та пошук регресій між збереженими пакетами на диску</p>
                 </div>
 
-                <!-- Run Pickers -->
-                <div class="flex flex-wrap items-center gap-2">
-                  <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-                    <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
-                    <select x-model="selectedBaseRunId" @change="runComparisonDiff()"
-                      class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
-                      <template x-for="r in historyRunsList" :key="r.id">
-                        <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
-                      </template>
-                    </select>
+                <!-- MODE 1: EXPORT PACKAGES PICKER -->
+                <template x-if="diffViewMode === 'packages'">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                      <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
+                      <select x-model="selectedBaseExportPath" @change="runExportPackageDiff()"
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                        <template x-for="p in exportRecordsList" :key="p.manifestPath">
+                          <option :value="p.manifestPath" x-text="`${p.id} · ${p.formattedTime} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
+                        </template>
+                      </select>
+                    </div>
+
+                    <span class="text-slate-500 font-bold">➔</span>
+
+                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                      <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
+                      <select x-model="selectedCurrentExportPath" @change="runExportPackageDiff()"
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                        <template x-for="p in exportRecordsList" :key="p.manifestPath">
+                          <option :value="p.manifestPath" x-text="`${p.id} · ${p.formattedTime} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
+                        </template>
+                      </select>
+                    </div>
+
+                    <button @click="runExportPackageDiff()" :disabled="isLoadingDiff"
+                      class="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-lg shadow-fuchsia-600/20">
+                      <span :class="isLoadingDiff ? 'animate-spin' : ''">🔄</span>
+                      <span>Порівняти</span>
+                    </button>
                   </div>
+                </template>
 
-                  <span class="text-slate-500 font-bold">➔</span>
+                <!-- MODE 2: SCAN RUNS PICKER -->
+                <template x-if="diffViewMode === 'runs'">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                      <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
+                      <select x-model="selectedBaseRunId" @change="runComparisonDiff()"
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                        <template x-for="r in historyRunsList" :key="r.id">
+                          <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
+                        </template>
+                      </select>
+                    </div>
 
-                  <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-                    <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
-                    <select x-model="selectedCurrentRunId" @change="runComparisonDiff()"
-                      class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
-                      <template x-for="r in historyRunsList" :key="r.id">
-                        <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
-                      </template>
-                    </select>
+                    <span class="text-slate-500 font-bold">➔</span>
+
+                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                      <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
+                      <select x-model="selectedCurrentRunId" @change="runComparisonDiff()"
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                        <template x-for="r in historyRunsList" :key="r.id">
+                          <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
+                        </template>
+                      </select>
+                    </div>
+
+                    <button @click="runComparisonDiff()" :disabled="isLoadingDiff"
+                      class="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-lg shadow-fuchsia-600/20">
+                      <span :class="isLoadingDiff ? 'animate-spin' : ''">🔄</span>
+                      <span>Порівняти</span>
+                    </button>
                   </div>
-
-                  <button @click="runComparisonDiff()" :disabled="isLoadingDiff"
-                    class="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-lg shadow-fuchsia-600/20">
-                    <span :class="isLoadingDiff ? 'animate-spin' : ''">🔄</span>
-                    <span>Оновити</span>
-                  </button>
-                </div>
+                </template>
               </div>
 
               <!-- Summary Stat Cards -->
-              <template x-if="runsDiffResult">
+              <template x-if="(diffViewMode === 'packages' && exportDiffReport) || (diffViewMode === 'runs' && runsDiffResult)">
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
                   <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80">
                     <div class="text-[11px] text-slate-400 font-medium">Всього файлів</div>
-                    <div class="text-lg font-bold font-mono text-slate-100 mt-0.5" x-text="runsDiffResult.totalFiles"></div>
+                    <div class="text-lg font-bold font-mono text-slate-100 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.totalFiles : runsDiffResult.totalFiles"></div>
                   </div>
 
                   <div class="bg-slate-900/90 rounded-xl p-3 border border-rose-500/20 bg-rose-500/5">
                     <div class="text-[11px] text-rose-400 font-medium flex items-center space-x-1">
                       <span>🔴 Регресії (+розмір)</span>
                     </div>
-                    <div class="text-lg font-bold font-mono text-rose-400 mt-0.5" x-text="runsDiffResult.degradedCount"></div>
+                    <div class="text-lg font-bold font-mono text-rose-400 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.degradedCount : runsDiffResult.degradedCount"></div>
                   </div>
 
                   <div class="bg-slate-900/90 rounded-xl p-3 border border-emerald-500/20 bg-emerald-500/5">
                     <div class="text-[11px] text-emerald-400 font-medium flex items-center space-x-1">
                       <span>🟢 Покращення (-розмір)</span>
                     </div>
-                    <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5" x-text="runsDiffResult.improvedCount"></div>
+                    <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.improvedCount : runsDiffResult.improvedCount"></div>
                   </div>
 
                   <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80">
                     <div class="text-[11px] text-slate-400 font-medium">Загальна дельта ваги</div>
                     <div class="text-lg font-bold font-mono mt-0.5"
-                      :class="runsDiffResult.deltaTotalBytes > 0 ? 'text-rose-400' : (runsDiffResult.deltaTotalBytes < 0 ? 'text-emerald-400' : 'text-slate-400')"
-                      x-text="`${runsDiffResult.deltaTotalBytes > 0 ? '+' : ''}${(runsDiffResult.deltaTotalBytes / 1024 / 1024).toFixed(2)} MB`"></div>
+                      :class="(diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) > 0 ? 'text-rose-400' : 'text-emerald-400'"
+                      x-text="`${(diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) > 0 ? '+' : ''}${((diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) / 1024 / 1024).toFixed(2)} MB`"></div>
                   </div>
                 </div>
               </template>
@@ -2151,16 +2201,16 @@
                   :class="runsDiffFilter === 'degraded' ? 'bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30' : 'text-slate-400 hover:text-rose-400'"
                   class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
                   <span>🔴 Тільки регресії</span>
-                  <template x-if="runsDiffResult && runsDiffResult.degradedCount > 0">
-                    <span class="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px]" x-text="runsDiffResult.degradedCount"></span>
+                  <template x-if="(diffViewMode === 'packages' ? exportDiffReport?.degradedCount : runsDiffResult?.degradedCount) > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px]" x-text="diffViewMode === 'packages' ? exportDiffReport.degradedCount : runsDiffResult.degradedCount"></span>
                   </template>
                 </button>
                 <button @click="runsDiffFilter = 'improved'"
                   :class="runsDiffFilter === 'improved' ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-emerald-400'"
                   class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
                   <span>🟢 Тільки покращення</span>
-                  <template x-if="runsDiffResult && runsDiffResult.improvedCount > 0">
-                    <span class="px-1.5 py-0.2 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px]" x-text="runsDiffResult.improvedCount"></span>
+                  <template x-if="(diffViewMode === 'packages' ? exportDiffReport?.improvedCount : runsDiffResult?.improvedCount) > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px]" x-text="diffViewMode === 'packages' ? exportDiffReport.improvedCount : runsDiffResult.improvedCount"></span>
                   </template>
                 </button>
                 <button @click="runsDiffFilter = 'same'"
@@ -2184,14 +2234,14 @@
                     <tr>
                       <th class="p-3 w-12 text-center">#</th>
                       <th class="p-3">Файл / Посилання</th>
-                      <th class="p-3 text-right">Базовий запуск</th>
-                      <th class="p-3 text-right">Поточний запуск</th>
+                      <th class="p-3 text-right" x-text="diffViewMode === 'packages' ? 'Базовий WebP' : 'Базовий розмір'"></th>
+                      <th class="p-3 text-right" x-text="diffViewMode === 'packages' ? 'Поточний WebP' : 'Поточний розмір'"></th>
                       <th class="p-3 text-right">Різниця (Дельта)</th>
                       <th class="p-3 text-center w-28">Статус</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-800/60 font-mono">
-                    <template x-if="filteredDiffFiles.length === 0">
+                    <template x-if="(diffViewMode === 'packages' ? filteredExportDiffFiles : filteredDiffFiles).length === 0">
                       <tr>
                         <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
                           Файлів за обраним фільтром не знайдено.
@@ -2199,15 +2249,15 @@
                       </tr>
                     </template>
 
-                    <template x-for="(file, idx) in filteredDiffFiles" :key="file.url">
+                    <template x-for="(file, idx) in (diffViewMode === 'packages' ? filteredExportDiffFiles : filteredDiffFiles)" :key="file.url || file.sourceUrl">
                       <tr class="hover:bg-slate-900/50 transition">
                         <td class="p-3 text-center text-slate-600" x-text="idx + 1"></td>
                         <td class="p-3 font-sans">
-                          <a :href="file.url" target="_blank" class="font-bold text-slate-200 hover:text-fuchsia-400 truncate block max-w-lg underline" x-text="file.basename"></a>
-                          <div class="text-[10px] text-slate-500 font-mono truncate max-w-lg mt-0.5" x-text="file.url"></div>
+                          <a :href="file.url || file.sourceUrl" target="_blank" class="font-bold text-slate-200 hover:text-fuchsia-400 truncate block max-w-lg underline" x-text="file.basename"></a>
+                          <div class="text-[10px] text-slate-500 font-mono truncate max-w-lg mt-0.5" x-text="file.url || file.sourceUrl"></div>
                         </td>
-                        <td class="p-3 text-right text-slate-300" x-text="file.baseFormatted"></td>
-                        <td class="p-3 text-right font-bold text-slate-100" x-text="file.currentFormatted"></td>
+                        <td class="p-3 text-right text-slate-300" x-text="diffViewMode === 'packages' ? file.baseWebpFormatted : file.baseFormatted"></td>
+                        <td class="p-3 text-right font-bold text-slate-100" x-text="diffViewMode === 'packages' ? file.currWebpFormatted : file.currentFormatted"></td>
                         <td class="p-3 text-right">
                           <span class="px-2 py-0.5 rounded-full font-bold text-[11px]"
                             :class="file.status === 'degraded' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : (file.status === 'improved' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400')"

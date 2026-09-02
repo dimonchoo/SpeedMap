@@ -730,6 +730,16 @@ func (a *App) CompareHistoryRuns(baseRunID, currentRunID string) (*history.RunsD
 	return history.CompareHistoryRuns(baseRunID, currentRunID)
 }
 
+// GetExportHistory returns all tracked on-disk export packages
+func (a *App) GetExportHistory(domain string) ([]wpexport.ExportRecord, error) {
+	return wpexport.GetExportHistory(domain)
+}
+
+// CompareExportPackages compares two on-disk export manifest.json files and produces a detailed diff report
+func (a *App) CompareExportPackages(baseManifestPath, currentManifestPath string) (*wpexport.ExportDiffReport, error) {
+	return wpexport.CompareExportPackages(baseManifestPath, currentManifestPath)
+}
+
 
 
 
