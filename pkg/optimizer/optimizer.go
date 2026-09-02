@@ -332,10 +332,6 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 	// Apply proportional downscaling if target dimensions provided (Properly Size Images for Lighthouse)
 	if maxW > 0 || maxH > 0 {
 		rawImg = resizeProportional(rawImg, maxW, maxH)
-	} else if isSmoothGradientOrUI(rawImg) && origW > 1200 {
-		// Cap oversized smooth gradient banners (e.g. 1920-2000px CSS backgrounds) to standard desktop container width (1200px).
-		// This slashes lossless WebP weight from ~580KB to ~230KB while preserving 100% visual sharpness and 0 banding.
-		rawImg = resizeProportional(rawImg, 1200, 0)
 	}
 
 	optBounds := rawImg.Bounds()
