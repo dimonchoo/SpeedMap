@@ -2241,7 +2241,7 @@
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-800/60 font-mono">
-                    <template x-if="(diffViewMode === 'packages' ? filteredExportDiffFiles : filteredDiffFiles).length === 0">
+                    <template x-if="activeDiffFiles.length === 0">
                       <tr>
                         <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
                           Файлів за обраним фільтром не знайдено.
@@ -2249,9 +2249,9 @@
                       </tr>
                     </template>
 
-                    <template x-for="(file, idx) in (diffViewMode === 'packages' ? filteredExportDiffFiles : filteredDiffFiles)" :key="file.url || file.sourceUrl">
+                    <template x-for="(file, idx) in paginatedDiffFiles" :key="file.url || file.sourceUrl">
                       <tr class="hover:bg-slate-900/50 transition">
-                        <td class="p-3 text-center text-slate-600" x-text="idx + 1"></td>
+                        <td class="p-3 text-center text-slate-600" x-text="((diffCurrentPage - 1) * diffPageSize) + idx + 1"></td>
                         <td class="p-3 font-sans">
                           <a :href="file.url || file.sourceUrl" target="_blank" class="font-bold text-slate-200 hover:text-fuchsia-400 truncate block max-w-lg underline" x-text="file.basename"></a>
                           <div class="text-[10px] text-slate-500 font-mono truncate max-w-lg mt-0.5" x-text="file.url || file.sourceUrl"></div>
@@ -2272,6 +2272,61 @@
                     </template>
                   </tbody>
                 </table>
+              </div>
+
+              <!-- Pagination Controls -->
+              <div x-show="diffTotalItems > 0" class="p-3 bg-slate-900/90 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div class="flex items-center space-x-2 text-slate-400">
+                  <span>Показано</span>
+                  <span class="font-bold text-slate-200" x-text="((diffCurrentPage - 1) * diffPageSize) + 1"></span>
+                  <span>–</span>
+                  <span class="font-bold text-slate-200" x-text="Math.min(diffCurrentPage * diffPageSize, diffTotalItems)"></span>
+                  <span>з</span>
+                  <span class="font-bold text-fuchsia-400 font-mono" x-text="diffTotalItems"></span>
+                  <span>файлів</span>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                  <!-- Page Size Selector -->
+                  <div class="flex items-center space-x-1.5 mr-2">
+                    <span class="text-slate-400 text-[11px]">На сторінці:</span>
+                    <select x-model.number="diffPageSize" @change="diffCurrentPage = 1"
+                      class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 outline-none text-xs font-mono">
+                      <option :value="50">50</option>
+                      <option :value="100">100</option>
+                      <option :value="200">200</option>
+                    </select>
+                  </div>
+
+                  <!-- Page Navigation -->
+                  <div class="flex items-center space-x-1">
+                    <button @click="diffCurrentPage = 1" :disabled="diffCurrentPage === 1"
+                      :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
+                      «
+                    </button>
+                    <button @click="prevDiffPage()" :disabled="diffCurrentPage === 1"
+                      :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
+                      ‹
+                    </button>
+                    
+                    <span class="px-2 text-slate-400 font-mono">
+                      Стор. <span class="font-bold text-slate-100" x-text="diffCurrentPage"></span> з <span class="font-bold text-slate-100" x-text="diffTotalPages"></span>
+                    </span>
+
+                    <button @click="nextDiffPage()" :disabled="diffCurrentPage >= diffTotalPages"
+                      :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
+                      ›
+                    </button>
+                    <button @click="diffCurrentPage = diffTotalPages" :disabled="diffCurrentPage >= diffTotalPages"
+                      :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
+                      »
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

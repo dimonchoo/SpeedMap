@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"SpeedMap/pkg/analytics"
@@ -392,8 +393,21 @@ func GetAllHistoryRuns(domain string) ([]ScanRunSummary, error) {
 	return summaries, nil
 }
 
+var (
+	historyDiffMu    sync.RWMutex
+	historyDiffCache = make(map[string]*RunsDiffResult)
+)
+
 // CompareHistoryRuns performs a file-by-file regression comparison between two run IDs
 func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error) {
+	cacheKey := fmt.Sprintf("%s:%s", baseRunID, currentRunID)
+	historyDiffMu.RLock()
+	if cached, ok := historyDiffCache[cacheKey]; ok {
+		historyDiffMu.RUnlock()
+		return cached, nil
+	}
+	historyDiffMu.RUnlock()
+
 	dir, err := getHistoryDir()
 	if err != nil {
 		return nil, err
@@ -567,7 +581,7 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 		return files[i].DeltaBytes > files[j].DeltaBytes
 	})
 
-	return &RunsDiffResult{
+	res := &RunsDiffResult{
 		BaseRunID:         baseRunID,
 		BaseRunTime:       baseRun.FormattedTime,
 		CurrentRunID:      currentRunID,
@@ -580,5 +594,11 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 		CurrentTotalBytes: currentTotal,
 		DeltaTotalBytes:   currentTotal - baseTotal,
 		Files:             files,
-	}, nil
+	}
+
+	historyDiffMu.Lock()
+	historyDiffCache[cacheKey] = res
+	historyDiffMu.Unlock()
+
+	return res, nil
 }

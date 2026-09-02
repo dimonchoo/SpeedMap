@@ -1368,8 +1368,20 @@ func GetExportHistory(domain string) ([]ExportRecord, error) {
 	return filtered, nil
 }
 
+var (
+	exportDiffMu    sync.RWMutex
+	exportDiffCache = make(map[string]*ExportDiffReport)
+)
+
 // CompareExportPackages compares two on-disk export manifest.json files and produces a detailed diff
 func CompareExportPackages(baseManifestPath, currentManifestPath string) (*ExportDiffReport, error) {
+	cacheKey := fmt.Sprintf("%s:%s", baseManifestPath, currentManifestPath)
+	exportDiffMu.RLock()
+	if cached, ok := exportDiffCache[cacheKey]; ok {
+		exportDiffMu.RUnlock()
+		return cached, nil
+	}
+	exportDiffMu.RUnlock()
 	type rawManifestItem struct {
 		SourceURL      string   `json:"sourceUrl"`
 		Basename       string   `json:"basename"`
@@ -1516,7 +1528,7 @@ func CompareExportPackages(baseManifestPath, currentManifestPath string) (*Expor
 	baseTime := fmt.Sprintf("%v", baseMeta["generated"])
 	currTime := fmt.Sprintf("%v", currMeta["generated"])
 
-	return &ExportDiffReport{
+	rep := &ExportDiffReport{
 		BasePackageDir:    filepath.Dir(baseManifestPath),
 		BaseTime:          baseTime,
 		CurrentPackageDir: filepath.Dir(currentManifestPath),
@@ -1529,5 +1541,11 @@ func CompareExportPackages(baseManifestPath, currentManifestPath string) (*Expor
 		CurrentTotalWebP:  currTotalWebP,
 		DeltaTotalWebP:    currTotalWebP - baseTotalWebP,
 		Files:             files,
-	}, nil
+	}
+
+	exportDiffMu.Lock()
+	exportDiffCache[cacheKey] = rep
+	exportDiffMu.Unlock()
+
+	return rep, nil
 }

@@ -86,6 +86,9 @@ function speedMapApp() {
     runsDiffFilter: 'all', // 'all' | 'degraded' | 'improved' | 'same' | 'new'
     runsDiffSearch: '',
     isLoadingDiff: false,
+    diffCurrentPage: 1,
+    diffPageSize: 50,
+    diffClientCache: {},
 
     // Activity Log & Toast Feed
     activityLogs: [],
@@ -589,6 +592,9 @@ function speedMapApp() {
             this.updateFilteredImages();
           }
         });
+        this.$watch('runsDiffSearch', () => { this.diffCurrentPage = 1; });
+        this.$watch('runsDiffFilter', () => { this.diffCurrentPage = 1; });
+        this.$watch('diffViewMode', () => { this.diffCurrentPage = 1; });
       }
 
 
@@ -2091,11 +2097,25 @@ function speedMapApp() {
 
     async runComparisonDiff() {
       if (!this.selectedBaseRunId || !this.selectedCurrentRunId) return;
+      const cacheKey = `runs:${this.selectedBaseRunId}:${this.selectedCurrentRunId}`;
+      if (this.diffClientCache[cacheKey]) {
+        this.runsDiffResult = this.diffClientCache[cacheKey];
+        this.diffCurrentPage = 1;
+        return;
+      }
       this.isLoadingDiff = true;
       try {
         if (window.go?.main?.App?.CompareHistoryRuns) {
           const res = await window.go.main.App.CompareHistoryRuns(this.selectedBaseRunId, this.selectedCurrentRunId);
+          if (res?.files) {
+            for (let i = 0; i < res.files.length; i++) {
+              const f = res.files[i];
+              f._search = ((f.basename || '') + ' ' + (f.url || '')).toLowerCase();
+            }
+          }
+          this.diffClientCache[cacheKey] = res;
           this.runsDiffResult = res;
+          this.diffCurrentPage = 1;
           this.addLog('info', `Порівняння прогонів: ${res.totalFiles} файлів (🔴 ${res.degradedCount} погіршилися, 🟢 ${res.improvedCount} покращилися)`);
         }
       } catch (e) {
@@ -2110,15 +2130,12 @@ function speedMapApp() {
       if (!this.runsDiffResult || !this.runsDiffResult.files) return [];
       const q = (this.runsDiffSearch || '').toLowerCase().trim();
       const f = this.runsDiffFilter;
-      return this.runsDiffResult.files.filter(item => {
-        let matchFilter = true;
-        if (f === 'degraded') matchFilter = item.status === 'degraded';
-        else if (f === 'improved') matchFilter = item.status === 'improved';
-        else if (f === 'same') matchFilter = item.status === 'same';
-        else if (f === 'new') matchFilter = item.status === 'new';
-
-        const matchQuery = !q || (item.basename && item.basename.toLowerCase().includes(q)) || (item.url && item.url.toLowerCase().includes(q));
-        return matchFilter && matchQuery;
+      const files = this.runsDiffResult.files;
+      if (!q && f === 'all') return files;
+      return files.filter(item => {
+        if (f !== 'all' && item.status !== f) return false;
+        if (!q) return true;
+        return item._search ? item._search.includes(q) : ((item.basename || '') + ' ' + (item.url || '')).toLowerCase().includes(q);
       });
     },
 
@@ -2144,11 +2161,25 @@ function speedMapApp() {
 
     async runExportPackageDiff() {
       if (!this.selectedBaseExportPath || !this.selectedCurrentExportPath) return;
+      const cacheKey = `pkg:${this.selectedBaseExportPath}:${this.selectedCurrentExportPath}`;
+      if (this.diffClientCache[cacheKey]) {
+        this.exportDiffReport = this.diffClientCache[cacheKey];
+        this.diffCurrentPage = 1;
+        return;
+      }
       this.isLoadingDiff = true;
       try {
         if (window.go?.main?.App?.CompareExportPackages) {
           const res = await window.go.main.App.CompareExportPackages(this.selectedBaseExportPath, this.selectedCurrentExportPath);
+          if (res?.files) {
+            for (let i = 0; i < res.files.length; i++) {
+              const f = res.files[i];
+              f._search = ((f.basename || '') + ' ' + (f.sourceUrl || '')).toLowerCase();
+            }
+          }
+          this.diffClientCache[cacheKey] = res;
           this.exportDiffReport = res;
+          this.diffCurrentPage = 1;
           this.addLog('info', `Порівняння пакетів експорту: ${res.totalFiles} файлів (🔴 ${res.degradedCount} погіршилися, 🟢 ${res.improvedCount} покращилися)`);
         }
       } catch (e) {
@@ -2163,16 +2194,48 @@ function speedMapApp() {
       if (!this.exportDiffReport || !this.exportDiffReport.files) return [];
       const q = (this.runsDiffSearch || '').toLowerCase().trim();
       const f = this.runsDiffFilter;
-      return this.exportDiffReport.files.filter(item => {
-        let matchFilter = true;
-        if (f === 'degraded') matchFilter = item.status === 'degraded';
-        else if (f === 'improved') matchFilter = item.status === 'improved';
-        else if (f === 'same') matchFilter = item.status === 'same';
-        else if (f === 'new') matchFilter = item.status === 'new';
-
-        const matchQuery = !q || (item.basename && item.basename.toLowerCase().includes(q)) || (item.sourceUrl && item.sourceUrl.toLowerCase().includes(q));
-        return matchFilter && matchQuery;
+      const files = this.exportDiffReport.files;
+      if (!q && f === 'all') return files;
+      return files.filter(item => {
+        if (f !== 'all' && item.status !== f) return false;
+        if (!q) return true;
+        return item._search ? item._search.includes(q) : ((item.basename || '') + ' ' + (item.sourceUrl || '')).toLowerCase().includes(q);
       });
+    },
+
+    get activeDiffFiles() {
+      return this.diffViewMode === 'packages' ? this.filteredExportDiffFiles : this.filteredDiffFiles;
+    },
+
+    get diffTotalItems() {
+      return this.activeDiffFiles.length;
+    },
+
+    get diffTotalPages() {
+      return Math.max(1, Math.ceil(this.diffTotalItems / this.diffPageSize));
+    },
+
+    get paginatedDiffFiles() {
+      const start = (this.diffCurrentPage - 1) * this.diffPageSize;
+      return this.activeDiffFiles.slice(start, start + this.diffPageSize);
+    },
+
+    nextDiffPage() {
+      if (this.diffCurrentPage < this.diffTotalPages) {
+        this.diffCurrentPage++;
+      }
+    },
+
+    prevDiffPage() {
+      if (this.diffCurrentPage > 1) {
+        this.diffCurrentPage--;
+      }
+    },
+
+    setDiffPage(page) {
+      if (page >= 1 && page <= this.diffTotalPages) {
+        this.diffCurrentPage = page;
+      }
     }
   };
 }
