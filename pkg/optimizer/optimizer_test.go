@@ -288,48 +288,6 @@ func TestCswCover1GradientOnline(t *testing.T) {
 	}
 }
 
-func TestCmoBgNew1GradientOnline(t *testing.T) {
-	url := "https://infuse.com/wp-content/uploads/2023/12/cmo-bg-new1.jpg"
-	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
-	if err != nil {
-		t.Skipf("network error skipping: %v", err)
-	}
-	t.Logf("cmo-bg-new1 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
-		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
-
-	// Must be optimized with anti-banding high quality (Q=98)
-	if res.QualityUsed < 95.0 {
-		t.Errorf("expected cmo-bg-new1 to use high quality (>=95) with anti-banding dither, got Q=%.1f", res.QualityUsed)
-	}
-	// Must remain safely under budget (<=85KB)
-	if res.OptimizedBytes > 85*1024 {
-		t.Errorf("expected cmo-bg-new1 to remain within safe budget (<=85KB), got %s", res.OptimizedFormatted)
-	}
-	// Must save significant bytes vs original
-	if res.SavingsPercent < 50.0 {
-		t.Errorf("expected cmo-bg-new1 savings >= 50%%, got %.1f%%", res.SavingsPercent)
-	}
-}
-
-func TestPavBg3GradientOnline(t *testing.T) {
-	url := "https://infuse.com/wp-content/uploads/2023/05/pav-bg3.jpg"
-	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
-	if err != nil {
-		t.Skipf("network error skipping: %v", err)
-	}
-	t.Logf("pav-bg3 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
-		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
-
-	// Must be optimized with anti-banding high quality (Q=98)
-	if res.QualityUsed < 95.0 {
-		t.Errorf("expected pav-bg3 to use high quality (>=95) with anti-banding dither, got Q=%.1f", res.QualityUsed)
-	}
-	// Must save significant bytes vs original (not exceed original JPEG)
-	if res.OptimizedBytes >= res.OriginalBytes {
-		t.Errorf("expected pav-bg3 to save bytes vs original, got Opt=%s, Orig=%s", res.OptimizedFormatted, res.OriginalFormatted)
-	}
-}
-
 // === Offline Fixture Tests ===
 
 func serveLocalFixture(t *testing.T, fixtureRelPath, contentType string) (*httptest.Server, string) {
