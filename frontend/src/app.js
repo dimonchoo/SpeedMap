@@ -2169,6 +2169,36 @@ function speedMapApp() {
       }
     },
 
+    async browseBaseExportFolder() {
+      try {
+        if (window.go?.main?.App?.SelectDirectory) {
+          const dir = await window.go.main.App.SelectDirectory("Виберіть базову папку експорту (speedmap-webp-*)");
+          if (dir) {
+            const manifestPath = dir.endsWith('manifest.json') ? dir : (dir.replace(/\/+$/, '') + '/manifest.json');
+            this.selectedBaseExportPath = manifestPath;
+            await this.runExportPackageDiff();
+          }
+        }
+      } catch (e) {
+        console.error('Error selecting base folder:', e);
+      }
+    },
+
+    async browseCurrentExportFolder() {
+      try {
+        if (window.go?.main?.App?.SelectDirectory) {
+          const dir = await window.go.main.App.SelectDirectory("Виберіть поточну папку експорту (speedmap-webp-*)");
+          if (dir) {
+            const manifestPath = dir.endsWith('manifest.json') ? dir : (dir.replace(/\/+$/, '') + '/manifest.json');
+            this.selectedCurrentExportPath = manifestPath;
+            await this.runExportPackageDiff();
+          }
+        }
+      } catch (e) {
+        console.error('Error selecting current folder:', e);
+      }
+    },
+
     async runExportPackageDiff() {
       if (!this.selectedBaseExportPath || !this.selectedCurrentExportPath) return;
       const cacheKey = `pkg:${this.selectedBaseExportPath}:${this.selectedCurrentExportPath}`;

@@ -2096,11 +2096,13 @@
                     <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
                       <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
                       <select x-model="selectedBaseExportPath" @change="runExportPackageDiff()"
-                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono max-w-[220px] truncate">
                         <template x-for="p in exportRecordsList" :key="p.manifestPath">
-                          <option :value="p.manifestPath" x-text="`${p.id} · ${p.formattedTime} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
+                          <option :value="p.manifestPath" x-text="`${p.id} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
                         </template>
                       </select>
+                      <button @click="browseBaseExportFolder()" title="Обрати іншу папку через Finder"
+                        class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 text-xs transition">📁</button>
                     </div>
 
                     <span class="text-slate-500 font-bold">➔</span>
@@ -2108,11 +2110,13 @@
                     <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
                       <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
                       <select x-model="selectedCurrentExportPath" @change="runExportPackageDiff()"
-                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono max-w-[220px] truncate">
                         <template x-for="p in exportRecordsList" :key="p.manifestPath">
-                          <option :value="p.manifestPath" x-text="`${p.id} · ${p.formattedTime} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
+                          <option :value="p.manifestPath" x-text="`${p.id} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
                         </template>
                       </select>
+                      <button @click="browseCurrentExportFolder()" title="Обрати іншу папку через Finder"
+                        class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 text-xs transition">📁</button>
                     </div>
 
                     <button @click="runExportPackageDiff()" :disabled="isLoadingDiff"
