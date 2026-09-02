@@ -2346,9 +2346,32 @@
                     <label class="font-semibold text-slate-200">Базова якість стиснення WebP (Quality)</label>
                     <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono font-bold" x-text="(config.webpQuality || 80) + '%'"></span>
                   </div>
-                  <input type="range" min="10" max="100" step="5" x-model.number="config.webpQuality"
+                  <input type="range" min="50" max="100" step="5" x-model.number="config.webpQuality"
                     class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer">
-                  <p class="text-xs text-slate-400">Рівень якості для реального WebP конвертера (за замовчуванням 80% — оптимальний баланс якості та розміру)</p>
+                  <p class="text-xs text-slate-400">Рівень якості для реального WebP конвертера (за замовчуванням 80% — золотий стандарт Google Lighthouse)</p>
+                </div>
+
+                <!-- Min WebP Quality Floor -->
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center">
+                    <label class="font-semibold text-slate-200">Мінімальний поріг якості WebP (Min Quality Floor)</label>
+                    <span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono font-bold" x-text="(config.minWebPQuality || 80) + '%'"></span>
+                  </div>
+                  <input type="range" min="50" max="95" step="5" x-model.number="config.minWebPQuality"
+                    class="w-full accent-cyan-500 bg-slate-800 rounded-lg cursor-pointer">
+                  <p class="text-xs text-slate-400">Нижня межа якості: оптимізатор ніколи не опуститься нижче цього порогу для запобігання артефактам (за замовчуванням 80%)</p>
+                </div>
+
+                <!-- Skip if No WebP Savings Toggle -->
+                <div class="flex items-start justify-between bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-x-3">
+                  <div class="space-y-0.5">
+                    <label class="font-semibold text-slate-200 text-xs flex items-center space-x-1.5 cursor-pointer">
+                      <span>🛡️ Пропускати зображення, якщо WebP не дає економії</span>
+                    </label>
+                    <p class="text-[11px] text-slate-400">Якщо при допустимому порозі якості розмір WebP виходить більшим або рівним оригіналу (наприклад, складні індексовані PNG), SpeedMap залишає вихідний оригінал недоторканим і не включає його в пакет заміни.</p>
+                  </div>
+                  <input type="checkbox" x-model="config.skipIfNoWebPSavings"
+                    class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500/20 bg-slate-900 h-4 w-4 mt-0.5 shrink-0 cursor-pointer">
                 </div>
 
                 <!-- Adaptive Smart Quality Toggle -->

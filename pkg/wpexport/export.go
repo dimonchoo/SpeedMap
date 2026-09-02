@@ -206,6 +206,11 @@ func ConvertHeavyImagesWithThreshold(images []ManifestImage, quality float32, th
 
 // ConvertHeavyImagesWithProgress converts images with custom threshold byte budget and reports live progress.
 func ConvertHeavyImagesWithProgress(images []ManifestImage, quality float32, thresholdBytes int64, adaptive bool, resizeToRetina bool, authUser, authPass string, onProgress func(done, total int, name string)) ([]WrittenImage, error) {
+	return ConvertHeavyImagesWithProgressExt(images, quality, 80.0, true, thresholdBytes, adaptive, resizeToRetina, authUser, authPass, onProgress)
+}
+
+// ConvertHeavyImagesWithProgressExt converts images with custom threshold byte budget, min quality floor, and skip protection.
+func ConvertHeavyImagesWithProgressExt(images []ManifestImage, quality float32, minQuality float32, skipIfNoSavings bool, thresholdBytes int64, adaptive bool, resizeToRetina bool, authUser, authPass string, onProgress func(done, total int, name string)) ([]WrittenImage, error) {
 	if len(images) == 0 {
 		return nil, fmt.Errorf("no images to convert")
 	}
@@ -259,9 +264,13 @@ func ConvertHeavyImagesWithProgress(images []ManifestImage, quality float32, thr
 						maxH = img.MaxRenderedHeight * 2
 					}
 
-					res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuthResize(img.SourceURL, quality, thresholdBytes, adaptive, maxW, maxH, authUser, authPass)
+					res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(img.SourceURL, quality, minQuality, skipIfNoSavings, thresholdBytes, adaptive, maxW, maxH, authUser, authPass)
 					if err != nil {
 						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: %w", img.SourceURL, err)}
+						return
+					}
+					if res.IsSkipped {
+						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: no WebP savings at min quality floor (%.0f%%)", img.SourceURL, minQuality)}
 						return
 					}
 					webpData, err := decodeDataURL(res.OptimizedWebPBase64)

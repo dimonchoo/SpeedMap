@@ -342,6 +342,8 @@ export namespace config {
 	    timeoutSec: number;
 	    gdriveClientID: string;
 	    gdriveClientSecret: string;
+	    minWebPQuality: number;
+	    skipIfNoWebPSavings?: boolean;
 	    adaptiveQuality?: boolean;
 	    resizeToRetina?: boolean;
 	    autoPruneHistory?: boolean;
@@ -371,6 +373,8 @@ export namespace config {
 	        this.timeoutSec = source["timeoutSec"];
 	        this.gdriveClientID = source["gdriveClientID"];
 	        this.gdriveClientSecret = source["gdriveClientSecret"];
+	        this.minWebPQuality = source["minWebPQuality"];
+	        this.skipIfNoWebPSavings = source["skipIfNoWebPSavings"];
 	        this.adaptiveQuality = source["adaptiveQuality"];
 	        this.resizeToRetina = source["resizeToRetina"];
 	        this.autoPruneHistory = source["autoPruneHistory"];
@@ -487,6 +491,7 @@ export namespace optimizer {
 	    savingsPercent: number;
 	    qualityUsed: number;
 	    isLossless: boolean;
+	    isSkipped: boolean;
 	    adaptiveApplied: boolean;
 	    originalDataBase64: string;
 	    optimizedWebPBase64: string;
@@ -513,6 +518,7 @@ export namespace optimizer {
 	        this.savingsPercent = source["savingsPercent"];
 	        this.qualityUsed = source["qualityUsed"];
 	        this.isLossless = source["isLossless"];
+	        this.isSkipped = source["isSkipped"];
 	        this.adaptiveApplied = source["adaptiveApplied"];
 	        this.originalDataBase64 = source["originalDataBase64"];
 	        this.optimizedWebPBase64 = source["optimizedWebPBase64"];

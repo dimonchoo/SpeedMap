@@ -406,9 +406,11 @@ func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, 
 		return nil, fmt.Errorf("no heavy convertible images in scan")
 	}
 
-	written, err := wpexport.ConvertHeavyImagesWithProgress(
+	written, err := wpexport.ConvertHeavyImagesWithProgressExt(
 		heavy,
 		cfg.NormalizedWebPQuality(),
+		cfg.NormalizedMinWebPQuality(),
+		cfg.IsSkipIfNoWebPSavingsEnabled(),
 		cfg.NormalizedHeavyThresholdBytes(),
 		cfg.IsAdaptiveQualityEnabled(),
 		cfg.IsResizeToRetinaEnabled(),

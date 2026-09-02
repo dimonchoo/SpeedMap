@@ -49,6 +49,7 @@ type ConversionResult struct {
 	SavingsPercent      float64 `json:"savingsPercent"`
 	QualityUsed         float32 `json:"qualityUsed"`
 	IsLossless          bool    `json:"isLossless"`
+	IsSkipped           bool    `json:"isSkipped"`
 	AdaptiveApplied     bool    `json:"adaptiveApplied"`
 	OriginalDataBase64  string  `json:"originalDataBase64"`
 	OptimizedWebPBase64 string  `json:"optimizedWebPBase64"`
@@ -193,8 +194,20 @@ func ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL string, quality float32, thr
 // ConvertImageURLToWebPAdaptiveBudgetAuthResize encodes to WebP, optionally downscaling oversized
 // images proportionally to target maxW/maxH (e.g. max rendered Retina 2x bounds).
 func ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL string, quality float32, thresholdBytes int64, adaptive bool, maxW, maxH int, user, pass string) (*ConversionResult, error) {
+	return ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL, quality, 80.0, true, thresholdBytes, adaptive, maxW, maxH, user, pass)
+}
+
+// ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality encodes to WebP with a strict minimum quality floor (e.g. 80%)
+// and option to skip images if WebP output exceeds original file size.
+func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, quality float32, minQuality float32, skipIfNoSavings bool, thresholdBytes int64, adaptive bool, maxW, maxH int, user, pass string) (*ConversionResult, error) {
+	if minQuality <= 0 || minQuality > 100 {
+		minQuality = 80.0
+	}
 	if quality <= 0 || quality > 100 {
 		quality = 80
+	}
+	if quality < minQuality {
+		quality = minQuality
 	}
 	if thresholdBytes <= 0 {
 		thresholdBytes = 100 * 1024
@@ -330,12 +343,11 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL string, quality float3
 		}
 
 		// Safety Guarantee: WebP output must NEVER be larger than the original asset.
-		// If high quality (e.g. 90%) results in WebP >= origSize on indexed/noisy PNGs,
-		// step down quality (85, 80, 75, 70, 65) to guarantee strict bandwidth reduction.
+		// If initial quality results in WebP >= origSize, step down quality towards minQuality (e.g. 80%).
 		if int64(len(webpData)) >= origSize {
-			fallbackQualities := []float32{85.0, 80.0, 75.0, 70.0, 65.0, 60.0}
+			fallbackQualities := []float32{90.0, 85.0, 80.0, 75.0, 70.0, 65.0, 60.0}
 			for _, fq := range fallbackQualities {
-				if fq >= qualityUsed {
+				if fq >= qualityUsed || fq < minQuality {
 					continue
 				}
 				var fBuf bytes.Buffer
@@ -358,12 +370,19 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL string, quality float3
 	}
 
 	webpSize := int64(len(webpData))
+	isSkipped := false
+	if webpSize >= origSize {
+		if skipIfNoSavings {
+			isSkipped = true
+		}
+	}
+
 	savings := origSize - webpSize
-	if savings < 0 {
+	if savings < 0 || isSkipped {
 		savings = 0
 	}
 	var savingsPct float64
-	if origSize > 0 {
+	if origSize > 0 && !isSkipped {
 		savingsPct = float64(savings) / float64(origSize) * 100
 	}
 
@@ -393,6 +412,7 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL string, quality float3
 		SavingsPercent:      savingsPct,
 		QualityUsed:         qualityUsed,
 		IsLossless:          isLossless,
+		IsSkipped:           isSkipped,
 		AdaptiveApplied:     adaptiveApplied,
 		OriginalDataBase64:  origBase64,
 		OptimizedWebPBase64: webpBase64,

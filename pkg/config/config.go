@@ -21,6 +21,8 @@ type ScanConfig struct {
 	TimeoutSec            int            `json:"timeoutSec"`
 	GDriveClientID        string         `json:"gdriveClientID"`
 	GDriveClientSecret    string         `json:"gdriveClientSecret"`
+	MinWebPQuality        float32        `json:"minWebPQuality"`        // Minimum quality floor (default 80)
+	SkipIfNoWebPSavings   *bool          `json:"skipIfNoWebPSavings"`   // true by default: skip images if WebP size >= original size
 	AdaptiveQuality       *bool          `json:"adaptiveQuality"`       // true by default: automatically adjusts quality for gradients/transparency
 	ResizeToRetina        *bool          `json:"resizeToRetina"`        // true by default: resize oversized images to max rendered Retina 2x bounds
 	AutoPruneHistory      *bool          `json:"autoPruneHistory"`      // true by default: auto-prunes old history runs
@@ -35,6 +37,20 @@ func (c *ScanConfig) IsAdaptiveQualityEnabled() bool {
 		return true // Default true
 	}
 	return *c.AdaptiveQuality
+}
+
+func (c *ScanConfig) NormalizedMinWebPQuality() float32 {
+	if c.MinWebPQuality <= 0 || c.MinWebPQuality > 100 {
+		return 80.0 // 80% default floor
+	}
+	return c.MinWebPQuality
+}
+
+func (c *ScanConfig) IsSkipIfNoWebPSavingsEnabled() bool {
+	if c.SkipIfNoWebPSavings == nil {
+		return true // Default true
+	}
+	return *c.SkipIfNoWebPSavings
 }
 
 func (c *ScanConfig) IsResizeToRetinaEnabled() bool {
