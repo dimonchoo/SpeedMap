@@ -112,10 +112,10 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 		return false
 	}
 
-	// Must be a wide banner proportion (e.g. aspect ratio >= 2.8 for horizontal page section banners like CTA/GTS).
-	// Standard photos and content graphics (16:9, 16:10, 4:3, 1:1) are excluded so they stay in high-efficiency Lossy WebP.
+	// Must be a banner/cover proportion (e.g. aspect ratio >= 2.2 for horizontal page section/cover banners like CTA/GTS/csw-cover, and max width <= 2560).
+	// Standard photos and content graphics (16:9, 16:10, 4:3, 1:1) and massive 4K imagery are excluded so they stay in high-efficiency Lossy WebP.
 	aspect := float64(w) / float64(h)
-	if aspect < 2.8 {
+	if aspect < 2.2 || w > 2560 {
 		return false
 	}
 
@@ -427,13 +427,13 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 			// 1) It is smaller than or equal to Lossy (flat icons, logos, simple graphics), OR
 			// 2) It is a tiny UI asset (<= 25 KB) where the delta from lossy is minimal (<= 5 KB), OR
 			// 3) It is a smooth gradient UI graphic (isSmoothGradientOrUI) where Lossy WebP
-			//    suffers from visible color banding stripes (due to YUV 4:2:0 chroma quantization).
+			//    suffers from visible color banding stripes or circular rings (due to YUV 4:2:0 chroma quantization).
 			//    Lossless guarantees 100% silky smoothness without banding while still saving bytes vs original!
 			isSmallerThanLossy := losslessLen <= int64(len(lossyData))
 			isTinyAssetWithSmallDelta := losslessLen <= 25*1024 && (losslessLen-int64(len(lossyData))) <= 5*1024
 			isSmoothGradient := isSmoothGradientOrUI(rawImg)
 
-			shouldUseLossless := isSmallerThanLossy || (losslessLen <= safeBudget && isTinyAssetWithSmallDelta) || isSmoothGradient
+			shouldUseLossless := isSmallerThanLossy || (losslessLen <= safeBudget && isTinyAssetWithSmallDelta) || (isSmoothGradient && losslessLen <= 650*1024)
 
 			if losslessLen < origSize && shouldUseLossless {
 				webpData = losslessBytes
