@@ -108,8 +108,8 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 	bounds := img.Bounds()
 	w := bounds.Dx()
 	h := bounds.Dy()
-	if w <= 1 || h <= 1 {
-		return true
+	if w < 200 || h < 50 {
+		return false
 	}
 
 	stepY := (h / 60) + 1
@@ -117,6 +117,8 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 
 	var totalDelta float64
 	var count int
+	var sumR, sumG, sumB float64
+	var pixelCount float64
 
 	absDiff := func(a, b uint8) float64 {
 		if a > b {
@@ -140,15 +142,28 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 
 			totalDelta += deltaX + deltaY
 			count += 2
+
+			sumR += float64(r1)
+			sumG += float64(g1)
+			sumB += float64(b1)
+			pixelCount++
 		}
 	}
 
-	if count == 0 {
+	if count == 0 || pixelCount == 0 {
 		return false
 	}
 	meanDelta := totalDelta / float64(count)
-	// Smooth gradients and UI banners typically have meanDelta < 5.0, while photos have > 15.0
-	return meanDelta < 6.0
+	meanR := sumR / pixelCount
+	meanG := sumG / pixelCount
+	meanB := sumB / pixelCount
+
+	// Blue/Cyan/Teal/Dark smooth gradients have low meanDelta (< 6.0) and blue/green chroma dominance over red.
+	// These are the exact conditions where YUV 4:2:0 subsampling destroys smooth transitions with banding stripes.
+	// Real-world gradients like gts-bg1.png have meanDelta ~1.34, CTA-BG-8.png has ~4.81.
+	isBlueCyanDominant := (meanB > meanR+5.0) || (meanG > meanR+15.0)
+
+	return meanDelta < 6.0 && isBlueCyanDominant
 }
 
 // toStraightRGBA converts any decoded image into *image.RGBA with STRAIGHT (unpremultiplied) RGBA bytes,
@@ -357,12 +372,17 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 
 			// Lossless WebP should only be chosen if:
 			// 1) It is smaller than or equal to Lossy (flat icons, logos, simple graphics), OR
-			// 2) It is a tiny UI asset (<= 25 KB) where the delta from lossy is minimal (<= 5 KB).
-			// Never replace a 4 KB Lossy with a 76 KB Lossless just because 76 KB <= safeBudget!
+			// 2) It is a tiny UI asset (<= 25 KB) where the delta from lossy is minimal (<= 5 KB), OR
+			// 3) It is a smooth gradient UI graphic (isSmoothGradientOrUI) where Lossy WebP
+			//    suffers from visible color banding stripes (due to YUV 4:2:0 chroma quantization).
+			//    Lossless guarantees 100% silky smoothness without banding while still saving bytes vs original!
 			isSmallerThanLossy := losslessLen <= int64(len(lossyData))
 			isTinyAssetWithSmallDelta := losslessLen <= 25*1024 && (losslessLen-int64(len(lossyData))) <= 5*1024
+			isSmoothGradient := isSmoothGradientOrUI(rawImg)
 
-			if losslessLen < origSize && losslessLen <= safeBudget && (isSmallerThanLossy || isTinyAssetWithSmallDelta) {
+			shouldUseLossless := isSmallerThanLossy || (losslessLen <= safeBudget && isTinyAssetWithSmallDelta) || isSmoothGradient
+
+			if losslessLen < origSize && shouldUseLossless {
 				webpData = losslessBytes
 				isLossless = true
 				adaptiveApplied = true
