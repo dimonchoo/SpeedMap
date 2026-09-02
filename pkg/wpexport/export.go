@@ -740,6 +740,11 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	htmlBuf.WriteString(fmt.Sprintf("%d", len(entries)))
 	htmlBuf.WriteString(" images · open this file from the unzipped archive (клікніть на будь-яке зображення для інтерактивного перегляду Before/After)</p>")
 
+	htmlBuf.WriteString("<div style=\"display:flex;align-items:center;gap:12px;margin-bottom:24px;position:sticky;top:0;background:#fafafa;padding:12px 0;z-index:100;border-bottom:1px solid #e2e8f0;\">")
+	htmlBuf.WriteString("<input type=\"text\" id=\"compare-search\" placeholder=\"🔍 Пошук по назві або URL (наприклад, waves-1, img-21, hero)...\" oninput=\"filterCompare(this.value)\" style=\"flex:1;max-width:500px;padding:8px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;outline:none;font-family:inherit;\" />")
+	htmlBuf.WriteString(fmt.Sprintf("<span id=\"compare-count\" style=\"font-size:13px;font-weight:bold;color:#475569;\">Показано: %d з %d</span>", len(entries), len(entries)))
+	htmlBuf.WriteString("</div>")
+
 	for idx, e := range entries {
 		htmlBuf.WriteString("<section class=\"pair\">")
 		htmlBuf.WriteString("<h2>")
@@ -843,6 +848,18 @@ function onBackdropClick(e) {
 	if (e.target.id === 'lightbox' || e.target.classList.contains('lb-body')) {
 		closeLb();
 	}
+}
+
+function filterCompare(val) {
+	const q = val.toLowerCase().trim();
+	const pairs = document.querySelectorAll('.pair');
+	let count = 0;
+	pairs.forEach(p => {
+		const match = !q || p.innerText.toLowerCase().includes(q);
+		p.style.display = match ? 'flex' : 'none';
+		if (match) count++;
+	});
+	document.getElementById('compare-count').innerText = 'Показано: ' + count + ' з ' + pairs.length;
 }
 
 document.addEventListener('keydown', function(e) {

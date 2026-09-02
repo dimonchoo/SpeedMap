@@ -328,6 +328,33 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL string, quality float3
 				}
 			}
 		}
+
+		// Safety Guarantee: WebP output must NEVER be larger than the original asset.
+		// If high quality (e.g. 90%) results in WebP >= origSize on indexed/noisy PNGs,
+		// step down quality (85, 80, 75, 70, 65) to guarantee strict bandwidth reduction.
+		if int64(len(webpData)) >= origSize {
+			fallbackQualities := []float32{85.0, 80.0, 75.0, 70.0, 65.0, 60.0}
+			for _, fq := range fallbackQualities {
+				if fq >= qualityUsed {
+					continue
+				}
+				var fBuf bytes.Buffer
+				fOpts := &webp.Options{
+					Lossless: false,
+					Quality:  fq,
+					Exact:    false,
+				}
+				if err := webp.Encode(&fBuf, rawImg, fOpts); err == nil {
+					fBytes := fBuf.Bytes()
+					if int64(len(fBytes)) < origSize {
+						webpData = fBytes
+						qualityUsed = fq
+						adaptiveApplied = true
+						break
+					}
+				}
+			}
+		}
 	}
 
 	webpSize := int64(len(webpData))
