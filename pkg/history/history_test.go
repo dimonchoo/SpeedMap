@@ -183,8 +183,8 @@ func TestCompareHistoryRunsLazyLoadedNotDegraded(t *testing.T) {
 	if res.Files[0].Status != "new" {
 		t.Errorf("expected status 'new' for newly transferred lazy image, got %s", res.Files[0].Status)
 	}
-	if res.Files[0].BaseFormatted != "Lazy (0 B)" {
-		t.Errorf("expected BaseFormatted 'Lazy (0 B)', got %s", res.Files[0].BaseFormatted)
+	if res.Files[0].BaseFormatted != "—" {
+		t.Errorf("expected BaseFormatted '—', got %s", res.Files[0].BaseFormatted)
 	}
 }
 

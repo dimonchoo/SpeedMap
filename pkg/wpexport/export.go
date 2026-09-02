@@ -1283,6 +1283,8 @@ type ExportDiffReport struct {
 	DegradedCount     int              `json:"degradedCount"`
 	ImprovedCount     int              `json:"improvedCount"`
 	SameCount         int              `json:"sameCount"`
+	NewCount          int              `json:"newCount"`
+	RemovedCount      int              `json:"removedCount"`
 	BaseTotalWebP     int64            `json:"baseTotalWebp"`
 	CurrentTotalWebP  int64            `json:"currentTotalWebp"`
 	DeltaTotalWebP    int64            `json:"deltaTotalWebp"`
@@ -1441,7 +1443,7 @@ func CompareExportPackages(baseManifestPath, currentManifestPath string) (*Expor
 	}
 
 	var files []ExportFileDiff
-	var degraded, improved, same int
+	var degraded, improved, same, newCount, removedCount int
 	var baseTotalWebP, currTotalWebP int64
 
 	for u := range allURLs {
@@ -1481,8 +1483,10 @@ func CompareExportPackages(baseManifestPath, currentManifestPath string) (*Expor
 		status := "same"
 		if !hasBase && hasCurr {
 			status = "new"
+			newCount++
 		} else if hasBase && !hasCurr {
 			status = "removed"
+			removedCount++
 		} else if delta > 5*1024 {
 			status = "degraded"
 			degraded++
@@ -1537,6 +1541,8 @@ func CompareExportPackages(baseManifestPath, currentManifestPath string) (*Expor
 		DegradedCount:     degraded,
 		ImprovedCount:     improved,
 		SameCount:         same,
+		NewCount:          newCount,
+		RemovedCount:      removedCount,
 		BaseTotalWebP:     baseTotalWebP,
 		CurrentTotalWebP:  currTotalWebP,
 		DeltaTotalWebP:    currTotalWebP - baseTotalWebP,

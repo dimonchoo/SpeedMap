@@ -2133,7 +2133,10 @@ function speedMapApp() {
       const files = this.runsDiffResult.files;
       if (!q && f === 'all') return files;
       return files.filter(item => {
-        if (f !== 'all' && item.status !== f) return false;
+        if (f === 'degraded' && item.status !== 'degraded') return false;
+        if (f === 'improved' && item.status !== 'improved') return false;
+        if (f === 'same' && item.status !== 'same') return false;
+        if (f === 'new' && item.status !== 'new' && item.status !== 'removed') return false;
         if (!q) return true;
         return item._search ? item._search.includes(q) : ((item.basename || '') + ' ' + (item.url || '')).toLowerCase().includes(q);
       });
@@ -2197,7 +2200,10 @@ function speedMapApp() {
       const files = this.exportDiffReport.files;
       if (!q && f === 'all') return files;
       return files.filter(item => {
-        if (f !== 'all' && item.status !== f) return false;
+        if (f === 'degraded' && item.status !== 'degraded') return false;
+        if (f === 'improved' && item.status !== 'improved') return false;
+        if (f === 'same' && item.status !== 'same') return false;
+        if (f === 'new' && item.status !== 'new' && item.status !== 'removed') return false;
         if (!q) return true;
         return item._search ? item._search.includes(q) : ((item.basename || '') + ' ' + (item.sourceUrl || '')).toLowerCase().includes(q);
       });

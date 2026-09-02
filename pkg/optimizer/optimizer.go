@@ -337,38 +337,8 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 		return nil, fmt.Errorf("failed to encode to WebP: %w", err)
 	}
 	lossyData := lossyBuf.Bytes()
-	lossyLen := int64(len(lossyData))
 	webpData = lossyData
 	qualityUsed = quality
-
-	// Target-Budget Optimization:
-	// If lossy image compressed well below safe budget (e.g. < 70% of safeBudget),
-	// iteratively test higher quality levels up to 96% to restore crispness without bloating.
-	if adaptive && origSize > 80*1024 && lossyLen < int64(float64(safeBudget)*0.70) && quality < 96 {
-		testQualities := []float32{85.0, 88.0, 91.0, 93.0, 95.0, 96.0}
-		for _, testQ := range testQualities {
-			if testQ <= quality {
-				continue
-			}
-			var highQBuf bytes.Buffer
-			highQOpts := &webp.Options{
-				Lossless: false,
-				Quality:  testQ,
-				Exact:    false,
-			}
-			if err := webp.Encode(&highQBuf, rawImg, highQOpts); err == nil {
-				highQBytes := highQBuf.Bytes()
-				highQLen := int64(len(highQBytes))
-				if highQLen <= safeBudget && highQLen < int64(float64(origSize)*0.60) {
-					webpData = highQBytes
-					lossyData = highQBytes
-					lossyLen = highQLen
-					qualityUsed = testQ
-					adaptiveApplied = true
-				}
-			}
-		}
-	}
 
 	// 2. Adaptive Lossless Evaluation for PNG / Transparent graphics:
 	// Lossless WebP is selected if:

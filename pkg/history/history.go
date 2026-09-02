@@ -330,6 +330,8 @@ type RunsDiffResult struct {
 	DegradedCount     int        `json:"degradedCount"`
 	ImprovedCount     int        `json:"improvedCount"`
 	SameCount         int        `json:"sameCount"`
+	NewCount          int        `json:"newCount"`
+	RemovedCount      int        `json:"removedCount"`
 	BaseTotalBytes    int64      `json:"baseTotalBytes"`
 	CurrentTotalBytes int64      `json:"currentTotalBytes"`
 	DeltaTotalBytes   int64      `json:"deltaTotalBytes"`
@@ -471,7 +473,7 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 	}
 
 	var files []FileDiff
-	var degraded, improved, same int
+	var degraded, improved, same, newCount, removedCount int
 	var baseTotal, currentTotal int64
 
 	for u := range allURLs {
@@ -490,7 +492,6 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 				bBytes = bIm.EncodedSize
 			}
 			origBytes = bBytes
-			baseTotal += bBytes
 		}
 		if hasCurr {
 			cBytes = cIm.TransferSize
@@ -500,8 +501,17 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 			if origBytes == 0 {
 				origBytes = cBytes
 			}
-			currentTotal += cBytes
 		}
+
+		// FILTER OUT DUMMY / UNMEASURED IMAGES:
+		// If neither run transferred this image over the network (0 B in both),
+		// it was never loaded by the browser and should not pollute the diff.
+		if bBytes == 0 && cBytes == 0 {
+			continue
+		}
+
+		baseTotal += bBytes
+		currentTotal += cBytes
 
 		var delta int64
 		status := "same"
@@ -509,26 +519,21 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 
 		if !hasBase && hasCurr {
 			status = "new"
+			newCount++
 			deltaFormatted = "🆕 Новий"
 		} else if hasBase && !hasCurr {
 			status = "removed"
+			removedCount++
 			deltaFormatted = "🗑️ Видалено"
 		} else if bBytes == 0 && cBytes > 0 {
-			// In base run this image was lazy in DOM without network transfer (0 B).
-			// In current run it was loaded over network. It is NOT a file weight regression!
 			status = "new"
+			newCount++
 			deltaFormatted = "🆕 Завантажено"
 		} else if bBytes > 0 && cBytes == 0 {
-			// In current run this image was not transferred over network (0 B lazy).
-			// It is NOT a file weight improvement!
 			status = "removed"
+			removedCount++
 			deltaFormatted = "⏸️ Не завантаж."
-		} else if bBytes == 0 && cBytes == 0 {
-			status = "same"
-			deltaFormatted = "0 B"
-			same++
 		} else {
-			// Both runs have valid measured network transfer sizes
 			delta = cBytes - bBytes
 			if delta > 5*1024 {
 				status = "degraded"
@@ -548,11 +553,11 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 
 		baseFmt := formatKB(bBytes)
 		if bBytes == 0 {
-			baseFmt = "Lazy (0 B)"
+			baseFmt = "—"
 		}
 		currFmt := formatKB(cBytes)
 		if cBytes == 0 {
-			currFmt = "Lazy (0 B)"
+			currFmt = "—"
 		}
 
 		files = append(files, FileDiff{
@@ -570,15 +575,46 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 		})
 	}
 
-	// Sort files: degraded first, then largest delta descending
+	// Priority sorting:
+	// 1. Degraded (largest regression first)
+	// 2. Improved (largest savings first)
+	// 3. New (largest current file size first)
+	// 4. Removed (largest base file size first)
+	// 5. Same (largest file size first)
+	statusRank := func(s string) int {
+		switch s {
+		case "degraded":
+			return 0
+		case "improved":
+			return 1
+		case "new":
+			return 2
+		case "removed":
+			return 3
+		default:
+			return 4
+		}
+	}
+
 	sort.Slice(files, func(i, j int) bool {
-		if files[i].Status == "degraded" && files[j].Status != "degraded" {
-			return true
+		ri := statusRank(files[i].Status)
+		rj := statusRank(files[j].Status)
+		if ri != rj {
+			return ri < rj
 		}
-		if files[i].Status != "degraded" && files[j].Status == "degraded" {
-			return false
+		if files[i].Status == "degraded" {
+			return files[i].DeltaBytes > files[j].DeltaBytes
 		}
-		return files[i].DeltaBytes > files[j].DeltaBytes
+		if files[i].Status == "improved" {
+			return files[i].DeltaBytes < files[j].DeltaBytes
+		}
+		if files[i].Status == "new" {
+			return files[i].CurrentBytes > files[j].CurrentBytes
+		}
+		if files[i].Status == "removed" {
+			return files[i].BaseBytes > files[j].BaseBytes
+		}
+		return files[i].CurrentBytes > files[j].CurrentBytes
 	})
 
 	res := &RunsDiffResult{
@@ -590,6 +626,8 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 		DegradedCount:     degraded,
 		ImprovedCount:     improved,
 		SameCount:         same,
+		NewCount:          newCount,
+		RemovedCount:      removedCount,
 		BaseTotalBytes:    baseTotal,
 		CurrentTotalBytes: currentTotal,
 		DeltaTotalBytes:   currentTotal - baseTotal,
