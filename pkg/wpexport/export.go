@@ -1349,6 +1349,16 @@ func GetExportHistory(domain string) ([]ExportRecord, error) {
 
 	var filtered []ExportRecord
 	cleanDomain := strings.ToLower(strings.TrimSpace(domain))
+	if strings.HasPrefix(cleanDomain, "http://") || strings.HasPrefix(cleanDomain, "https://") {
+		if parsed, err := url.Parse(cleanDomain); err == nil {
+			cleanDomain = strings.ToLower(parsed.Host)
+		}
+	}
+	cleanDomain = strings.TrimPrefix(cleanDomain, "www.")
+	simpleDomain := cleanDomain
+	if dotIdx := strings.Index(simpleDomain, "."); dotIdx != -1 {
+		simpleDomain = simpleDomain[:dotIdx]
+	}
 
 	for i := range records {
 		r := &records[i]
@@ -1356,9 +1366,13 @@ func GetExportHistory(domain string) ([]ExportRecord, error) {
 			r.ExistsOnDisk = true
 		} else {
 			r.ExistsOnDisk = false
+			continue
 		}
 
-		if cleanDomain == "" || strings.Contains(strings.ToLower(r.Domain), cleanDomain) || strings.Contains(strings.ToLower(r.PackageDir), cleanDomain) {
+		rDomain := strings.ToLower(r.Domain)
+		rDir := strings.ToLower(r.PackageDir)
+
+		if cleanDomain == "" || strings.Contains(rDomain, cleanDomain) || strings.Contains(rDir, cleanDomain) || (simpleDomain != "" && (strings.Contains(rDomain, simpleDomain) || strings.Contains(rDir, simpleDomain))) {
 			filtered = append(filtered, *r)
 		}
 	}
@@ -1519,14 +1533,40 @@ func CompareExportPackages(baseManifestPath, currentManifestPath string) (*Expor
 		})
 	}
 
+	statusRank := func(s string) int {
+		switch s {
+		case "degraded":
+			return 0
+		case "improved":
+			return 1
+		case "new":
+			return 2
+		case "removed":
+			return 3
+		default:
+			return 4
+		}
+	}
+
 	sort.Slice(files, func(i, j int) bool {
-		if files[i].Status == "degraded" && files[j].Status != "degraded" {
-			return true
+		ri := statusRank(files[i].Status)
+		rj := statusRank(files[j].Status)
+		if ri != rj {
+			return ri < rj
 		}
-		if files[i].Status != "degraded" && files[j].Status == "degraded" {
-			return false
+		if files[i].Status == "degraded" {
+			return files[i].DeltaBytes > files[j].DeltaBytes
 		}
-		return files[i].DeltaBytes > files[j].DeltaBytes
+		if files[i].Status == "improved" {
+			return files[i].DeltaBytes < files[j].DeltaBytes
+		}
+		if files[i].Status == "new" {
+			return files[i].CurrWebPBytes > files[j].CurrWebPBytes
+		}
+		if files[i].Status == "removed" {
+			return files[i].BaseWebPBytes > files[j].BaseWebPBytes
+		}
+		return files[i].CurrWebPBytes > files[j].CurrWebPBytes
 	})
 
 	baseTime := fmt.Sprintf("%v", baseMeta["generated"])

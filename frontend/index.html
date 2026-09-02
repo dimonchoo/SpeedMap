@@ -177,12 +177,12 @@
             </template>
           </button>
 
-          <button @click="activeTab = 'diff'; loadHistoryRunsForDiff()"
+          <button @click="activeTab = 'diff'; diffViewMode = 'packages'; loadExportHistoryForDiff()"
             :class="activeTab === 'diff' ? 'bg-slate-800 text-fuchsia-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
             class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
             <span>📈 Регресії</span>
-            <template x-if="runsDiffResult && runsDiffResult.degradedCount > 0">
-              <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="runsDiffResult.degradedCount"></span>
+            <template x-if="exportDiffReport && exportDiffReport.degradedCount > 0">
+              <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="exportDiffReport.degradedCount"></span>
             </template>
           </button>
         </nav>

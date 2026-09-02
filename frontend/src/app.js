@@ -2148,13 +2148,20 @@ function speedMapApp() {
         if (window.go?.main?.App?.GetExportHistory) {
           const list = await window.go.main.App.GetExportHistory(domain);
           this.exportRecordsList = list || [];
-          if (this.exportRecordsList.length >= 2 && !this.selectedBaseExportPath) {
-            this.selectedCurrentExportPath = this.exportRecordsList[0].manifestPath;
-            this.selectedBaseExportPath = this.exportRecordsList[1].manifestPath;
+          if (this.exportRecordsList.length >= 2) {
+            const hasCurr = this.exportRecordsList.some(r => r.manifestPath === this.selectedCurrentExportPath);
+            const hasBase = this.exportRecordsList.some(r => r.manifestPath === this.selectedBaseExportPath);
+            if (!this.selectedCurrentExportPath || !hasCurr) {
+              this.selectedCurrentExportPath = this.exportRecordsList[0].manifestPath;
+            }
+            if (!this.selectedBaseExportPath || !hasBase) {
+              this.selectedBaseExportPath = this.exportRecordsList[1].manifestPath;
+            }
             await this.runExportPackageDiff();
-          } else if (this.exportRecordsList.length === 1 && !this.selectedCurrentExportPath) {
+          } else if (this.exportRecordsList.length === 1) {
             this.selectedCurrentExportPath = this.exportRecordsList[0].manifestPath;
             this.selectedBaseExportPath = this.exportRecordsList[0].manifestPath;
+            await this.runExportPackageDiff();
           }
         }
       } catch (e) {
