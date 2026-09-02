@@ -7,6 +7,8 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -217,3 +219,64 @@ func TestGtsBg1GradientOnline(t *testing.T) {
 		t.Errorf("expected >80%% savings for gts-bg1, got %.1f%%", res.SavingsPercent)
 	}
 }
+
+// === Offline Fixture Tests ===
+
+func serveLocalFixture(t *testing.T, fixtureRelPath, contentType string) (*httptest.Server, string) {
+	data, err := os.ReadFile(fixtureRelPath)
+	if err != nil {
+		t.Fatalf("failed to read fixture %s: %v", fixtureRelPath, err)
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.Write(data)
+	}))
+	return ts, ts.URL + "/" + filepath.Base(fixtureRelPath)
+}
+
+func TestOfflineIconLossless(t *testing.T) {
+	ts, url := serveLocalFixture(t, "testdata/icon_transparent.png", "image/png")
+	defer ts.Close()
+
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Fatalf("ConvertImageURLToWebP failed: %v", err)
+	}
+	if !res.IsLossless {
+		t.Errorf("expected small transparent icon to use Lossless WebP, got Lossy (Q=%.1f)", res.QualityUsed)
+	}
+	if res.OptimizedBytes == 0 || res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected optimized size < original size, got opt=%d, orig=%d", res.OptimizedBytes, res.OriginalBytes)
+	}
+}
+
+func TestOfflineLargePhotoPngRoutesToLossy(t *testing.T) {
+	ts, url := serveLocalFixture(t, "testdata/photo_large.png", "image/png")
+	defer ts.Close()
+
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 85, 75, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Fatalf("ConvertImageURLToWebP failed: %v", err)
+	}
+	if res.IsLossless {
+		t.Errorf("expected large photographic PNG to route to Lossy WebP, but got Lossless (%s)", res.OptimizedFormatted)
+	}
+	if res.SavingsPercent < 50.0 {
+		t.Errorf("expected at least 50%% savings on photo PNG, got %.1f%% (%s -> %s)", res.SavingsPercent, res.OriginalFormatted, res.OptimizedFormatted)
+	}
+}
+
+func TestOfflineRetinaResizingProportional(t *testing.T) {
+	ts, url := serveLocalFixture(t, "testdata/photo_sample.jpg", "image/jpeg")
+	defer ts.Close()
+
+	// Original is 1200x800. Request maxRenderedWidth=300, maxRenderedHeight=200 with 2x Retina (600x400)
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 85, 75, true, 100*1024, true, 600, 400, "", "")
+	if err != nil {
+		t.Fatalf("ConvertImageURLToWebP failed: %v", err)
+	}
+	if res.OptimizedWidth != 600 || res.OptimizedHeight != 400 {
+		t.Errorf("expected resized dimensions 600x400, got %dx%d", res.OptimizedWidth, res.OptimizedHeight)
+	}
+}
+
