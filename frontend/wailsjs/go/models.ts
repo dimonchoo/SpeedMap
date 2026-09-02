@@ -347,6 +347,8 @@ export namespace config {
 	    autoPruneHistory?: boolean;
 	    historyRetentionRuns: number;
 	    historyRetentionDays: number;
+	    filterTrackingBeacons?: boolean;
+	    excludedImagePatterns: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ScanConfig(source);
@@ -374,6 +376,8 @@ export namespace config {
 	        this.autoPruneHistory = source["autoPruneHistory"];
 	        this.historyRetentionRuns = source["historyRetentionRuns"];
 	        this.historyRetentionDays = source["historyRetentionDays"];
+	        this.filterTrackingBeacons = source["filterTrackingBeacons"];
+	        this.excludedImagePatterns = source["excludedImagePatterns"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
