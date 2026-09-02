@@ -477,10 +477,39 @@
               </div>
             </div>
 
-            <!-- Progress Bar -->
-            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-              <div class="bg-gradient-to-r from-emerald-500 to-cyan-400 h-2 rounded-full transition-all duration-300"
-                :style="`width: ${progressPercentage}%`"></div>
+            <!-- Progress Bar with Animated Rolling Pokéball -->
+            <div class="w-full relative py-2">
+              <div class="w-full bg-slate-800/90 rounded-full h-2.5 overflow-hidden shadow-inner border border-slate-700/40">
+                <div class="bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 h-full rounded-full transition-all duration-300"
+                  :style="`width: ${progressPercentage}%`"></div>
+              </div>
+
+              <!-- Animated Rolling Pokéball at the tip of progress line -->
+              <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-none transition-all duration-300 z-10 flex items-center justify-center"
+                :style="`left: ${Math.max(1.5, Math.min(98.5, progressPercentage))}%;`">
+                <div class="w-6 h-6 transition-transform duration-300 flex items-center justify-center filter drop-shadow-[0_2px_5px_rgba(0,0,0,0.8)]"
+                  :style="`transform: rotate(${progressPercentage * 14.4}deg);`"
+                  title="Gotta catch 'em all! 🔴⚪">
+                  <svg class="w-full h-full" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Outer Dark Ring -->
+                    <circle cx="16" cy="16" r="15" fill="#0f172a" stroke="#020617" stroke-width="1.5"/>
+                    <!-- Red Top Dome -->
+                    <path d="M 2.2 16 A 13.8 13.8 0 0 1 29.8 16 Z" fill="#ef4444"/>
+                    <!-- Top Dome Highlight reflection -->
+                    <path d="M 6 12 A 11 11 0 0 1 18 4.5 C 13 4.5 8 8 6 12 Z" fill="#fca5a5" opacity="0.6"/>
+                    <!-- White Bottom Dome -->
+                    <path d="M 2.2 16 A 13.8 13.8 0 0 0 29.8 16 Z" fill="#f8fafc"/>
+                    <!-- Black Center Dividing Belt -->
+                    <rect x="2" y="14.2" width="28" height="3.6" fill="#0f172a"/>
+                    <!-- Center Outer Ring -->
+                    <circle cx="16" cy="16" r="5.2" fill="#0f172a"/>
+                    <!-- Center Button White Ring -->
+                    <circle cx="16" cy="16" r="3.4" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+                    <!-- Center Core Lens Button -->
+                    <circle cx="16" cy="16" r="1.8" fill="#38bdf8" />
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
         </template>
@@ -3566,10 +3595,31 @@
         </div>
 
         <div class="space-y-2">
-          <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800 p-0.5">
-            <div class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-500 h-full rounded-full transition-all duration-150"
-              :style="'width: ' + (exportProgress?.percent || 0) + '%'"></div>
+          <div class="w-full relative py-2">
+            <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800 p-0.5">
+              <div class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-500 h-full rounded-full transition-all duration-150"
+                :style="'width: ' + (exportProgress?.percent || 0) + '%'"></div>
+            </div>
+
+            <!-- Animated Rolling Pokéball for WebP Export -->
+            <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-none transition-all duration-150 z-10 flex items-center justify-center"
+              :style="'left: ' + Math.max(2, Math.min(98, exportProgress?.percent || 0)) + '%;'">
+              <div class="w-6 h-6 transition-transform duration-150 flex items-center justify-center filter drop-shadow-[0_2px_6px_rgba(0,0,0,0.8)]"
+                :style="'transform: rotate(' + ((exportProgress?.percent || 0) * 14.4) + 'deg);'">
+                <svg class="w-full h-full" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="16" cy="16" r="15" fill="#0f172a" stroke="#020617" stroke-width="1.5"/>
+                  <path d="M 2.2 16 A 13.8 13.8 0 0 1 29.8 16 Z" fill="#ef4444"/>
+                  <path d="M 6 12 A 11 11 0 0 1 18 4.5 C 13 4.5 8 8 6 12 Z" fill="#fca5a5" opacity="0.6"/>
+                  <path d="M 2.2 16 A 13.8 13.8 0 0 0 29.8 16 Z" fill="#f8fafc"/>
+                  <rect x="2" y="14.2" width="28" height="3.6" fill="#0f172a"/>
+                  <circle cx="16" cy="16" r="5.2" fill="#0f172a"/>
+                  <circle cx="16" cy="16" r="3.4" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+                  <circle cx="16" cy="16" r="1.8" fill="#38bdf8"/>
+                </svg>
+              </div>
+            </div>
           </div>
+
           <div class="flex items-center justify-between text-xs font-mono text-slate-400 px-1">
             <span x-text="(exportProgress?.current || 0) + ' / ' + (exportProgress?.total || 0) + ' зображень'"></span>
             <span class="text-emerald-400 font-bold" x-text="(exportProgress?.percent || 0) + '%'"></span>
@@ -3604,10 +3654,27 @@
         </button>
       </div>
 
-      <!-- Mini progress bar -->
-      <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
-        <div class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-500 h-full rounded-full transition-all duration-150"
-          :style="'width: ' + (exportProgress?.percent || 0) + '%'"></div>
+      <!-- Mini progress bar with mini rolling Pokéball -->
+      <div class="w-full relative py-1.5">
+        <div class="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
+          <div class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-500 h-full rounded-full transition-all duration-150"
+            :style="'width: ' + (exportProgress?.percent || 0) + '%'"></div>
+        </div>
+
+        <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-none transition-all duration-150 z-10"
+          :style="'left: ' + Math.max(3, Math.min(97, exportProgress?.percent || 0)) + '%;'">
+          <div class="w-4 h-4 flex items-center justify-center filter drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
+            :style="'transform: rotate(' + ((exportProgress?.percent || 0) * 14.4) + 'deg);'">
+            <svg class="w-full h-full" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="16" cy="16" r="15" fill="#0f172a"/>
+              <path d="M 2.2 16 A 13.8 13.8 0 0 1 29.8 16 Z" fill="#ef4444"/>
+              <path d="M 2.2 16 A 13.8 13.8 0 0 0 29.8 16 Z" fill="#f8fafc"/>
+              <rect x="2" y="14" width="28" height="4" fill="#0f172a"/>
+              <circle cx="16" cy="16" r="5" fill="#0f172a"/>
+              <circle cx="16" cy="16" r="3" fill="#ffffff"/>
+            </svg>
+          </div>
+        </div>
       </div>
 
       <div class="flex items-center justify-between text-[11px] font-mono text-slate-400">
