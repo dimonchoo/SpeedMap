@@ -270,6 +270,29 @@ func TestHeroBgStaysLossy(t *testing.T) {
 	}
 }
 
+func TestCswCover1QualityStepUp(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2022/07/csw-cover1.png"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("csw-cover1 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+
+	// Must step up quality from base 80 to 95 to restore studio-grade crispness
+	if res.QualityUsed < 95.0 {
+		t.Errorf("expected csw-cover1 to step up quality to 95, got Q=%.1f", res.QualityUsed)
+	}
+	// Must remain safely under budget (<= 85 KB)
+	if res.OptimizedBytes > 85*1024 {
+		t.Errorf("expected csw-cover1 to remain within safe budget (<=85KB), got %s", res.OptimizedFormatted)
+	}
+	// Must still have strong savings (> 90%)
+	if res.SavingsPercent < 90.0 {
+		t.Errorf("expected csw-cover1 savings > 90%%, got %.1f%%", res.SavingsPercent)
+	}
+}
+
 // === Offline Fixture Tests ===
 
 func serveLocalFixture(t *testing.T, fixtureRelPath, contentType string) (*httptest.Server, string) {
