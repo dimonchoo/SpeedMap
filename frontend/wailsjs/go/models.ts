@@ -476,6 +476,8 @@ export namespace history {
 	    degradedCount: number;
 	    improvedCount: number;
 	    sameCount: number;
+	    newCount: number;
+	    removedCount: number;
 	    baseTotalBytes: number;
 	    currentTotalBytes: number;
 	    deltaTotalBytes: number;
@@ -495,6 +497,8 @@ export namespace history {
 	        this.degradedCount = source["degradedCount"];
 	        this.improvedCount = source["improvedCount"];
 	        this.sameCount = source["sameCount"];
+	        this.newCount = source["newCount"];
+	        this.removedCount = source["removedCount"];
 	        this.baseTotalBytes = source["baseTotalBytes"];
 	        this.currentTotalBytes = source["currentTotalBytes"];
 	        this.deltaTotalBytes = source["deltaTotalBytes"];
@@ -1277,6 +1281,8 @@ export namespace wpexport {
 	    degradedCount: number;
 	    improvedCount: number;
 	    sameCount: number;
+	    newCount: number;
+	    removedCount: number;
 	    baseTotalWebp: number;
 	    currentTotalWebp: number;
 	    deltaTotalWebp: number;
@@ -1296,6 +1302,8 @@ export namespace wpexport {
 	        this.degradedCount = source["degradedCount"];
 	        this.improvedCount = source["improvedCount"];
 	        this.sameCount = source["sameCount"];
+	        this.newCount = source["newCount"];
+	        this.removedCount = source["removedCount"];
 	        this.baseTotalWebp = source["baseTotalWebp"];
 	        this.currentTotalWebp = source["currentTotalWebp"];
 	        this.deltaTotalWebp = source["deltaTotalWebp"];

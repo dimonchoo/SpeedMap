@@ -148,6 +148,9 @@
             <template x-if="siteAnalytics && siteAnalytics.totalImageCount > 0">
               <span class="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px]" x-text="siteAnalytics.totalImageCount"></span>
             </template>
+            <template x-if="exportDiffReport && exportDiffReport.degradedCount > 0">
+              <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" title="Виявлено регресії" x-text="'🔴 ' + exportDiffReport.degradedCount"></span>
+            </template>
           </button>
 
           <button @click="activeTab = 'fonts'; updateAnalytics()"
@@ -174,15 +177,6 @@
             <span>📝 Форми</span>
             <template x-if="siteAnalytics && siteAnalytics.totalFormsCount > 0">
               <span class="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 text-[10px]" x-text="siteAnalytics.totalFormsCount"></span>
-            </template>
-          </button>
-
-          <button @click="activeTab = 'diff'; diffViewMode = 'packages'; loadExportHistoryForDiff()"
-            :class="activeTab === 'diff' ? 'bg-slate-800 text-fuchsia-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
-            <span>📈 Регресії</span>
-            <template x-if="exportDiffReport && exportDiffReport.degradedCount > 0">
-              <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="exportDiffReport.degradedCount"></span>
             </template>
           </button>
         </nav>
@@ -988,8 +982,41 @@
         <!-- VIEW 3: IMAGE OPTIMIZATION & COMPARISON HUB (SEOAEO-235) -->
         <template x-if="activeTab === 'images'">
           <div class="flex-1 overflow-y-auto p-6 space-y-6">
-            
-            <template x-if="!siteAnalytics">
+
+            <!-- Sub-Navigation for Images Hub: Catalog vs Regressions & Diff -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div class="flex items-center space-x-2 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+                <button @click="imageSectionTab = 'catalog'"
+                  :class="imageSectionTab === 'catalog' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-slate-400 hover:text-slate-200 border border-transparent'"
+                  class="px-3.5 py-1.5 rounded-lg transition flex items-center space-x-2">
+                  <span>🖼️ Каталог та Аналіз</span>
+                  <template x-if="siteAnalytics && siteAnalytics.totalImageCount > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300 text-[10px]" x-text="siteAnalytics.totalImageCount"></span>
+                  </template>
+                </button>
+                <button @click="imageSectionTab = 'diff'; diffViewMode = 'packages'; loadExportHistoryForDiff()"
+                  :class="imageSectionTab === 'diff' ? 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30' : 'text-slate-400 hover:text-slate-200 border border-transparent'"
+                  class="px-3.5 py-1.5 rounded-lg transition flex items-center space-x-2">
+                  <span>📈 Порівняння регресій (Diff)</span>
+                  <template x-if="exportDiffReport && exportDiffReport.degradedCount > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="exportDiffReport.degradedCount"></span>
+                  </template>
+                </button>
+              </div>
+
+              <!-- Quick summary badge when in Diff mode -->
+              <template x-if="imageSectionTab === 'diff' && exportDiffReport">
+                <div class="flex items-center space-x-3 text-xs font-mono">
+                  <span class="text-slate-400">Файлів: <strong class="text-slate-200" x-text="exportDiffReport.totalFiles"></strong></span>
+                  <span class="text-emerald-400">Покращень: <strong x-text="exportDiffReport.improvedCount"></strong></span>
+                  <span class="text-rose-400">Регресій: <strong x-text="exportDiffReport.degradedCount"></strong></span>
+                </div>
+              </template>
+            </div>
+
+            <!-- SUB-TAB 1: Catalog & Analytics -->
+            <div x-show="imageSectionTab === 'catalog'" class="space-y-6">
+              <template x-if="!siteAnalytics">
               <div class="h-full flex flex-col items-center justify-center text-slate-500 space-y-3 py-16">
                 <svg class="w-14 h-14 text-slate-700 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
@@ -1293,8 +1320,338 @@
 
               </div>
             </template>
+            </div>
 
+            <!-- SUB-TAB 2: Runs Diff & Regression Tracker -->
+            <div x-show="imageSectionTab === 'diff'" class="space-y-6">
+              <div class="space-y-6">
+            <!-- Header Bar with Mode Toggle & Pickers -->
+            <div class="bg-slate-950/80 rounded-2xl border border-slate-800 shadow-xl p-5 space-y-4">
+              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div class="flex items-center space-x-3">
+                    <h2 class="text-base font-bold text-slate-100 flex items-center space-x-2">
+                      <span class="text-fuchsia-400">📈</span>
+                      <span>Порівняння прогонів та Детектор регресій</span>
+                    </h2>
+                    <!-- View Mode Switcher -->
+                    <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                      <button @click="diffViewMode = 'packages'; loadExportHistoryForDiff()"
+                        :class="diffViewMode === 'packages' ? 'bg-fuchsia-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'"
+                        class="px-3 py-1 rounded-lg transition">
+                        📦 Пакети експорту (на диску)
+                      </button>
+                      <button @click="diffViewMode = 'runs'; loadHistoryRunsForDiff()"
+                        :class="diffViewMode === 'runs' ? 'bg-fuchsia-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'"
+                        class="px-3 py-1 rounded-lg transition">
+                        📊 Сканування сайту
+                      </button>
+                    </div>
+                  </div>
+                  <p class="text-xs text-slate-400 mt-1" x-text="diffViewMode === 'packages' ? 'Пофайлове зіставлення розміру та пошук регресій між збереженими пакетами WebP на диску' : 'Порівняння реального мережевого трафіку зображень між прогонами сканування сайту (lazy-load зображення без передачі не вважаються регресією)'"></p>
+                </div>
 
+                <!-- MODE 1: EXPORT PACKAGES PICKER -->
+                <template x-if="diffViewMode === 'packages'">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                      <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
+                      <select x-model="selectedBaseExportPath" @change="runExportPackageDiff()"
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono max-w-[220px] truncate">
+                        <template x-for="p in exportRecordsList" :key="p.manifestPath">
+                          <option :value="p.manifestPath" x-text="`${p.id} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
+                        </template>
+                      </select>
+                      <button @click="browseBaseExportFolder()" title="Обрати іншу папку через Finder"
+                        class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 text-xs transition">📁</button>
+                    </div>
+
+                    <span class="text-slate-500 font-bold">➔</span>
+
+                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                      <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
+                      <select x-model="selectedCurrentExportPath" @change="runExportPackageDiff()"
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono max-w-[220px] truncate">
+                        <template x-for="p in exportRecordsList" :key="p.manifestPath">
+                          <option :value="p.manifestPath" x-text="`${p.id} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
+                        </template>
+                      </select>
+                      <button @click="browseCurrentExportFolder()" title="Обрати іншу папку через Finder"
+                        class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 text-xs transition">📁</button>
+                    </div>
+
+                    <button @click="runExportPackageDiff()" :disabled="isLoadingDiff"
+                      class="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-lg shadow-fuchsia-600/20">
+                      <span :class="isLoadingDiff ? 'animate-spin' : ''">🔄</span>
+                      <span>Порівняти</span>
+                    </button>
+                  </div>
+                </template>
+
+                <!-- MODE 2: SCAN RUNS PICKER -->
+                <template x-if="diffViewMode === 'runs'">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                      <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
+                      <select x-model="selectedBaseRunId" @change="runComparisonDiff()"
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                        <template x-for="r in historyRunsList" :key="r.id">
+                          <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
+                        </template>
+                      </select>
+                    </div>
+
+                    <span class="text-slate-500 font-bold">➔</span>
+
+                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+                      <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
+                      <select x-model="selectedCurrentRunId" @change="runComparisonDiff()"
+                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
+                        <template x-for="r in historyRunsList" :key="r.id">
+                          <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
+                        </template>
+                      </select>
+                    </div>
+
+                    <button @click="runComparisonDiff()" :disabled="isLoadingDiff"
+                      class="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-lg shadow-fuchsia-600/20">
+                      <span :class="isLoadingDiff ? 'animate-spin' : ''">🔄</span>
+                      <span>Порівняти</span>
+                    </button>
+                  </div>
+                </template>
+              </div>
+
+              <!-- Summary Stat Cards -->
+              <template x-if="(diffViewMode === 'packages' && exportDiffReport) || (diffViewMode === 'runs' && runsDiffResult)">
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-2 border-t border-slate-800/80">
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80">
+                    <div class="text-[11px] text-slate-400 font-medium">Всього файлів</div>
+                    <div class="text-lg font-bold font-mono text-slate-100 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.totalFiles : runsDiffResult.totalFiles"></div>
+                  </div>
+
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-rose-500/20 bg-rose-500/5">
+                    <div class="text-[11px] text-rose-400 font-medium flex items-center space-x-1">
+                      <span>🔴 Регресії (+розмір)</span>
+                    </div>
+                    <div class="text-lg font-bold font-mono text-rose-400 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.degradedCount : runsDiffResult.degradedCount"></div>
+                  </div>
+
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-emerald-500/20 bg-emerald-500/5">
+                    <div class="text-[11px] text-emerald-400 font-medium flex items-center space-x-1">
+                      <span>🟢 Покращення (-розмір)</span>
+                    </div>
+                    <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.improvedCount : runsDiffResult.improvedCount"></div>
+                  </div>
+
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-cyan-500/20 bg-cyan-500/5">
+                    <div class="text-[11px] text-cyan-400 font-medium flex items-center space-x-1">
+                      <span>🆕 Нові / Змінені</span>
+                    </div>
+                    <div class="text-lg font-bold font-mono text-cyan-400 mt-0.5" x-text="diffViewMode === 'packages' ? (exportDiffReport.newCount || 0) : (runsDiffResult.newCount || 0)"></div>
+                  </div>
+
+                  <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80">
+                    <div class="text-[11px] text-slate-400 font-medium">Загальна дельта ваги</div>
+                    <div class="text-lg font-bold font-mono mt-0.5"
+                      :class="(diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) > 0 ? 'text-rose-400' : 'text-emerald-400'"
+                      x-text="`${(diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) > 0 ? '+' : ''}${((diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) / 1024 / 1024).toFixed(2)} MB`"></div>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Toolbar Filters & Search -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+              <div class="flex flex-wrap items-center gap-2">
+                <button @click="runsDiffFilter = 'all'"
+                  :class="runsDiffFilter === 'all' ? 'bg-slate-800 text-fuchsia-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition">
+                  Всі файли
+                </button>
+                <button @click="runsDiffFilter = 'degraded'"
+                  :class="runsDiffFilter === 'degraded' ? 'bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30' : 'text-slate-400 hover:text-rose-400'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
+                  <span>🔴 Тільки регресії</span>
+                  <template x-if="(diffViewMode === 'packages' ? exportDiffReport?.degradedCount : runsDiffResult?.degradedCount) > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px]" x-text="diffViewMode === 'packages' ? exportDiffReport.degradedCount : runsDiffResult.degradedCount"></span>
+                  </template>
+                </button>
+                <button @click="runsDiffFilter = 'improved'"
+                  :class="runsDiffFilter === 'improved' ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-emerald-400'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
+                  <span>🟢 Тільки покращення</span>
+                  <template x-if="(diffViewMode === 'packages' ? exportDiffReport?.improvedCount : runsDiffResult?.improvedCount) > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px]" x-text="diffViewMode === 'packages' ? exportDiffReport.improvedCount : runsDiffResult.improvedCount"></span>
+                  </template>
+                </button>
+                <button @click="runsDiffFilter = 'new'"
+                  :class="runsDiffFilter === 'new' ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/30' : 'text-slate-400 hover:text-cyan-400'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
+                  <span>🆕 Нові / Змінені</span>
+                  <template x-if="(diffViewMode === 'packages' ? (exportDiffReport?.newCount || 0) : (runsDiffResult?.newCount || 0)) > 0">
+                    <span class="px-1.5 py-0.2 rounded-full bg-cyan-500/30 text-cyan-300 text-[10px]" x-text="diffViewMode === 'packages' ? exportDiffReport.newCount : runsDiffResult.newCount"></span>
+                  </template>
+                </button>
+                <button @click="runsDiffFilter = 'same'"
+                  :class="runsDiffFilter === 'same' ? 'bg-slate-800 text-slate-200 font-bold' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-3 py-1.5 rounded-lg text-xs transition">
+                  ⚪ Без змін
+                </button>
+              </div>
+
+              <div class="relative w-full sm:w-72">
+                <input type="text" x-model="runsDiffSearch" placeholder="🔍 Пошук по назві або URL..."
+                  class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-fuchsia-500">
+              </div>
+            </div>
+
+            <!-- Top Pagination Bar (Visible immediately without scrolling) -->
+            <div x-show="diffTotalItems > 0" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1 text-xs text-slate-400">
+              <div class="flex items-center space-x-2">
+                <span>Показано</span>
+                <span class="font-bold text-slate-200" x-text="((diffCurrentPage - 1) * diffPageSize) + 1"></span>
+                <span>–</span>
+                <span class="font-bold text-slate-200" x-text="Math.min(diffCurrentPage * diffPageSize, diffTotalItems)"></span>
+                <span>з</span>
+                <span class="font-bold text-fuchsia-400 font-mono" x-text="diffTotalItems"></span>
+                <span>файлів</span>
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <span class="text-[11px] text-slate-400">На сторінці:</span>
+                <select x-model.number="diffPageSize" @change="diffCurrentPage = 1"
+                  class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 outline-none text-xs font-mono">
+                  <option :value="50">50</option>
+                  <option :value="100">100</option>
+                  <option :value="200">200</option>
+                </select>
+
+                <div class="flex items-center space-x-1">
+                  <button @click="diffCurrentPage = 1" :disabled="diffCurrentPage === 1"
+                    :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                    class="px-2 py-0.5 rounded border border-slate-700 font-mono text-xs">«</button>
+                  <button @click="prevDiffPage()" :disabled="diffCurrentPage === 1"
+                    :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                    class="px-2 py-0.5 rounded border border-slate-700 font-mono text-xs">‹</button>
+                  <span class="px-1.5 text-slate-300 font-mono text-xs">
+                    <span class="font-bold text-slate-100" x-text="diffCurrentPage"></span>/<span class="font-bold text-slate-100" x-text="diffTotalPages"></span>
+                  </span>
+                  <button @click="nextDiffPage()" :disabled="diffCurrentPage >= diffTotalPages"
+                    :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                    class="px-2 py-0.5 rounded border border-slate-700 font-mono text-xs">›</button>
+                  <button @click="diffCurrentPage = diffTotalPages" :disabled="diffCurrentPage >= diffTotalPages"
+                    :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                    class="px-2 py-0.5 rounded border border-slate-700 font-mono text-xs">»</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Table of File Diffs -->
+            <div class="bg-slate-950/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+              <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-semibold z-10">
+                    <tr>
+                      <th class="p-3 w-12 text-center">#</th>
+                      <th class="p-3">Файл / Посилання</th>
+                      <th class="p-3 text-right" x-text="diffViewMode === 'packages' ? 'Базовий WebP' : 'Базовий розмір'"></th>
+                      <th class="p-3 text-right" x-text="diffViewMode === 'packages' ? 'Поточний WebP' : 'Поточний розмір'"></th>
+                      <th class="p-3 text-right">Різниця (Дельта)</th>
+                      <th class="p-3 text-center w-28">Статус</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60 font-mono">
+                    <template x-if="activeDiffFiles.length === 0">
+                      <tr>
+                        <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+                          Файлів за обраним фільтром не знайдено.
+                        </td>
+                      </tr>
+                    </template>
+
+                    <template x-for="(file, idx) in paginatedDiffFiles" :key="file.url || file.sourceUrl">
+                      <tr class="hover:bg-slate-900/50 transition">
+                        <td class="p-3 text-center text-slate-600" x-text="((diffCurrentPage - 1) * diffPageSize) + idx + 1"></td>
+                        <td class="p-3 font-sans">
+                          <a :href="file.url || file.sourceUrl" target="_blank" class="font-bold text-slate-200 hover:text-fuchsia-400 truncate block max-w-lg underline" x-text="file.basename"></a>
+                          <div class="text-[10px] text-slate-500 font-mono truncate max-w-lg mt-0.5" x-text="file.url || file.sourceUrl"></div>
+                        </td>
+                        <td class="p-3 text-right text-slate-300" x-text="diffViewMode === 'packages' ? file.baseWebpFormatted : file.baseFormatted"></td>
+                        <td class="p-3 text-right font-bold text-slate-100" x-text="diffViewMode === 'packages' ? file.currWebpFormatted : file.currentFormatted"></td>
+                        <td class="p-3 text-right">
+                          <span class="px-2 py-0.5 rounded-full font-bold text-[11px]"
+                            :class="file.status === 'degraded' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : (file.status === 'improved' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (file.status === 'new' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-400'))"
+                            x-text="file.deltaFormatted"></span>
+                        </td>
+                        <td class="p-3 text-center font-sans">
+                          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                            :class="file.status === 'degraded' ? 'bg-rose-500/10 text-rose-400' : (file.status === 'improved' ? 'bg-emerald-500/10 text-emerald-400' : (file.status === 'new' ? 'bg-cyan-500/10 text-cyan-400' : (file.status === 'removed' ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-800 text-slate-500')))"
+                            x-text="file.status === 'degraded' ? '🔴 Регресія' : (file.status === 'improved' ? '🟢 Краще' : (file.status === 'new' ? '🆕 Новий' : (file.status === 'removed' ? '⏸️ Не завантаж.' : '⚪ Норма')))"></span>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Pagination Controls -->
+              <div x-show="diffTotalItems > 0" class="p-3 bg-slate-900/90 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div class="flex items-center space-x-2 text-slate-400">
+                  <span>Показано</span>
+                  <span class="font-bold text-slate-200" x-text="((diffCurrentPage - 1) * diffPageSize) + 1"></span>
+                  <span>–</span>
+                  <span class="font-bold text-slate-200" x-text="Math.min(diffCurrentPage * diffPageSize, diffTotalItems)"></span>
+                  <span>з</span>
+                  <span class="font-bold text-fuchsia-400 font-mono" x-text="diffTotalItems"></span>
+                  <span>файлів</span>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                  <!-- Page Size Selector -->
+                  <div class="flex items-center space-x-1.5 mr-2">
+                    <span class="text-slate-400 text-[11px]">На сторінці:</span>
+                    <select x-model.number="diffPageSize" @change="diffCurrentPage = 1"
+                      class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 outline-none text-xs font-mono">
+                      <option :value="50">50</option>
+                      <option :value="100">100</option>
+                      <option :value="200">200</option>
+                    </select>
+                  </div>
+
+                  <!-- Page Navigation -->
+                  <div class="flex items-center space-x-1">
+                    <button @click="diffCurrentPage = 1" :disabled="diffCurrentPage === 1"
+                      :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
+                      «
+                    </button>
+                    <button @click="prevDiffPage()" :disabled="diffCurrentPage === 1"
+                      :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
+                      ‹
+                    </button>
+                    
+                    <span class="px-2 text-slate-400 font-mono">
+                      Стор. <span class="font-bold text-slate-100" x-text="diffCurrentPage"></span> з <span class="font-bold text-slate-100" x-text="diffTotalPages"></span>
+                    </span>
+
+                    <button @click="nextDiffPage()" :disabled="diffCurrentPage >= diffTotalPages"
+                      :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
+                      ›
+                    </button>
+                    <button @click="diffCurrentPage = diffTotalPages" :disabled="diffCurrentPage >= diffTotalPages"
+                      :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
+                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
+                      »
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+            </div>
           </div>
         </template>
 
@@ -2059,338 +2416,7 @@
           </div>
         </template>
 
-        <!-- ========================================== -->
-        <!-- TAB 7: RUNS DIFF & REGRESSION TRACKER      -->
-        <!-- ========================================== -->
-        <template x-if="activeTab === 'diff'">
-          <div class="space-y-6">
-            <!-- Header Bar with Mode Toggle & Pickers -->
-            <div class="bg-slate-950/80 rounded-2xl border border-slate-800 shadow-xl p-5 space-y-4">
-              <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <div class="flex items-center space-x-3">
-                    <h2 class="text-base font-bold text-slate-100 flex items-center space-x-2">
-                      <span class="text-fuchsia-400">📈</span>
-                      <span>Порівняння прогонів та Детектор регресій</span>
-                    </h2>
-                    <!-- View Mode Switcher -->
-                    <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
-                      <button @click="diffViewMode = 'packages'; loadExportHistoryForDiff()"
-                        :class="diffViewMode === 'packages' ? 'bg-fuchsia-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'"
-                        class="px-3 py-1 rounded-lg transition">
-                        📦 Пакети експорту (на диску)
-                      </button>
-                      <button @click="diffViewMode = 'runs'; loadHistoryRunsForDiff()"
-                        :class="diffViewMode === 'runs' ? 'bg-fuchsia-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'"
-                        class="px-3 py-1 rounded-lg transition">
-                        📊 Сканування сайту
-                      </button>
-                    </div>
-                  </div>
-                  <p class="text-xs text-slate-400 mt-1" x-text="diffViewMode === 'packages' ? 'Пофайлове зіставлення розміру та пошук регресій між збереженими пакетами WebP на диску' : 'Порівняння реального мережевого трафіку зображень між прогонами сканування сайту (lazy-load зображення без передачі не вважаються регресією)'"></p>
-                </div>
-
-                <!-- MODE 1: EXPORT PACKAGES PICKER -->
-                <template x-if="diffViewMode === 'packages'">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-                      <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
-                      <select x-model="selectedBaseExportPath" @change="runExportPackageDiff()"
-                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono max-w-[220px] truncate">
-                        <template x-for="p in exportRecordsList" :key="p.manifestPath">
-                          <option :value="p.manifestPath" x-text="`${p.id} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
-                        </template>
-                      </select>
-                      <button @click="browseBaseExportFolder()" title="Обрати іншу папку через Finder"
-                        class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 text-xs transition">📁</button>
-                    </div>
-
-                    <span class="text-slate-500 font-bold">➔</span>
-
-                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-                      <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
-                      <select x-model="selectedCurrentExportPath" @change="runExportPackageDiff()"
-                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono max-w-[220px] truncate">
-                        <template x-for="p in exportRecordsList" :key="p.manifestPath">
-                          <option :value="p.manifestPath" x-text="`${p.id} (${p.imageCount} WebP, ${(p.optimizedBytes/1024/1024).toFixed(1)} MB)`"></option>
-                        </template>
-                      </select>
-                      <button @click="browseCurrentExportFolder()" title="Обрати іншу папку через Finder"
-                        class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 text-xs transition">📁</button>
-                    </div>
-
-                    <button @click="runExportPackageDiff()" :disabled="isLoadingDiff"
-                      class="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-lg shadow-fuchsia-600/20">
-                      <span :class="isLoadingDiff ? 'animate-spin' : ''">🔄</span>
-                      <span>Порівняти</span>
-                    </button>
-                  </div>
-                </template>
-
-                <!-- MODE 2: SCAN RUNS PICKER -->
-                <template x-if="diffViewMode === 'runs'">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-                      <span class="text-[11px] font-bold text-slate-400 uppercase">Базовий:</span>
-                      <select x-model="selectedBaseRunId" @change="runComparisonDiff()"
-                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
-                        <template x-for="r in historyRunsList" :key="r.id">
-                          <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
-                        </template>
-                      </select>
-                    </div>
-
-                    <span class="text-slate-500 font-bold">➔</span>
-
-                    <div class="flex items-center space-x-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-                      <span class="text-[11px] font-bold text-slate-400 uppercase">Поточний:</span>
-                      <select x-model="selectedCurrentRunId" @change="runComparisonDiff()"
-                        class="bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 px-2 py-1 outline-none focus:border-fuchsia-500 font-mono">
-                        <template x-for="r in historyRunsList" :key="r.id">
-                          <option :value="r.id" x-text="`${r.formattedTime} (${r.totalUrls} стор, ${r.totalImages || 0} медіа)`"></option>
-                        </template>
-                      </select>
-                    </div>
-
-                    <button @click="runComparisonDiff()" :disabled="isLoadingDiff"
-                      class="px-3.5 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 active:bg-fuchsia-700 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-lg shadow-fuchsia-600/20">
-                      <span :class="isLoadingDiff ? 'animate-spin' : ''">🔄</span>
-                      <span>Порівняти</span>
-                    </button>
-                  </div>
-                </template>
-              </div>
-
-              <!-- Summary Stat Cards -->
-              <template x-if="(diffViewMode === 'packages' && exportDiffReport) || (diffViewMode === 'runs' && runsDiffResult)">
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-2 border-t border-slate-800/80">
-                  <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80">
-                    <div class="text-[11px] text-slate-400 font-medium">Всього файлів</div>
-                    <div class="text-lg font-bold font-mono text-slate-100 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.totalFiles : runsDiffResult.totalFiles"></div>
-                  </div>
-
-                  <div class="bg-slate-900/90 rounded-xl p-3 border border-rose-500/20 bg-rose-500/5">
-                    <div class="text-[11px] text-rose-400 font-medium flex items-center space-x-1">
-                      <span>🔴 Регресії (+розмір)</span>
-                    </div>
-                    <div class="text-lg font-bold font-mono text-rose-400 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.degradedCount : runsDiffResult.degradedCount"></div>
-                  </div>
-
-                  <div class="bg-slate-900/90 rounded-xl p-3 border border-emerald-500/20 bg-emerald-500/5">
-                    <div class="text-[11px] text-emerald-400 font-medium flex items-center space-x-1">
-                      <span>🟢 Покращення (-розмір)</span>
-                    </div>
-                    <div class="text-lg font-bold font-mono text-emerald-400 mt-0.5" x-text="diffViewMode === 'packages' ? exportDiffReport.improvedCount : runsDiffResult.improvedCount"></div>
-                  </div>
-
-                  <div class="bg-slate-900/90 rounded-xl p-3 border border-cyan-500/20 bg-cyan-500/5">
-                    <div class="text-[11px] text-cyan-400 font-medium flex items-center space-x-1">
-                      <span>🆕 Нові / Змінені</span>
-                    </div>
-                    <div class="text-lg font-bold font-mono text-cyan-400 mt-0.5" x-text="diffViewMode === 'packages' ? (exportDiffReport.newCount || 0) : (runsDiffResult.newCount || 0)"></div>
-                  </div>
-
-                  <div class="bg-slate-900/90 rounded-xl p-3 border border-slate-800/80">
-                    <div class="text-[11px] text-slate-400 font-medium">Загальна дельта ваги</div>
-                    <div class="text-lg font-bold font-mono mt-0.5"
-                      :class="(diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) > 0 ? 'text-rose-400' : 'text-emerald-400'"
-                      x-text="`${(diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) > 0 ? '+' : ''}${((diffViewMode === 'packages' ? exportDiffReport.deltaTotalWebp : runsDiffResult.deltaTotalBytes) / 1024 / 1024).toFixed(2)} MB`"></div>
-                  </div>
-                </div>
-              </template>
-            </div>
-
-            <!-- Toolbar Filters & Search -->
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
-              <div class="flex flex-wrap items-center gap-2">
-                <button @click="runsDiffFilter = 'all'"
-                  :class="runsDiffFilter === 'all' ? 'bg-slate-800 text-fuchsia-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-                  class="px-3 py-1.5 rounded-lg text-xs transition">
-                  Всі файли
-                </button>
-                <button @click="runsDiffFilter = 'degraded'"
-                  :class="runsDiffFilter === 'degraded' ? 'bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30' : 'text-slate-400 hover:text-rose-400'"
-                  class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
-                  <span>🔴 Тільки регресії</span>
-                  <template x-if="(diffViewMode === 'packages' ? exportDiffReport?.degradedCount : runsDiffResult?.degradedCount) > 0">
-                    <span class="px-1.5 py-0.2 rounded-full bg-rose-500/30 text-rose-300 text-[10px]" x-text="diffViewMode === 'packages' ? exportDiffReport.degradedCount : runsDiffResult.degradedCount"></span>
-                  </template>
-                </button>
-                <button @click="runsDiffFilter = 'improved'"
-                  :class="runsDiffFilter === 'improved' ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30' : 'text-slate-400 hover:text-emerald-400'"
-                  class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
-                  <span>🟢 Тільки покращення</span>
-                  <template x-if="(diffViewMode === 'packages' ? exportDiffReport?.improvedCount : runsDiffResult?.improvedCount) > 0">
-                    <span class="px-1.5 py-0.2 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px]" x-text="diffViewMode === 'packages' ? exportDiffReport.improvedCount : runsDiffResult.improvedCount"></span>
-                  </template>
-                </button>
-                <button @click="runsDiffFilter = 'new'"
-                  :class="runsDiffFilter === 'new' ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/30' : 'text-slate-400 hover:text-cyan-400'"
-                  class="px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1">
-                  <span>🆕 Нові / Змінені</span>
-                  <template x-if="(diffViewMode === 'packages' ? (exportDiffReport?.newCount || 0) : (runsDiffResult?.newCount || 0)) > 0">
-                    <span class="px-1.5 py-0.2 rounded-full bg-cyan-500/30 text-cyan-300 text-[10px]" x-text="diffViewMode === 'packages' ? exportDiffReport.newCount : runsDiffResult.newCount"></span>
-                  </template>
-                </button>
-                <button @click="runsDiffFilter = 'same'"
-                  :class="runsDiffFilter === 'same' ? 'bg-slate-800 text-slate-200 font-bold' : 'text-slate-400 hover:text-slate-200'"
-                  class="px-3 py-1.5 rounded-lg text-xs transition">
-                  ⚪ Без змін
-                </button>
-              </div>
-
-              <div class="relative w-full sm:w-72">
-                <input type="text" x-model="runsDiffSearch" placeholder="🔍 Пошук по назві або URL..."
-                  class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-fuchsia-500">
-              </div>
-            </div>
-
-            <!-- Top Pagination Bar (Visible immediately without scrolling) -->
-            <div x-show="diffTotalItems > 0" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1 text-xs text-slate-400">
-              <div class="flex items-center space-x-2">
-                <span>Показано</span>
-                <span class="font-bold text-slate-200" x-text="((diffCurrentPage - 1) * diffPageSize) + 1"></span>
-                <span>–</span>
-                <span class="font-bold text-slate-200" x-text="Math.min(diffCurrentPage * diffPageSize, diffTotalItems)"></span>
-                <span>з</span>
-                <span class="font-bold text-fuchsia-400 font-mono" x-text="diffTotalItems"></span>
-                <span>файлів</span>
-              </div>
-
-              <div class="flex items-center space-x-2">
-                <span class="text-[11px] text-slate-400">На сторінці:</span>
-                <select x-model.number="diffPageSize" @change="diffCurrentPage = 1"
-                  class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 outline-none text-xs font-mono">
-                  <option :value="50">50</option>
-                  <option :value="100">100</option>
-                  <option :value="200">200</option>
-                </select>
-
-                <div class="flex items-center space-x-1">
-                  <button @click="diffCurrentPage = 1" :disabled="diffCurrentPage === 1"
-                    :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                    class="px-2 py-0.5 rounded border border-slate-700 font-mono text-xs">«</button>
-                  <button @click="prevDiffPage()" :disabled="diffCurrentPage === 1"
-                    :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                    class="px-2 py-0.5 rounded border border-slate-700 font-mono text-xs">‹</button>
-                  <span class="px-1.5 text-slate-300 font-mono text-xs">
-                    <span class="font-bold text-slate-100" x-text="diffCurrentPage"></span>/<span class="font-bold text-slate-100" x-text="diffTotalPages"></span>
-                  </span>
-                  <button @click="nextDiffPage()" :disabled="diffCurrentPage >= diffTotalPages"
-                    :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                    class="px-2 py-0.5 rounded border border-slate-700 font-mono text-xs">›</button>
-                  <button @click="diffCurrentPage = diffTotalPages" :disabled="diffCurrentPage >= diffTotalPages"
-                    :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                    class="px-2 py-0.5 rounded border border-slate-700 font-mono text-xs">»</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Table of File Diffs -->
-            <div class="bg-slate-950/80 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-              <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
-                <table class="w-full text-left border-collapse text-xs">
-                  <thead class="sticky top-0 bg-slate-900 border-b border-slate-800 text-slate-400 font-semibold z-10">
-                    <tr>
-                      <th class="p-3 w-12 text-center">#</th>
-                      <th class="p-3">Файл / Посилання</th>
-                      <th class="p-3 text-right" x-text="diffViewMode === 'packages' ? 'Базовий WebP' : 'Базовий розмір'"></th>
-                      <th class="p-3 text-right" x-text="diffViewMode === 'packages' ? 'Поточний WebP' : 'Поточний розмір'"></th>
-                      <th class="p-3 text-right">Різниця (Дельта)</th>
-                      <th class="p-3 text-center w-28">Статус</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-800/60 font-mono">
-                    <template x-if="activeDiffFiles.length === 0">
-                      <tr>
-                        <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
-                          Файлів за обраним фільтром не знайдено.
-                        </td>
-                      </tr>
-                    </template>
-
-                    <template x-for="(file, idx) in paginatedDiffFiles" :key="file.url || file.sourceUrl">
-                      <tr class="hover:bg-slate-900/50 transition">
-                        <td class="p-3 text-center text-slate-600" x-text="((diffCurrentPage - 1) * diffPageSize) + idx + 1"></td>
-                        <td class="p-3 font-sans">
-                          <a :href="file.url || file.sourceUrl" target="_blank" class="font-bold text-slate-200 hover:text-fuchsia-400 truncate block max-w-lg underline" x-text="file.basename"></a>
-                          <div class="text-[10px] text-slate-500 font-mono truncate max-w-lg mt-0.5" x-text="file.url || file.sourceUrl"></div>
-                        </td>
-                        <td class="p-3 text-right text-slate-300" x-text="diffViewMode === 'packages' ? file.baseWebpFormatted : file.baseFormatted"></td>
-                        <td class="p-3 text-right font-bold text-slate-100" x-text="diffViewMode === 'packages' ? file.currWebpFormatted : file.currentFormatted"></td>
-                        <td class="p-3 text-right">
-                          <span class="px-2 py-0.5 rounded-full font-bold text-[11px]"
-                            :class="file.status === 'degraded' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : (file.status === 'improved' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (file.status === 'new' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-400'))"
-                            x-text="file.deltaFormatted"></span>
-                        </td>
-                        <td class="p-3 text-center font-sans">
-                          <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider"
-                            :class="file.status === 'degraded' ? 'bg-rose-500/10 text-rose-400' : (file.status === 'improved' ? 'bg-emerald-500/10 text-emerald-400' : (file.status === 'new' ? 'bg-cyan-500/10 text-cyan-400' : (file.status === 'removed' ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-800 text-slate-500')))"
-                            x-text="file.status === 'degraded' ? '🔴 Регресія' : (file.status === 'improved' ? '🟢 Краще' : (file.status === 'new' ? '🆕 Новий' : (file.status === 'removed' ? '⏸️ Не завантаж.' : '⚪ Норма')))"></span>
-                        </td>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- Pagination Controls -->
-              <div x-show="diffTotalItems > 0" class="p-3 bg-slate-900/90 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div class="flex items-center space-x-2 text-slate-400">
-                  <span>Показано</span>
-                  <span class="font-bold text-slate-200" x-text="((diffCurrentPage - 1) * diffPageSize) + 1"></span>
-                  <span>–</span>
-                  <span class="font-bold text-slate-200" x-text="Math.min(diffCurrentPage * diffPageSize, diffTotalItems)"></span>
-                  <span>з</span>
-                  <span class="font-bold text-fuchsia-400 font-mono" x-text="diffTotalItems"></span>
-                  <span>файлів</span>
-                </div>
-
-                <div class="flex items-center space-x-2">
-                  <!-- Page Size Selector -->
-                  <div class="flex items-center space-x-1.5 mr-2">
-                    <span class="text-slate-400 text-[11px]">На сторінці:</span>
-                    <select x-model.number="diffPageSize" @change="diffCurrentPage = 1"
-                      class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 outline-none text-xs font-mono">
-                      <option :value="50">50</option>
-                      <option :value="100">100</option>
-                      <option :value="200">200</option>
-                    </select>
-                  </div>
-
-                  <!-- Page Navigation -->
-                  <div class="flex items-center space-x-1">
-                    <button @click="diffCurrentPage = 1" :disabled="diffCurrentPage === 1"
-                      :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-                      «
-                    </button>
-                    <button @click="prevDiffPage()" :disabled="diffCurrentPage === 1"
-                      :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-                      ‹
-                    </button>
-                    
-                    <span class="px-2 text-slate-400 font-mono">
-                      Стор. <span class="font-bold text-slate-100" x-text="diffCurrentPage"></span> з <span class="font-bold text-slate-100" x-text="diffTotalPages"></span>
-                    </span>
-
-                    <button @click="nextDiffPage()" :disabled="diffCurrentPage >= diffTotalPages"
-                      :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-                      ›
-                    </button>
-                    <button @click="diffCurrentPage = diffTotalPages" :disabled="diffCurrentPage >= diffTotalPages"
-                      :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-                      »
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </template>
+        
       </section>
 
     </main>
@@ -3515,20 +3541,28 @@
       </div>
     </div>
 
-    <!-- Live WebP Export Progress Modal Overlay -->
-    <div x-show="isExportingWPApply" x-cloak
+    <!-- Live WebP Export Progress: Full Modal (when not minimized) -->
+    <div x-show="isExportingWPApply && !exportProgressMinimized" x-cloak
       x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
       x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
       class="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
       
-      <div class="bg-slate-900 border border-emerald-500/40 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 text-center space-y-4">
+      <div class="bg-slate-900 border border-emerald-500/40 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 text-center space-y-4 relative">
+        <!-- Minimize button in modal corner -->
+        <button @click="exportProgressMinimized = true"
+          class="absolute top-4 right-4 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition flex items-center space-x-1.5 border border-slate-700"
+          title="Згорнути у фоновий плаваючий віджет">
+          <span>Згорнути</span>
+          <span>🔽</span>
+        </button>
+
         <div class="w-14 h-14 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-2xl animate-pulse shadow-lg shadow-emerald-500/10 border border-emerald-500/30">
           ⚡
         </div>
         
         <div>
           <h3 class="text-base font-bold text-slate-100">Генерація WebP релізу</h3>
-          <p class="text-xs text-slate-400 mt-1 truncate max-w-xs mx-auto" x-text="exportProgress?.filename ? 'Файл: ' + exportProgress.filename : 'Конвертація важких зображень...'"></p>
+          <p class="text-xs text-slate-400 mt-1 truncate max-w-xs mx-auto font-mono" x-text="exportProgress?.filename ? 'Файл: ' + exportProgress.filename : 'Конвертація важких зображень...'"></p>
         </div>
 
         <div class="space-y-2">
@@ -3542,7 +3576,43 @@
           </div>
         </div>
         
-        <p class="text-[11px] text-slate-500">Завантаження та паралельне стиснення в 32 потоки</p>
+        <div class="flex items-center justify-between pt-1 text-[11px]">
+          <span class="text-slate-500">Паралельне стиснення в 32 потоки</span>
+          <button @click="exportProgressMinimized = true" class="text-emerald-400 hover:underline font-semibold">
+            Переглядати таблиці у фоні ➔
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live WebP Export Progress: Minimized Floating Widget (bottom right, non-blocking) -->
+    <div x-show="isExportingWPApply && exportProgressMinimized" x-cloak
+      x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-4 scale-95" x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+      x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0 scale-100" x-transition:leave-end="opacity-0 translate-y-4 scale-95"
+      class="fixed bottom-6 right-6 z-[99999] bg-slate-900/95 border border-emerald-500/50 rounded-2xl shadow-2xl shadow-emerald-500/20 backdrop-blur-xl p-4 w-96 space-y-2 text-left">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <span class="text-emerald-400 animate-pulse text-sm">⚡</span>
+          <span class="text-xs font-bold text-slate-200">Експорт WebP у фоні</span>
+          <span class="text-xs font-mono font-extrabold text-emerald-400" x-text="(exportProgress?.percent || 0) + '%'"></span>
+        </div>
+        <button @click="exportProgressMinimized = false"
+          class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold transition flex items-center space-x-1 border border-slate-700"
+          title="Розгорнути модальне вікно">
+          <span>Розгорнути</span>
+          <span>⤢</span>
+        </button>
+      </div>
+
+      <!-- Mini progress bar -->
+      <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+        <div class="bg-gradient-to-r from-emerald-500 via-teal-400 to-sky-500 h-full rounded-full transition-all duration-150"
+          :style="'width: ' + (exportProgress?.percent || 0) + '%'"></div>
+      </div>
+
+      <div class="flex items-center justify-between text-[11px] font-mono text-slate-400">
+        <span class="truncate max-w-[210px]" x-text="exportProgress?.filename || 'Обробка...'"></span>
+        <span class="shrink-0 text-slate-300 font-bold" x-text="(exportProgress?.current || 0) + ' / ' + (exportProgress?.total || 0)"></span>
       </div>
     </div>
 

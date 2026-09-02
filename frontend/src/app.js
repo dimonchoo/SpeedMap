@@ -154,8 +154,10 @@ function speedMapApp() {
 
 
     selectedImageComparison: null, // { url, conversionResult, isConverting, error }
+    imageSectionTab: 'catalog', // 'catalog' | 'diff'
     isBatchDownloadingZIP: false,
     isExportingWPApply: false,
+    exportProgressMinimized: false,
     exportProgress: null,
     showWPPathModal: false,
     wpPathInput: '/var/www/site',
@@ -1857,6 +1859,7 @@ function speedMapApp() {
       } finally {
         this.isExportingWPApply = false;
         this.exportProgress = null;
+        this.exportProgressMinimized = false;
       }
     },
 
