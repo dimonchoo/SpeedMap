@@ -210,7 +210,10 @@ func TestGtsBg1GradientOnline(t *testing.T) {
 	}
 	t.Logf("gts-bg1 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
 		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
-	if !res.IsLossless {
-		t.Errorf("expected gts-bg1 to use Lossless to prevent banding lines")
+	if res.OptimizedBytes > 100*1024 {
+		t.Errorf("expected gts-bg1 to optimize to <100KB, got %s", res.OptimizedFormatted)
+	}
+	if res.SavingsPercent < 80.0 {
+		t.Errorf("expected >80%% savings for gts-bg1, got %.1f%%", res.SavingsPercent)
 	}
 }

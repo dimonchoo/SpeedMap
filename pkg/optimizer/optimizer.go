@@ -326,9 +326,55 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 
 	var webpData []byte
 
-	// 1. Adaptive Lossless vs Lossy Evaluation:
-	// Lossless WebP is ideal for UI graphics, icons, and smooth vector gradients to prevent color banding.
-	// For large photographic PNGs, Lossy WebP is preferred when it provides drastically better compression (e.g. 20KB vs 1.5MB).
+	// 1. Compute Base Lossy WebP with quality parameter
+	var lossyBuf bytes.Buffer
+	lossyOpts := &webp.Options{
+		Lossless: false,
+		Quality:  quality,
+		Exact:    false,
+	}
+	if err := webp.Encode(&lossyBuf, rawImg, lossyOpts); err != nil {
+		return nil, fmt.Errorf("failed to encode to WebP: %w", err)
+	}
+	lossyData := lossyBuf.Bytes()
+	lossyLen := int64(len(lossyData))
+	webpData = lossyData
+	qualityUsed = quality
+
+	// Target-Budget Optimization:
+	// If lossy image compressed well below safe budget (e.g. < 70% of safeBudget),
+	// iteratively test higher quality levels up to 96% to restore crispness without bloating.
+	if adaptive && origSize > 80*1024 && lossyLen < int64(float64(safeBudget)*0.70) && quality < 96 {
+		testQualities := []float32{85.0, 88.0, 91.0, 93.0, 95.0, 96.0}
+		for _, testQ := range testQualities {
+			if testQ <= quality {
+				continue
+			}
+			var highQBuf bytes.Buffer
+			highQOpts := &webp.Options{
+				Lossless: false,
+				Quality:  testQ,
+				Exact:    false,
+			}
+			if err := webp.Encode(&highQBuf, rawImg, highQOpts); err == nil {
+				highQBytes := highQBuf.Bytes()
+				highQLen := int64(len(highQBytes))
+				if highQLen <= safeBudget && highQLen < int64(float64(origSize)*0.60) {
+					webpData = highQBytes
+					lossyData = highQBytes
+					lossyLen = highQLen
+					qualityUsed = testQ
+					adaptiveApplied = true
+				}
+			}
+		}
+	}
+
+	// 2. Adaptive Lossless Evaluation for PNG / Transparent graphics:
+	// Lossless WebP is selected if:
+	// 2. Adaptive Lossless Evaluation for PNG / Transparent graphics:
+	// Lossless WebP is selected if it fits comfortably within safe budget (<= 85KB)
+	// and is smaller than original (icons, badges, UI assets, transparent logos).
 	if (formatName == "png" || isTransparent) && adaptive {
 		var losslessBuf bytes.Buffer
 		losslessOpts := &webp.Options{
@@ -338,21 +384,8 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 		if err := webp.Encode(&losslessBuf, rawImg, losslessOpts); err == nil {
 			losslessBytes := losslessBuf.Bytes()
 			losslessLen := int64(len(losslessBytes))
-			isGradient := isSmoothGradientOrUI(rawImg)
 
-			// Use Lossless if:
-			// A) It fits comfortably within safe budget (<= 85KB) AND is smaller than original (icons, badges, UI elements)
-			// B) OR it is a smooth vector gradient banner (<= 650KB) to eliminate banding lines
-			shouldUseLossless := false
-			if losslessLen < origSize {
-				if losslessLen <= safeBudget {
-					shouldUseLossless = true
-				} else if isGradient && losslessLen <= 650*1024 {
-					shouldUseLossless = true
-				}
-			}
-
-			if shouldUseLossless {
+			if losslessLen < origSize && losslessLen <= safeBudget {
 				webpData = losslessBytes
 				isLossless = true
 				adaptiveApplied = true
@@ -360,52 +393,6 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 			}
 		}
 	}
-
-	// 2. Photographic / General Lossy WebP with Target-Budget Optimization
-	if len(webpData) == 0 {
-		var webpBuf bytes.Buffer
-		opts := &webp.Options{
-			Lossless: false,
-			Quality:  quality,
-			Exact:    false,
-		}
-		if err := webp.Encode(&webpBuf, rawImg, opts); err != nil {
-			return nil, fmt.Errorf("failed to encode to WebP: %w", err)
-		}
-		webpData = webpBuf.Bytes()
-		qualityUsed = quality
-
-		// Target-Budget Optimization:
-		// If image compressed to a size well below our safe budget (e.g. < 70% of safeBudget),
-		// we iteratively test higher quality levels up to 96% to restore fine details,
-		// crisp gradients, and remove compression artifacts while remaining strictly within budget.
-		if adaptive && origSize > 80*1024 && int64(len(webpData)) < int64(float64(safeBudget)*0.70) && quality < 96 {
-			testQualities := []float32{85.0, 88.0, 91.0, 93.0, 95.0, 96.0}
-			for _, testQ := range testQualities {
-				if testQ <= quality {
-					continue
-				}
-				var highQBuf bytes.Buffer
-				highQOpts := &webp.Options{
-					Lossless: false,
-					Quality:  testQ,
-					Exact:    false,
-				}
-				if err := webp.Encode(&highQBuf, rawImg, highQOpts); err == nil {
-					highQBytes := highQBuf.Bytes()
-					highQLen := int64(len(highQBytes))
-					// Ensure we don't breach the safeBudget or drop below 40% savings
-					if highQLen <= safeBudget && highQLen < int64(float64(origSize)*0.60) {
-						webpData = highQBytes
-						qualityUsed = testQ
-						adaptiveApplied = true
-					} else {
-						// Exceeded budget or savings floor, stop ascending
-						break
-					}
-				}
-			}
-		}
 
 		// Safety Guarantee: WebP output must NEVER be larger than the original asset.
 		// If initial quality results in WebP >= origSize, step down quality towards minQuality (e.g. 80%).
@@ -432,7 +419,6 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 				}
 			}
 		}
-	}
 
 	webpSize := int64(len(webpData))
 	isSkipped := false
