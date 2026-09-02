@@ -1258,9 +1258,42 @@ function speedMapApp() {
           list = list.filter(f => f.engine && f.engine.toLowerCase().includes(target));
         }
       }
-
       list.sort((a, b) => (b.pageCount || 0) - (a.pageCount || 0));
       return list;
+    },
+
+    downloadFileBlob(filename, content, mimeType = 'text/plain;charset=utf-8;') {
+      const blob = new Blob([content], { type: mimeType });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    },
+
+    async exportPagesCSV() {
+      if (!this.scanResults || this.scanResults.length === 0) {
+        this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
+        return;
+      }
+      let csv = "URL,Title,Status Code,Response Time (ms),DOM Size (KB),Grade,LCP (s),CLS,FID (ms)\n";
+      this.scanResults.forEach(p => {
+        const url = `"${(p.url || '').replace(/"/g, '""')}"`;
+        const title = `"${(p.title || '').replace(/"/g, '""')}"`;
+        const status = p.statusCode || 0;
+        const respTime = p.responseTimeMs || 0;
+        const domSize = p.contentLength ? (p.contentLength / 1024).toFixed(1) : '0';
+        const grade = p.webVitals?.grade || 'N/A';
+        const lcp = p.webVitals?.lcp ? (p.webVitals.lcp / 1000).toFixed(2) : '0';
+        const cls = p.webVitals?.cls ? p.webVitals.cls.toFixed(3) : '0';
+        const fid = p.webVitals?.fid ? p.webVitals.fid.toFixed(0) : '0';
+        csv += `${url},${title},${status},${respTime},${domSize},${grade},${lcp},${cls},${fid}\n`;
+      });
+
+      this.downloadFileBlob(`speedmap_pages_report_${Date.now()}.csv`, csv, 'text/csv;charset=utf-8;');
+      this.showToast('success', 'CSV сторінок завантажено 🟢', 'Збережено у Завантаження');
     },
 
     openFormDetailModal(form) {
@@ -1311,13 +1344,7 @@ function speedMapApp() {
         console.warn("Native CSV save dialog fallback:", e);
       }
 
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `speedmap_forms_report_${Date.now()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      this.downloadFileBlob(`speedmap_forms_report_${Date.now()}.csv`, csv, 'text/csv;charset=utf-8;');
       this.showToast('success', 'CSV завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
 
@@ -1328,12 +1355,8 @@ function speedMapApp() {
       }
       const pageFormsData = {
         summary: {
-          totalFormsScanned: this.siteAnalytics?.totalFormsCount || 0,
-          pagesWithForms: this.siteAnalytics?.pagesWithFormsCount || 0,
-          captchaProtectedCount: this.siteAnalytics?.captchaProtectedCount || 0,
-          unprotectedFormsCount: this.siteAnalytics?.unprotectedFormsCount || 0,
-          fileUploadFormsCount: this.siteAnalytics?.fileUploadFormsCount || 0,
-          engineBreakdown: this.siteAnalytics?.formEngineBreakdown || {},
+          totalUniqueForms: this.siteAnalytics?.totalFormCount || (this.siteAnalytics?.forms || []).length,
+          pagesWithForms: this.pageFormsList.filter(p => p.formCount > 0).length,
           exportedAt: new Date().toISOString()
         },
         aggregatedForms: this.siteAnalytics?.forms || [],
@@ -1359,13 +1382,7 @@ function speedMapApp() {
         console.warn("Native JSON save dialog fallback:", e);
       }
 
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
-      const link = document.createElement('a');
-      link.setAttribute('href', dataStr);
-      link.setAttribute('download', `speedmap_forms_report_${Date.now()}.json`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      this.downloadFileBlob(`speedmap_forms_report_${Date.now()}.json`, jsonStr, 'application/json;charset=utf-8;');
       this.showToast('success', 'JSON завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
 
@@ -1449,17 +1466,9 @@ function speedMapApp() {
         console.warn("Native CSV save dialog fallback:", e);
       }
 
-      // Browser fallback (saves to ~/Downloads)
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `speedmap_page_fonts_report_${Date.now()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      this.downloadFileBlob(`speedmap_page_fonts_report_${Date.now()}.csv`, csv, 'text/csv;charset=utf-8;');
       this.showToast('success', 'CSV завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
-
 
     async exportFontsJSON() {
       if (!this.scanResults || this.scanResults.length === 0) {
@@ -1487,13 +1496,7 @@ function speedMapApp() {
         console.warn("Native JSON save dialog fallback:", e);
       }
 
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
-      const link = document.createElement('a');
-      link.setAttribute('href', dataStr);
-      link.setAttribute('download', `speedmap_page_fonts_report_${Date.now()}.json`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      this.downloadFileBlob(`speedmap_page_fonts_report_${Date.now()}.json`, jsonStr, 'application/json;charset=utf-8;');
       this.showToast('success', 'JSON завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
 
@@ -1537,14 +1540,7 @@ function speedMapApp() {
         console.warn("Native CSV save dialog fallback:", e);
       }
 
-      // Browser fallback (saves to ~/Downloads)
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.setAttribute('download', `speedmap_iframes_report_${Date.now()}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      this.downloadFileBlob(`speedmap_iframes_report_${Date.now()}.csv`, csv, 'text/csv;charset=utf-8;');
       this.showToast('success', 'CSV завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
 
@@ -1586,13 +1582,7 @@ function speedMapApp() {
         console.warn("Native JSON save dialog fallback:", e);
       }
 
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
-      const link = document.createElement('a');
-      link.setAttribute('href', dataStr);
-      link.setAttribute('download', `speedmap_iframes_report_${Date.now()}.json`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      this.downloadFileBlob(`speedmap_iframes_report_${Date.now()}.json`, jsonStr, 'application/json;charset=utf-8;');
       this.showToast('success', 'JSON завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
 

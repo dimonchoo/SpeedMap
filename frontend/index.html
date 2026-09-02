@@ -581,8 +581,18 @@
                 </template>
               </div>
 
-              <div class="text-xs text-slate-400">
-                Клікніть рядок для деталей або 🔄 для пріоритетної перевірки
+              <div class="flex items-center space-x-3">
+                <button @click="exportPagesCSV()" :disabled="scanResults.length === 0"
+                  class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
+                  title="Експорт результатів сторінок у CSV файл">
+                  <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  <span>Експорт CSV</span>
+                </button>
+                <div class="hidden lg:block text-xs text-slate-400">
+                  Клікніть рядок для деталей або 🔄 для пріоритетної перевірки
+                </div>
               </div>
             </div>
 
@@ -1216,15 +1226,34 @@
                     </button>
                   </div>
 
-                  <div class="flex items-center space-x-3 w-full md:w-auto shrink-0">
-                    <input type="text" x-model="imageSearchQuery" placeholder="Пошук зображень..."
-                      class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 w-full md:w-48 font-mono">
+                  <div class="flex items-center flex-wrap gap-3 w-full md:w-auto shrink-0">
+                    <!-- Standard Search Input -->
+                    <div class="relative flex items-center flex-1 md:flex-initial">
+                      <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                      </div>
+                      <input type="text" x-model="imageSearchQuery" @input="updateFilteredImages()" @keydown.escape="imageSearchQuery = ''; updateFilteredImages()"
+                        placeholder="Пошук зображень..."
+                        class="bg-slate-900 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none w-48 sm:w-60 font-mono transition shadow-inner">
+                      <template x-if="imageSearchQuery">
+                        <button @click="imageSearchQuery = ''; updateFilteredImages()" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-200 text-xs font-bold" title="Очистити">✕</button>
+                      </template>
+                    </div>
 
-                    <select x-model="imageSortKey" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                    <!-- Matched Count Badge -->
+                    <template x-if="imageSearchQuery || imageFilterTab !== 'all'">
+                      <span class="text-[11px] px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-800/50 font-mono shrink-0">
+                        Знайдено: <strong x-text="filteredImages.length"></strong> з <span x-text="siteAnalytics?.allImages?.length || 0"></span>
+                      </span>
+                    </template>
+
+                    <select x-model="imageSortKey" @change="updateFilteredImages()" class="bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-sans">
                       <option value="size">Сортувати: За розміром</option>
                       <option value="savings">Сортувати: За економією</option>
-                      <option value="duration">Сортувати: За часом завантаження</option>
-                      <option value="pages">Сортувати: За к-стю сторінок</option>
+                      <option value="duration">Сортувати: За часом</option>
+                      <option value="pages">Сортувати: За сторінками</option>
                     </select>
                   </div>
 
@@ -1312,12 +1341,12 @@
                   </table>
                 </div>
 
-                <!-- High-Performance Pagination Bar -->
+                <!-- Standard Reusable Pagination Bar -->
                 <template x-if="filteredImages.length > 0">
-                  <div class="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                  <div class="px-6 py-3 bg-slate-950 border-t border-slate-800 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
                     <div>
-                      Показано <span class="font-bold text-amber-400" x-text="filteredImages.length > 0 ? ((imagePage - 1) * imagePerPage + 1) : 0"></span> - 
-                      <span class="font-bold text-amber-400" x-text="Math.min(imagePage * imagePerPage, filteredImages.length)"></span> з 
+                      Показано <span class="font-bold text-cyan-400" x-text="filteredImages.length > 0 ? ((imagePage - 1) * imagePerPage + 1) : 0"></span> - 
+                      <span class="font-bold text-cyan-400" x-text="Math.min(imagePage * imagePerPage, filteredImages.length)"></span> з 
                       <span class="font-bold text-slate-100" x-text="filteredImages.length"></span> зображень
                     </div>
 
@@ -1336,7 +1365,7 @@
                         Наступна ►
                       </button>
 
-                      <select x-model.number="imagePerPage" @change="imagePage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                      <select x-model.number="imagePerPage" @change="imagePage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-sans">
                         <option value="25">25 / стор.</option>
                         <option value="50">50 / стор.</option>
                         <option value="100">100 / стор.</option>
@@ -1529,9 +1558,17 @@
                 </button>
               </div>
 
-              <div class="relative w-full sm:w-72">
-                <input type="text" x-model="runsDiffSearch" placeholder="🔍 Пошук по назві або URL..."
-                  class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-fuchsia-500">
+              <div class="relative flex items-center w-full sm:w-72">
+                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                </div>
+                <input type="text" x-model="runsDiffSearch" @keydown.escape="runsDiffSearch = ''" placeholder="Пошук по назві або URL..."
+                  class="w-full bg-slate-900 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono transition shadow-inner">
+                <template x-if="runsDiffSearch">
+                  <button @click="runsDiffSearch = ''" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-200 text-xs font-bold" title="Очистити">✕</button>
+                </template>
               </div>
             </div>
 
@@ -1624,58 +1661,36 @@
                 </table>
               </div>
 
-              <!-- Pagination Controls -->
-              <div x-show="diffTotalItems > 0" class="p-3 bg-slate-900/90 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div class="flex items-center space-x-2 text-slate-400">
-                  <span>Показано</span>
-                  <span class="font-bold text-slate-200" x-text="((diffCurrentPage - 1) * diffPageSize) + 1"></span>
-                  <span>–</span>
-                  <span class="font-bold text-slate-200" x-text="Math.min(diffCurrentPage * diffPageSize, diffTotalItems)"></span>
-                  <span>з</span>
-                  <span class="font-bold text-fuchsia-400 font-mono" x-text="diffTotalItems"></span>
-                  <span>файлів</span>
+              <!-- Standard Reusable Pagination Bar -->
+              <div x-show="diffTotalItems > 0" class="px-6 py-3 bg-slate-950 border-t border-slate-800 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                <div>
+                  Показано <span class="font-bold text-cyan-400" x-text="diffTotalItems > 0 ? (((diffCurrentPage - 1) * diffPageSize) + 1) : 0"></span> - 
+                  <span class="font-bold text-cyan-400" x-text="Math.min(diffCurrentPage * diffPageSize, diffTotalItems)"></span> з 
+                  <span class="font-bold text-slate-100" x-text="diffTotalItems"></span> файлів
                 </div>
 
                 <div class="flex items-center space-x-2">
-                  <!-- Page Size Selector -->
-                  <div class="flex items-center space-x-1.5 mr-2">
-                    <span class="text-slate-400 text-[11px]">На сторінці:</span>
-                    <select x-model.number="diffPageSize" @change="diffCurrentPage = 1"
-                      class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-slate-200 outline-none text-xs font-mono">
-                      <option :value="50">50</option>
-                      <option :value="100">100</option>
-                      <option :value="200">200</option>
-                    </select>
-                  </div>
+                  <button @click="prevDiffPage()" :disabled="diffCurrentPage === 1"
+                    class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                    ◄ Попередня
+                  </button>
 
-                  <!-- Page Navigation -->
-                  <div class="flex items-center space-x-1">
-                    <button @click="diffCurrentPage = 1" :disabled="diffCurrentPage === 1"
-                      :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-                      «
-                    </button>
-                    <button @click="prevDiffPage()" :disabled="diffCurrentPage === 1"
-                      :class="diffCurrentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-                      ‹
-                    </button>
-                    
-                    <span class="px-2 text-slate-400 font-mono">
-                      Стор. <span class="font-bold text-slate-100" x-text="diffCurrentPage"></span> з <span class="font-bold text-slate-100" x-text="diffTotalPages"></span>
-                    </span>
+                  <span class="px-2 font-bold text-slate-200">
+                    Стор. <span x-text="diffCurrentPage"></span> / <span x-text="diffTotalPages"></span>
+                  </span>
 
-                    <button @click="nextDiffPage()" :disabled="diffCurrentPage >= diffTotalPages"
-                      :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-                      ›
-                    </button>
-                    <button @click="diffCurrentPage = diffTotalPages" :disabled="diffCurrentPage >= diffTotalPages"
-                      :class="diffCurrentPage >= diffTotalPages ? 'opacity-30 cursor-not-allowed text-slate-500' : 'text-slate-300 hover:bg-slate-800'"
-                      class="px-2.5 py-1 rounded-lg border border-slate-700 font-mono">
-                      »
-                    </button>
-                  </div>
+                  <button @click="nextDiffPage()" :disabled="diffCurrentPage >= diffTotalPages"
+                    class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                    Наступна ►
+                  </button>
+
+                  <select x-model.number="diffPageSize" @change="diffCurrentPage = 1"
+                    class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-sans">
+                    <option :value="25">25 / стор.</option>
+                    <option :value="50">50 / стор.</option>
+                    <option :value="100">100 / стор.</option>
+                    <option :value="250">250 / стор.</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -1713,30 +1728,49 @@
                   </button>
                 </div>
 
-                <!-- Export Action Buttons -->
+                <!-- Standard Export Action Buttons -->
                 <div class="flex items-center space-x-2 shrink-0">
                   <button @click="exportFontsCSV()" :disabled="!siteAnalytics || !siteAnalytics.fontUsage || siteAnalytics.fontUsage.length === 0"
-                    class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                    <span>📊 Експорт CSV</span>
+                    class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                    <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <span>Експорт CSV</span>
                   </button>
                   <button @click="exportFontsJSON()" :disabled="!siteAnalytics || !siteAnalytics.fontUsage || siteAnalytics.fontUsage.length === 0"
-                    class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                    <span>📑 Експорт JSON</span>
+                    class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                    <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    <span>Експорт JSON</span>
                   </button>
                   <button @click="uploadFontsToGDrive()" :disabled="!siteAnalytics || !siteAnalytics.fontUsage || siteAnalytics.fontUsage.length === 0 || isUploadingGDrive"
-                    class="bg-cyan-700 hover:bg-cyan-600 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                    <span x-show="!isUploadingGDrive">☁️ На Google Drive</span>
-                    <span x-show="isUploadingGDrive">Вивантаження...</span>
+                    class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                    <span x-show="!isUploadingGDrive">☁️ Google Drive</span>
+                    <span x-show="isUploadingGDrive" class="flex items-center space-x-1">
+                      <svg class="animate-spin h-3 w-3 text-cyan-400" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Вивантаження...</span>
+                    </span>
                   </button>
                 </div>
               </div>
 
               <!-- Search and Filter Controls -->
               <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                <div class="relative flex-1 w-full sm:max-w-md">
-                  <input type="text" x-model="fontSearchQuery" placeholder="Пошук за назвою шрифту (Inter, Roboto, FontAwesome)..."
-                    class="w-full bg-slate-900 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-sans">
-                  <span class="absolute left-3 top-2.5 text-slate-500">🔍</span>
+                <div class="relative flex items-center flex-1 w-full sm:max-w-md">
+                  <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                  </div>
+                  <input type="text" x-model="fontSearchQuery" @keydown.escape="fontSearchQuery = ''" placeholder="Пошук за назвою шрифту (Inter, Roboto, FontAwesome)..."
+                    class="w-full bg-slate-900 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono transition shadow-inner">
+                  <template x-if="fontSearchQuery">
+                    <button @click="fontSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-200 text-xs font-bold" title="Очистити">✕</button>
+                  </template>
                 </div>
 
                 <div class="flex items-center space-x-2 w-full sm:w-auto justify-end overflow-x-auto">
@@ -1808,12 +1842,12 @@
                   </div>
                 </template>
 
-                <!-- Font Hub Pagination Bar -->
+                <!-- Standard Reusable Pagination Bar -->
                 <template x-if="pageFontsList.length > 0">
-                  <div class="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                  <div class="px-6 py-3 bg-slate-950 border-t border-slate-800 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
                     <div>
-                      Показано <span class="font-bold text-amber-400" x-text="pageFontsList.length > 0 ? ((fontPage - 1) * fontPerPage + 1) : 0"></span> - 
-                      <span class="font-bold text-amber-400" x-text="Math.min(fontPage * fontPerPage, pageFontsList.length)"></span> з 
+                      Показано <span class="font-bold text-cyan-400" x-text="pageFontsList.length > 0 ? ((fontPage - 1) * fontPerPage + 1) : 0"></span> - 
+                      <span class="font-bold text-cyan-400" x-text="Math.min(fontPage * fontPerPage, pageFontsList.length)"></span> з 
                       <span class="font-bold text-slate-100" x-text="pageFontsList.length"></span> сторінок
                     </div>
 
@@ -1832,10 +1866,11 @@
                         Наступна ►
                       </button>
 
-                      <select x-model.number="fontPerPage" @change="fontPage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                      <select x-model.number="fontPerPage" @change="fontPage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-sans">
                         <option value="25">25 / стор.</option>
                         <option value="50">50 / стор.</option>
                         <option value="100">100 / стор.</option>
+                        <option value="250">250 / стор.</option>
                       </select>
                     </div>
                   </div>
@@ -1973,20 +2008,32 @@
                     </button>
                   </div>
 
-                  <!-- Export Action Buttons -->
+                  <!-- Standard Export Action Buttons -->
                   <div class="flex items-center space-x-2 shrink-0">
                     <button @click="exportIframesCSV()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0"
-                      class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                      <span>📊 Експорт CSV</span>
+                      class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                      </svg>
+                      <span>Експорт CSV</span>
                     </button>
                     <button @click="exportIframesJSON()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0"
-                      class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                      <span>📑 Експорт JSON</span>
+                      class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                      </svg>
+                      <span>Експорт JSON</span>
                     </button>
                     <button @click="uploadIframesToGDrive()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0 || isUploadingGDrive"
-                      class="bg-cyan-700 hover:bg-cyan-600 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                      <span x-show="!isUploadingGDrive">☁️ На Google Drive</span>
-                      <span x-show="isUploadingGDrive">Вивантаження...</span>
+                      class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <span x-show="!isUploadingGDrive">☁️ Google Drive</span>
+                      <span x-show="isUploadingGDrive" class="flex items-center space-x-1">
+                        <svg class="animate-spin h-3 w-3 text-cyan-400" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Вивантаження...</span>
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -2011,10 +2058,17 @@
                 </div>
               </div>
 
-              <div class="relative max-w-md">
-                <input type="text" x-model="iframeSearchQuery" placeholder="Пошук за src / title / URL сторінки..."
-                  class="w-full bg-slate-900 border border-slate-700/80 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500">
-                <span class="absolute left-3 top-2.5 text-slate-500">🔍</span>
+              <div class="relative flex items-center max-w-md">
+                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                </div>
+                <input type="text" x-model="iframeSearchQuery" @keydown.escape="iframeSearchQuery = ''" placeholder="Пошук за src / title / URL сторінки..."
+                  class="w-full bg-slate-900 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono transition shadow-inner">
+                <template x-if="iframeSearchQuery">
+                  <button @click="iframeSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-200 text-xs font-bold" title="Очистити">✕</button>
+                </template>
               </div>
             </div>
 
@@ -2062,12 +2116,12 @@
                   </div>
                 </template>
 
-                <!-- Iframes Hub Pagination Bar -->
+                <!-- Standard Reusable Pagination Bar -->
                 <template x-if="pageIframesList.length > 0">
-                  <div class="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                  <div class="px-6 py-3 bg-slate-950 border-t border-slate-800 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
                     <div>
-                      Показано <span class="font-bold text-rose-400" x-text="pageIframesList.length > 0 ? ((iframePage - 1) * iframePerPage + 1) : 0"></span> - 
-                      <span class="font-bold text-rose-400" x-text="Math.min(iframePage * iframePerPage, pageIframesList.length)"></span> з 
+                      Показано <span class="font-bold text-cyan-400" x-text="pageIframesList.length > 0 ? ((iframePage - 1) * iframePerPage + 1) : 0"></span> - 
+                      <span class="font-bold text-cyan-400" x-text="Math.min(iframePage * iframePerPage, pageIframesList.length)"></span> з 
                       <span class="font-bold text-slate-100" x-text="pageIframesList.length"></span> сторінок
                     </div>
 
@@ -2086,10 +2140,11 @@
                         Наступна ►
                       </button>
 
-                      <select x-model.number="iframePerPage" @change="iframePage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                      <select x-model.number="iframePerPage" @change="iframePage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-sans">
                         <option value="25">25 / стор.</option>
                         <option value="50">50 / стор.</option>
                         <option value="100">100 / стор.</option>
+                        <option value="250">250 / стор.</option>
                       </select>
                     </div>
                   </div>
@@ -2164,20 +2219,32 @@
                     </button>
                   </div>
 
-                  <!-- Export Action Buttons -->
+                  <!-- Standard Export Action Buttons -->
                   <div class="flex items-center space-x-2 shrink-0">
                     <button @click="exportFormsCSV()" :disabled="!scanResults || scanResults.length === 0"
-                      class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                      <span>📊 Експорт CSV</span>
+                      class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                      </svg>
+                      <span>Експорт CSV</span>
                     </button>
                     <button @click="exportFormsJSON()" :disabled="!scanResults || scanResults.length === 0"
-                      class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                      <span>📑 Експорт JSON</span>
+                      class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                      </svg>
+                      <span>Експорт JSON</span>
                     </button>
                     <button @click="uploadFormsToGDrive()" :disabled="!siteAnalytics || !siteAnalytics.forms || siteAnalytics.forms.length === 0 || isUploadingGDrive"
-                      class="bg-cyan-700 hover:bg-cyan-600 text-white font-semibold px-3 py-2 rounded-xl text-xs transition shadow flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
-                      <span x-show="!isUploadingGDrive">☁️ На Google Drive</span>
-                      <span x-show="isUploadingGDrive">Вивантаження...</span>
+                      class="px-3 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <span x-show="!isUploadingGDrive">☁️ Google Drive</span>
+                      <span x-show="isUploadingGDrive" class="flex items-center space-x-1">
+                        <svg class="animate-spin h-3 w-3 text-cyan-400" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Вивантаження...</span>
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -2209,11 +2276,17 @@
 
               <!-- Search & Filter Controls -->
               <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
-                <div class="relative flex-1">
-                  <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">🔍</span>
-                  <input type="text" x-model="formSearchQuery" placeholder="Пошук за назвою форми, URL, назвою поля (firstname, email, resume)..."
-                    class="w-full bg-slate-900 border border-slate-700/80 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
-                  <button x-show="formSearchQuery" @click="formSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-200 text-xs">✕</button>
+                <div class="relative flex items-center flex-1">
+                  <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                  </div>
+                  <input type="text" x-model="formSearchQuery" @keydown.escape="formSearchQuery = ''" placeholder="Пошук за назвою форми, URL, полем (firstname, email, resume)..."
+                    class="w-full bg-slate-900 border border-slate-700 hover:border-slate-600 focus:border-cyan-500 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono transition shadow-inner">
+                  <template x-if="formSearchQuery">
+                    <button @click="formSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-200 text-xs font-bold" title="Очистити">✕</button>
+                  </template>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs shrink-0">
@@ -2325,12 +2398,12 @@
                   </div>
                 </template>
 
-                <!-- Forms Hub Pagination Bar -->
+                <!-- Standard Reusable Pagination Bar -->
                 <template x-if="pageFormsList.length > 0">
-                  <div class="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                  <div class="px-6 py-3 bg-slate-950 border-t border-slate-800 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
                     <div>
-                      Показано <span class="font-bold text-blue-400" x-text="pageFormsList.length > 0 ? ((formPage - 1) * formPerPage + 1) : 0"></span> - 
-                      <span class="font-bold text-blue-400" x-text="Math.min(formPage * formPerPage, pageFormsList.length)"></span> з 
+                      Показано <span class="font-bold text-cyan-400" x-text="pageFormsList.length > 0 ? ((formPage - 1) * formPerPage + 1) : 0"></span> - 
+                      <span class="font-bold text-cyan-400" x-text="Math.min(formPage * formPerPage, pageFormsList.length)"></span> з 
                       <span class="font-bold text-slate-100" x-text="pageFormsList.length"></span> сторінок
                     </div>
 
@@ -2349,10 +2422,11 @@
                         Наступна ►
                       </button>
 
-                      <select x-model.number="formPerPage" @change="formPage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                      <select x-model.number="formPerPage" @change="formPage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-sans">
                         <option value="25">25 / стор.</option>
                         <option value="50">50 / стор.</option>
                         <option value="100">100 / стор.</option>
+                        <option value="250">250 / стор.</option>
                       </select>
                     </div>
                   </div>
