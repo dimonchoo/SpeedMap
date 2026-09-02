@@ -413,15 +413,8 @@ func WriteDeployPackage(packageDir, domain string, cfg config.ScanConfig, writte
 		if id == "" {
 			return nil, fmt.Errorf("missing package id for %s", im.Basename)
 		}
-		ext := im.OrigExt
-		if ext == "" {
-			ext = "bin"
-		}
 		imgDir := filepath.Join(pkg, "images", id)
 		if err := os.MkdirAll(imgDir, 0755); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(filepath.Join(imgDir, "original."+ext), im.OrigData, 0644); err != nil {
 			return nil, err
 		}
 		if err := os.WriteFile(filepath.Join(imgDir, "optimized.webp"), im.WebPData, 0644); err != nil {
@@ -531,20 +524,16 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		if id == "" {
 			id = fmt.Sprintf("%03d", i+1)
 		}
-		ext := im.OrigExt
-		if ext == "" {
-			ext = "bin"
-		}
-		origPath := fmt.Sprintf("images/%s/original.%s", id, ext)
 		webpPath := fmt.Sprintf("images/%s/optimized.webp", id)
 
-		if err := writeZipFile(zw, origPath, im.OrigData); err != nil {
-			_ = zw.Close()
-			return nil, err
-		}
 		if err := writeZipFile(zw, webpPath, im.WebPData); err != nil {
 			_ = zw.Close()
 			return nil, err
+		}
+
+		origPreviewURL := im.SourceURL
+		if origPreviewURL == "" {
+			origPreviewURL = im.Basename
 		}
 
 		entries = append(entries, zipEntry{
@@ -567,7 +556,7 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			SavingsPercent:          im.SavingsPercent,
 			OriginalFormatted:       im.OriginalFormatted,
 			OptimizedFormatted:      im.OptimizedFormatted,
-			OriginalPath:            origPath,
+			OriginalPath:            origPreviewURL,
 			OptimizedPath:           webpPath,
 		})
 	}
@@ -760,8 +749,8 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		htmlBuf.WriteString(esc(e.Basename))
 		htmlBuf.WriteString("</h2>")
 		writeReviewContextHTML(&htmlBuf, e.SourceURL, e.Pages)
-		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"original\" onclick=\"openGallery(%d, 'orig')\"><figcaption>Before · %s · %s</figcaption></figure>", esc(e.OriginalPath), idx, esc(e.Basename), esc(e.OriginalFormatted)))
-		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"webp\" onclick=\"openGallery(%d, 'webp')\"><figcaption>After · WebP · %s · <span class=\"sav\">−%.1f%%</span></figcaption></figure>", esc(e.OptimizedPath), idx, esc(e.OptimizedFormatted), e.SavingsPercent))
+		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"original\" loading=\"lazy\" onerror=\"this.onerror=null;this.style.opacity='0.4';\" onclick=\"openGallery(%d, 'orig')\"><figcaption>Before · %s · %s</figcaption></figure>", esc(e.OriginalPath), idx, esc(e.Basename), esc(e.OriginalFormatted)))
+		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"webp\" loading=\"lazy\" onclick=\"openGallery(%d, 'webp')\"><figcaption>After · WebP · %s · <span class=\"sav\">−%.1f%%</span></figcaption></figure>", esc(e.OptimizedPath), idx, esc(e.OptimizedFormatted), e.SavingsPercent))
 		htmlBuf.WriteString("</section>")
 	}
 

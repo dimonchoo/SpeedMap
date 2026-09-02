@@ -213,7 +213,7 @@ func TestWriteWebPFilesAndReviewZIP(t *testing.T) {
 	for _, f := range zr.File {
 		names[f.Name] = true
 	}
-	for _, want := range []string{"compare.html", "render-report.html", "manifest.json", "images/001/original.png", "images/001/optimized.webp"} {
+	for _, want := range []string{"compare.html", "render-report.html", "manifest.json", "images/001/optimized.webp"} {
 		if !names[want] {
 			t.Fatalf("zip missing %s (have %v)", want, names)
 		}

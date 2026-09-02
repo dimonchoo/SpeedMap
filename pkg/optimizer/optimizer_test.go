@@ -174,3 +174,16 @@ func TestConvertImageResizeProportional(t *testing.T) {
 		t.Errorf("expected optimized 1000x500, got %dx%d", res.OptimizedWidth, res.OptimizedHeight)
 	}
 }
+
+func TestCaseStudyImageOnline(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2025/02/Case-Study_Slider-image-1770x700-1-6.png"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 90, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v, Skipped=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless, res.IsSkipped)
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("OptimizedBytes (%d) >= OriginalBytes (%d)", res.OptimizedBytes, res.OriginalBytes)
+	}
+}
