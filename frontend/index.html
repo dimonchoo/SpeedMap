@@ -2087,7 +2087,7 @@
                       </button>
                     </div>
                   </div>
-                  <p class="text-xs text-slate-400 mt-1">Пофайлове зіставлення розміру та пошук регресій між збереженими пакетами на диску</p>
+                  <p class="text-xs text-slate-400 mt-1" x-text="diffViewMode === 'packages' ? 'Пофайлове зіставлення розміру та пошук регресій між збереженими пакетами WebP на диску' : 'Порівняння реального мережевого трафіку зображень між прогонами сканування сайту (lazy-load зображення без передачі не вважаються регресією)'"></p>
                 </div>
 
                 <!-- MODE 1: EXPORT PACKAGES PICKER -->
@@ -2260,13 +2260,13 @@
                         <td class="p-3 text-right font-bold text-slate-100" x-text="diffViewMode === 'packages' ? file.currWebpFormatted : file.currentFormatted"></td>
                         <td class="p-3 text-right">
                           <span class="px-2 py-0.5 rounded-full font-bold text-[11px]"
-                            :class="file.status === 'degraded' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : (file.status === 'improved' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400')"
+                            :class="file.status === 'degraded' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : (file.status === 'improved' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (file.status === 'new' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-400'))"
                             x-text="file.deltaFormatted"></span>
                         </td>
                         <td class="p-3 text-center font-sans">
                           <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider"
-                            :class="file.status === 'degraded' ? 'bg-rose-500/10 text-rose-400' : (file.status === 'improved' ? 'bg-emerald-500/10 text-emerald-400' : (file.status === 'new' ? 'bg-cyan-500/10 text-cyan-400' : 'bg-slate-800 text-slate-500'))"
-                            x-text="file.status === 'degraded' ? '🔴 Регресія' : (file.status === 'improved' ? '🟢 Краще' : (file.status === 'new' ? '🆕 Новий' : '⚪ Норма'))"></span>
+                            :class="file.status === 'degraded' ? 'bg-rose-500/10 text-rose-400' : (file.status === 'improved' ? 'bg-emerald-500/10 text-emerald-400' : (file.status === 'new' ? 'bg-cyan-500/10 text-cyan-400' : (file.status === 'removed' ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-800 text-slate-500')))"
+                            x-text="file.status === 'degraded' ? '🔴 Регресія' : (file.status === 'improved' ? '🟢 Краще' : (file.status === 'new' ? '🆕 Новий' : (file.status === 'removed' ? '⏸️ Не завантаж.' : '⚪ Норма')))"></span>
                         </td>
                       </tr>
                     </template>

@@ -118,3 +118,73 @@ func TestAutoPruneHistory(t *testing.T) {
 		t.Errorf("Expected latest run of old_site_com to be preserved, got %d", oldSiteCount)
 	}
 }
+
+func TestCompareHistoryRunsLazyLoadedNotDegraded(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "speedmap-history-diff-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// In base run, image was lazy-loaded in DOM with 0 transferSize
+	baseRun := fmt.Sprintf(`{
+		"id": "run_base_1",
+		"domain": "test.com",
+		"formattedTime": "01.09.2026 10:00",
+		"results": [
+			{
+				"url": "https://test.com/page1",
+				"diagnostics": {
+					"largestImages": [
+						{"url": "https://test.com/hero.png", "transferSize": 0, "encodedSize": 0}
+					]
+				}
+			}
+		]
+	}`)
+	// In current run, image was transferred over network with 900KB
+	currRun := fmt.Sprintf(`{
+		"id": "run_curr_2",
+		"domain": "test.com",
+		"formattedTime": "02.09.2026 10:00",
+		"results": [
+			{
+				"url": "https://test.com/page1",
+				"diagnostics": {
+					"largestImages": [
+						{"url": "https://test.com/hero.png", "transferSize": 900000, "encodedSize": 900000}
+					]
+				}
+			}
+		]
+	}`)
+
+	_ = os.WriteFile(filepath.Join(tempDir, "run_run_base_1.json"), []byte(baseRun), 0644)
+	_ = os.WriteFile(filepath.Join(tempDir, "run_run_curr_2.json"), []byte(currRun), 0644)
+
+	// Save history dir override or load directly
+	// Let's test the logic directly by checking files returned
+	origDir := customHistoryDir
+	customHistoryDir = tempDir
+	defer func() { customHistoryDir = origDir }()
+
+	res, err := CompareHistoryRuns("run_base_1", "run_curr_2")
+	if err != nil {
+		t.Fatalf("CompareHistoryRuns failed: %v", err)
+	}
+
+	// Must NOT be marked as degraded!
+	if res.DegradedCount != 0 {
+		t.Errorf("expected 0 degraded count, got %d", res.DegradedCount)
+	}
+	if len(res.Files) != 1 {
+		t.Fatalf("expected 1 file, got %d", len(res.Files))
+	}
+	if res.Files[0].Status != "new" {
+		t.Errorf("expected status 'new' for newly transferred lazy image, got %s", res.Files[0].Status)
+	}
+	if res.Files[0].BaseFormatted != "Lazy (0 B)" {
+		t.Errorf("expected BaseFormatted 'Lazy (0 B)', got %s", res.Files[0].BaseFormatted)
+	}
+}
+

@@ -37,7 +37,12 @@ type RunComparison struct {
 	SummaryText      string             `json:"summaryText"`
 }
 
+var customHistoryDir string
+
 func getHistoryDir() (string, error) {
+	if customHistoryDir != "" {
+		return customHistoryDir, nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."
@@ -484,26 +489,56 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 			currentTotal += cBytes
 		}
 
-		delta := cBytes - bBytes
+		var delta int64
 		status := "same"
+		var deltaFormatted string
+
 		if !hasBase && hasCurr {
 			status = "new"
+			deltaFormatted = "🆕 Новий"
 		} else if hasBase && !hasCurr {
 			status = "removed"
-		} else if delta > 5*1024 {
-			status = "degraded"
-			degraded++
-		} else if delta < -5*1024 {
-			status = "improved"
-			improved++
-		} else {
+			deltaFormatted = "🗑️ Видалено"
+		} else if bBytes == 0 && cBytes > 0 {
+			// In base run this image was lazy in DOM without network transfer (0 B).
+			// In current run it was loaded over network. It is NOT a file weight regression!
+			status = "new"
+			deltaFormatted = "🆕 Завантажено"
+		} else if bBytes > 0 && cBytes == 0 {
+			// In current run this image was not transferred over network (0 B lazy).
+			// It is NOT a file weight improvement!
+			status = "removed"
+			deltaFormatted = "⏸️ Не завантаж."
+		} else if bBytes == 0 && cBytes == 0 {
 			status = "same"
+			deltaFormatted = "0 B"
 			same++
+		} else {
+			// Both runs have valid measured network transfer sizes
+			delta = cBytes - bBytes
+			if delta > 5*1024 {
+				status = "degraded"
+				degraded++
+			} else if delta < -5*1024 {
+				status = "improved"
+				improved++
+			} else {
+				status = "same"
+				same++
+			}
+			deltaFormatted = formatKB(delta)
+			if delta > 0 {
+				deltaFormatted = "+" + deltaFormatted
+			}
 		}
 
-		deltaFormatted := formatKB(delta)
-		if delta > 0 {
-			deltaFormatted = "+" + deltaFormatted
+		baseFmt := formatKB(bBytes)
+		if bBytes == 0 {
+			baseFmt = "Lazy (0 B)"
+		}
+		currFmt := formatKB(cBytes)
+		if cBytes == 0 {
+			currFmt = "Lazy (0 B)"
 		}
 
 		files = append(files, FileDiff{
@@ -512,9 +547,9 @@ func CompareHistoryRuns(baseRunID, currentRunID string) (*RunsDiffResult, error)
 			OriginalBytes:     origBytes,
 			OriginalFormatted: formatKB(origBytes),
 			BaseBytes:         bBytes,
-			BaseFormatted:     formatKB(bBytes),
+			BaseFormatted:     baseFmt,
 			CurrentBytes:      cBytes,
-			CurrentFormatted:  formatKB(cBytes),
+			CurrentFormatted:  currFmt,
 			DeltaBytes:        delta,
 			DeltaFormatted:    deltaFormatted,
 			Status:            status,
