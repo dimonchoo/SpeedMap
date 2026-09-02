@@ -41,7 +41,7 @@ func (c *ScanConfig) IsAdaptiveQualityEnabled() bool {
 
 func (c *ScanConfig) NormalizedMinWebPQuality() float32 {
 	if c.MinWebPQuality <= 0 || c.MinWebPQuality > 100 {
-		return 80.0 // 80% default floor
+		return 75.0 // 75% default floor (allows step-down fallback from base 80%)
 	}
 	return c.MinWebPQuality
 }

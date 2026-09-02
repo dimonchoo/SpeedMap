@@ -6,7 +6,7 @@ function speedMapApp() {
       concurrency: 1, // Default 1 process as requested
       heavyImageThresholdKB: 100, // Default 100 KB heavy image threshold
       webpQuality: 80, // WebP compression quality (1 - 100, default 80% Google Lighthouse standard)
-      minWebPQuality: 80, // Minimum WebP quality floor (never compress below this)
+      minWebPQuality: 75, // Minimum WebP quality floor (never compress below this, allows step-down from 80%)
       skipIfNoWebPSavings: true, // Skip images if WebP size >= original size at min quality floor
       adaptiveQuality: true, // Auto-adjust quality for gradients & lossless for transparent graphics
       resizeToRetina: true, // Downscale oversized images to max rendered Retina 2x bounds (Properly size images)
