@@ -1,188 +1,374 @@
-# 🖼️ SpeedMap Image Processing & Optimization Pipeline Architecture
+# 🖼️ Повний технічний регламент та специфікація пайплайну обробки зображень у SpeedMap
 
-This document provides a comprehensive, end-to-end technical breakdown of how **SpeedMap** discovers, aggregates, resizes, optimizes, encodes, packages, and tracks regression metrics for website images.
+Цей документ містить вичерпний, покроковий опис усіх правил, математичних порогів, евристик, регулярних виразів та умов, за яких зображення виявляються, фільтруються, декодуються, ресайзяться, оптимізуються, упаковуються та перевіряються на регресію.
 
 ---
+
+## 📑 Зміст
+1. [Етап 1: Виявлення зображень у браузері (Discovery & DOM Crawler)](#етап-1-виявлення-зображень-у-браузері-discovery--dom-crawler)
+2. [Етап 2: Фільтрація трекерів, маяків та виключень (Beacon & Pattern Filtering)](#етап-2-фільтрація-трекерів-маяків-та-виключень-beacon--pattern-filtering)
+3. [Етап 3: Крос-сторінкова агрегація та метрики (Cross-Page Aggregation)](#етап-3-крос-сторінкова-агрегація-та-метрики-cross-page-aggregation)
+4. [Етап 4: Відбір для експорту та дедуплікація (Export Filter & Deduplication)](#етап-4-відбір-для-експорту-та-дедуплікація-export-filter--deduplication)
+5. [Етап 5: Завантаження та виправлення альфа-каналу (Download & Straight RGBA)](#етап-5-завантаження-та-виправлення-альфа-каналу-download--straight-rgba)
+6. [Етап 6: Ресайз під Retina 2x (Retina Downscaling)](#етап-6-ресайз-під-retina-2x-retina-downscaling)
+7. [Етап 7: Адаптивний Decision Engine (Кодування WebP, Lossless vs Lossy, Fallback)](#етап-7-адаптивний-decision-engine-кодування-webp-lossless-vs-lossy-fallback)
+8. [Етап 8: Генерація WordPress Deploy Package та артефактів](#етап-8-генерація-wordpress-deploy-package-та-артефактів)
+9. [Етап 9: Трекер регресій та зіставлення маніфестів (Regression & Diff Engine)](#етап-9-трекер-регресій-та-зіставлення-маніфестів-regression--diff-engine)
+
+---
+
+## Етап 1: Виявлення зображень у браузері (Discovery & DOM Crawler)
+
+Краулер на базі Chrome DevTools Protocol інспектує кожну сторінку у двох паралельних шарах:
+
+### 1.1. Шар 1: Network & PerformanceObserver
+Перехоплює всі мережеві ресурси `performance.getEntriesByType('resource')`:
+* **Умова визначення типу**:
+  * `r.initiatorType === 'img' || r.initiatorType === 'image' || r.initiatorType === 'css' || r.initiatorType === 'picture'`
+  * **АБО** розширення URL відповідає регулярному виразу:
+    ```regex
+    \.(jpg|jpeg|png|webp|avif|gif|svg|ico|bmp)(\?.*)?$
+    ```
+* **Параметри, що вилучаються**:
+  * `transferSize = r.transferSize || r.encodedBodySize || r.decodedBodySize || 0`
+  * `encodedSize = r.encodedBodySize || 0`
+  * `duration = Math.round(r.duration || 0)` (у мілісекундах)
+
+### 1.2. Шар 2: Глибинний DOM Inspector
+Знаходить усі візуальні та приховані зображення, які ще не завантажилися через мережу (lazy-load):
+1. **Звичайні теги `<img>`**:
+   * Джерела: `img.currentSrc || img.src || img.getAttribute('data-src')`
+   * Геометрія: `img.naturalWidth`, `img.naturalHeight`, та `getBoundingClientRect()` (`renderedWidth`, `renderedHeight`).
+   * Прапорець lazy-loading:
+     ```javascript
+     isLazy = img.getAttribute('loading') === 'lazy' || !!img.getAttribute('data-src')
+     ```
+2. **Адаптивні теги `<picture>` та атрибути `srcset`**:
+   * Селектор: `picture source, img[srcset], img[data-srcset], [data-lazy-src], [data-original], [data-hi-res], [data-full-url]`
+   * Парсить усі запчастини `srcset`, розбиваючи за комами та пробілами `srcset.split(',')[i].trim().split(/\s+/)[0]`.
+3. **Фонові зображення CSS (Background Images)**:
+   * Селектор: `[style*="url"], [data-bg], [data-background], [data-bg-url], style`
+   * Регулярний вираз вилучення URL з CSS:
+     ```regex
+     url\(\s*['"]?([^'")]+?\.(?:png|jpg|jpeg|webp|avif|gif|bmp))['"]?\s*\)
+     ```
+4. **Постери відео та мета-теги**:
+   * Селектор: `video[poster], link[rel="preload"][as="image"], meta[property="og:image"], meta[name="twitter:image"], [data-image], [data-img], [data-thumb], [data-slide], [data-slide-bg]`
+
+---
+
+## Етап 2: Фільтрація трекерів, маяків та виключень (Beacon & Pattern Filtering)
+
+Щоб уникнути потрапляння аналітичних пікселів 1x1, рекламних скриптів та сторонніх віджетів у пайплайн оптимізації:
+
+### 2.1. Список вбудованих заборонених патернів (якщо `FilterTrackingBeacons == true`):
+* `googleadservices.com`
+* `doubleclick.net`
+* `facebook.com/tr`
+* `bat.bing.com`
+* `clarity.ms`
+* `px.ads.linkedin.com`
+* `analytics.google.com`
+* `google-analytics.com`
+* `t.co/1/i/adsct`
+* `stats.wp.com`
+* `/pagead/`
+* Плюс будь-які користувацькі рядки з налаштування `ExcludedImagePatterns`.
+
+### 2.2. Умова відсікання:
+```javascript
+if (url.toLowerCase().includes(pattern.toLowerCase().trim())) {
+    // Ресурс ігнорується, не потрапляє у діагностику сторінки
+}
+```
+
+---
+
+## Етап 3: Крос-сторінкова агрегація та метрики (Cross-Page Aggregation)
+
+Після сканування всіх сторінок сайту `ComputeSiteAnalytics` формує єдиний зведений каталог зображень `SiteAnalytics.AllImages`:
+
+### 3.1. Об'єднання дублікатів по URL:
+* Для кожного унікального `img.URL`:
+  * `MaxTransferSize = max(transferSize across all pages)`
+  * `Pages = unique list of all pages containing this image`
+  * `PageCount = len(Pages)`
+  * `MaxRenderedWidth = max(renderedWidth across all pages)`
+  * `MaxRenderedHeight = max(renderedHeight across all pages)`
+  * `NaturalWidth = max(naturalWidth)`
+  * `NaturalHeight = max(naturalHeight)`
+
+### 3.2. Розрахунок рекомендованих Retina-розмірів:
+* **Формула**:
+  $$\text{RetinaW} = \text{MaxRenderedWidth} \times 2$$
+  $$\text{RetinaH} = \text{MaxRenderedHeight} \times 2$$
+* **Правило безпеки (Strict Ceiling)**: Зображення **ніколи не збільшується (upscale)** штучно:
+  $$\text{RecommendedRetinaWidth} = \min(\text{RetinaW}, \text{NaturalWidth})$$
+  $$\text{RecommendedRetinaHeight} = \min(\text{RetinaH}, \text{NaturalHeight})$$
+
+### 3.3. Визначення `IsOversized`:
+$$\text{IsOversized} = \text{true} \iff \text{NaturalWidth} > (\text{MaxRenderedWidth} \times 2)$$
+
+### 3.4. Визначення `IsHeavy`:
+$$\text{IsHeavy} = \text{true} \iff \text{MaxTransferSize} \ge \text{thresholdBytes}$$
+* За замовчуванням: `HeavyImageThresholdKB = 100` $\implies \text{thresholdBytes} = 102,400\text{ байт}$.
+
+---
+
+## Етап 4: Відбір для експорту та дедуплікація (Export Filter & Deduplication)
+
+Функція `wpexport.CollectHeavyImages` формує фінальний список кандидатів на оптимізацію за такими правилами:
+
+### 4.1. Форматний фільтр:
+* Дозволені растрові формати:
+  ```go
+  var rasterFormats = map[string]bool{
+      "png": true, "jpg": true, "jpeg": true, "gif": true, "bmp": true,
+  }
+  ```
+* Заборонені (пропускаються): `svg`, `webp`, `avif`.
+
+### 4.2. Відновлення майстер-оригіналу (`preferOriginalURL`):
+WordPress генерує нарізки розмірів (наприклад, `hero-1024x768.png` або `banner-300x250.jpg`).
+* **Регулярний вираз суфікса розміру**:
+  ```regex
+  -\d+x\d+(\.[A-Za-z0-9]+)(\?.*)?$
+  ```
+* Якщо знайдено збіг, суфікс відрізається: `hero-1024x768.png` $\rightarrow$ `hero.png`.
+* Це гарантує, що оптимізується саме вихідний файл максимальної чіткості, а не розмита зменшена копія.
+
+### 4.3. Розрахунок відносного шляху у WordPress (`webpRel`):
+* Якщо в URL є маркер `/wp-content/uploads/`:
+  * Вилучається підкаталог: `/wp-content/uploads/2026/02/banner.png` $\rightarrow$ `2026/02/banner.webp`.
+* Якщо маркер відсутній:
+  * Використовується чисте базове ім'я: `banner.webp`.
+
+### 4.4. Дедуплікація однойменних файлів (PNG vs JPG collision):
+* Якщо для одного й того ж ключа `strings.ToLower(webpRel)` на сайті є кілька файлів (наприклад, `hero.png` та `hero.jpg`):
+  * Обирається файл із **найбільшим розміром (`MaxTransferSize`)**.
+  * Якщо один файл має суфікс розміру, а інший — ні, обирається файл **без суфікса**.
+
+### 4.5. Критерій включення у список важких:
+$$\text{Включити} \iff (\text{im.IsHeavy} == \text{true}) \lor (\text{im.Bytes} == 0)$$
+*(Включаються підтверджені важкі файли $\ge 100\text{ KB}$ або lazy-load зображення, чий розмір не вдалося визначити в браузері).*
+
+---
+
+## Етап 5: Завантаження та виправлення альфа-каналу (Download & Straight RGBA)
+
+Під час завантаження кожного зображення:
+
+### 5.1. Повторна верифікація реального розміру на диску:
+* Якщо реальний розмір завантаженого тіла HTTP `< 102,400 байт` (`HeavyImageThresholdKB`):
+  * Файл **пропускається**:
+    ```text
+    [wpexport] skip <URL>: downloaded size X < threshold 102400 B
+    ```
+
+### 5.2. Усунення бага чорних контурів Go (`toStraightRGBA`):
+* **Проблема**: Стандартний декодер Go (`image.Decode`) при читанні PNG із прозорістю автоматично множить кольори на альфа-канал (**premultiplied alpha**). При передачі в `libwebp` C-API напівпрозорі антиаліасинг-пікселі (тіні, заокруглені кути кнопок) перетворювалися на брудні чорні обідки.
+* **Рішення**: Функція `toStraightRGBA`:
+  * Для `image.NRGBA`: копіює байти `Pix` напряму в `image.RGBA` без премультиплікації:
+    ```go
+    rgba := &image.RGBA{
+        Pix:    make([]uint8, len(nrgba.Pix)),
+        Stride: nrgba.Stride,
+        Rect:   nrgba.Rect,
+    }
+    copy(rgba.Pix, nrgba.Pix)
+    return rgba
+    ```
+  * Для інших моделей: попіксельно вилучає прямі значення `color.NRGBA{R, G, B, A}`.
+
+---
+
+## Етап 6: Ресайз під Retina 2x (Retina Downscaling)
+
+Якщо увімкнено `ResizeToRetina` (за замовчуванням `true`) і передано `maxW > 0` або `maxH > 0`:
+
+### 6.1. Умова спрацьовування:
+$$\text{Ресайзити} \iff (\text{origW} > \text{maxW}) \lor (\text{origH} > \text{maxH})$$
+*(Якщо оригінал вже менший за ліміти, ресайз пропускається).*
+
+### 6.2. Розрахунок коефіцієнта масштабування (Збереження Aspect Ratio):
+$$\text{scaleW} = \frac{\text{maxW}}{\text{origW}}, \quad \text{scaleH} = \frac{\text{maxH}}{\text{origH}}$$
+$$\text{scale} = \min(\text{scaleW}, \text{scaleH})$$
+$$\text{targetW} = \max(1, \operatorname{round}(\text{origW} \times \text{scale}))$$
+$$\text{targetH} = \max(1, \operatorname{round}(\text{origH} \times \text{scale}))$$
+
+### 6.3. Інтерполяція:
+Використовується високоякісний бікубічний фільтр **Catmull-Rom**:
+```go
+draw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
+```
+
+---
+
+## Етап 7: Адаптивний Decision Engine (Кодування WebP, Lossless vs Lossy, Fallback)
+
+Це центральне ядро оптимізатора (`ConvertImageToWebPWithBudget`). Воно працює за суворою каскадною логікою:
 
 ```mermaid
 flowchart TD
-    A["🕷️ 1. Discovery (Crawler)"] -->|Collect DOM & Network Images| B["📊 2. Aggregation & Metrics"]
-    B -->|Track Max Rendered Dimensions & Pages| C["🎯 3. Heavy Image Filtering (≥100 KB)"]
-    C -->|Deduplicate by WebP target path| D["📥 4. Parallel Download & RGBA Normalization"]
-    D -->|toStraightRGBA (Fixes Dark Border Bug)| E["📐 5. Retina 2x Proportional Resizing"]
-    E -->|Constrain to 2x Max Rendered Dimensions| F["🧠 6. Adaptive Encoding Engine"]
+    Start["Початок обробки"] --> BudgetCalc["Розрахунок safeBudget = 85% від 100 KB = 85 KB"]
+    BudgetCalc --> LossyBase["1. Базове кодування Lossy WebP (Quality = 85%)"]
     
-    subgraph "Adaptive Decision Engine"
-        F --> G["Encode Base Lossy WebP (Quality 75-85)"]
-        G --> H{"Target Budget Test (<70% of 100KB)?"}
-        H -->|Yes| I["Quality Ascend (Test 88-96% Q)"]
-        H -->|No / Done| J{"PNG or Transparent Asset?"}
-        
-        J -->|Yes| K["Encode Lossless WebP"]
-        K --> L{"Lossless ≤ 85 KB & < Original?"}
-        L -->|Yes (Icons/Badges)| M["Select Lossless WebP (Q=100)"]
-        L -->|No (Photos/Banners)| N["Keep Lossy WebP"]
-        J -->|No (JPG)| N
-        
-        M --> O{"WebP Size ≥ Original?"}
-        N --> O
-        O -->|Yes| P["Step-Down Fallback (Down to 60% Q)"]
-        O -->|No| Q["Optimal WebP Selected"]
-        P --> Q
-    end
+    LossyBase --> AscendCheck{"LossyLen < 70% safeBudget (59.5 KB)<br/>ТА OrigSize > 80 KB<br/>ТА Quality < 96%?"}
+    AscendCheck -->|Так| AscendLoop["Quality Ascension Loop:<br/>Тест Q = [88, 91, 93, 95, 96]%"]
+    AscendLoop --> AscendCond{"highQLen ≤ 85 KB<br/>ТА highQLen < OrigSize * 60%?"}
+    AscendCond -->|Так| CommitHighQ["Застосувати вищу якість WebP"]
+    AscendCond -->|Ні / Бюджет перевищено| BreakAscend["Зупинити підйом якості"]
+    AscendCheck -->|Ні| FormatBranch
+    CommitHighQ --> AscendLoop
+    BreakAscend --> FormatBranch
 
-    Q --> R["📦 7. WordPress Deploy Package"]
-    R --> S["manifest.json + apply.php + rollback.php + compare.html"]
-    R --> T["~/.speedmap/exports.json (Regression Registry)"]
+    FormatBranch{"2. PNG або є прозорість?<br/>ТА adaptive == true"}
+    FormatBranch -->|Так| EncodeLossless["Тестове кодування Lossless WebP (Exact: true, Q=100)"]
+    FormatBranch -->|Ні (JPG)| FallbackCheck
+    
+    EncodeLossless --> LosslessCond{"LosslessLen < OrigSize<br/>ТА LosslessLen ≤ 85 KB (safeBudget)?"}
+    LosslessCond -->|Так (Іконки, Лого, UI)| SelectLossless["Обрати Lossless WebP (Q=100)"]
+    LosslessCond -->|Ні (Фото-PNG, великі банери)| KeepLossy["Залишити Lossy WebP (20-60 KB)"]
+
+    SelectLossless --> FallbackCheck
+    KeepLossy --> FallbackCheck
+
+    FallbackCheck{"3. WebP Size ≥ OrigSize?"}
+    FallbackCheck -->|Так (Регресія ваги)| StepDownLoop["Step-Down Fallback Loop:<br/>Тест Q = [90, 85, 80, 75, 70, 65, 60]%"]
+    StepDownLoop --> StepDownSuccess{"fBytes < OrigSize?"}
+    StepDownSuccess -->|Так| CommitStepDown["Зберегти знижену якість (WebP < Orig)"]
+    StepDownSuccess -->|Ні| NextQ["Спробувати нижчий Q"]
+    StepDownLoop -->|Вичерпано / WebP ≥ Orig| SkipCheck
+    CommitStepDown --> Done
+
+    FallbackCheck -->|Ні| Done["Фінальний WebP готовий"]
+
+    SkipCheck{"skipIfNoSavings == true?"}
+    SkipCheck -->|Так| MarkSkipped["Позначити IsSkipped = true, Savings = 0"]
+    SkipCheck -->|Ні| Done
+    MarkSkipped --> Done
 ```
 
----
+### 7.1. Розрахунок безпечного бюджету (`safeBudget`):
+$$\text{safeBudget} = \max(40\text{ KB}, \operatorname{round}(\text{budgetBytes} \times 0.85))$$
+*(При бюджеті 100 КБ $\implies \text{safeBudget} = 85\text{ KB} = 87,040\text{ байт}$).*
 
-## 1. Discovery & Multi-Page Observation
+### 7.2. Базове кодування Lossy WebP:
+* Початкова якість: `Quality = 85.0%`.
+* Опції: `&webp.Options{ Lossless: false, Quality: 85, Exact: false }`.
 
-During the sitemap crawl, headless Chrome navigates to each page and gathers images from two distinct layers:
-1. **DOM Inspection**: Every `<img>` tag, `<picture>` source, inline SVG, background image in CSS, and `srcset` candidate.
-   * Extracts: `naturalWidth`, `naturalHeight`, `src`, `loading="lazy"`, `alt`, and `getBoundingClientRect()` (`renderedWidth`, `renderedHeight`).
-2. **PerformanceObserver Network Intercept**: Intercepts exact transfer sizes (`transferSize`), encoded resource sizes (`encodedSize`), and network response times (`duration`).
+### 7.3. Підйом якості (Target-Budget Optimization):
+* **Умова активації**:
+  $$\text{adaptive} \land (\text{origSize} > 80\text{ KB}) \land (\text{lossyLen} < \text{safeBudget} \times 0.70) \land (\text{quality} < 96)$$
+* **Рівні тестування якості**: `[88.0, 91.0, 93.0, 95.0, 96.0]`.
+* **Умова фіксації вищої якості**:
+  $$\text{highQLen} \le \text{safeBudget} \quad \land \quad \text{highQLen} < (\text{origSize} \times 0.60)$$
+  *(Тобто файл залишається $\le 85\text{ KB}$ та забезпечує $\ge 40\%$ чистої економії).*
+* Як тільки розмір перевищує ліміт — цикл миттєво переривається (`break`).
 
----
+### 7.4. Адаптивна маршрутизація Lossless vs Lossy:
+* **Умова тестування**: `(formatName == "png" || isTransparent) && adaptive`.
+* Кодується тестовий буфер: `&webp.Options{ Lossless: true, Exact: true }`.
+* **Математичне правило вибору Lossless**:
+  $$\text{Обрати Lossless} \iff (\text{losslessLen} < \text{origSize}) \land (\text{losslessLen} \le \text{safeBudget})$$
+* **Результат**:
+  * Дрібні векторні іконки, логотипи, кнопки та бейджі ($\le 85\text{ KB}$) зберігаються в **100% Lossless** без жодних артефактів.
+  * Величезні 5-мегапіксельні фото-PNG (`Voice-of-the-Buyer`, `Depositphotos`), чий Lossless розмір сягає 1.5–2.5 МБ, **примусово залишаються у Lossy WebP** (стискаючись до 20–60 КБ із -98% економії).
 
-## 2. Cross-Page Aggregation & Dimension Tracking
+### 7.5. Захист від роздування розміру (Step-Down Fallback):
+* **Умова активації**: `if webpSize >= origSize` (наприклад, складний ілюстрований слайдер на кшталт `Case-Study_Slider`).
+* **Каскад зниження якості**:
+  ```go
+  fallbackQualities := []float32{90.0, 85.0, 80.0, 75.0, 70.0, 65.0, 60.0}
+  ```
+* Як тільки на будь-якому кроці $\text{len}(\text{fBytes}) < \text{origSize}$, цей рівень фіксується і цикл зупиняється.
 
-Because the same image (e.g., header logo, author portrait, global banner) often appears on dozens of different pages with varying viewport layouts:
-* **Max Rendered Bounds (`maxRenderedWidth`, `maxRenderedHeight`)**: SpeedMap tracks the **maximum** DOM display size the image occupies across *all* crawled pages.
-* **Page List (`pages`)**: Gathers all URLs referencing the image for contextual review.
-* **Format Detection**: Normalizes format (`png`, `jpg`, `webp`, `svg`, `avif`, `gif`).
-
----
-
-## 3. Filtering & Deduplication
-
-SpeedMap applies a strict filtering stage to avoid wasting compute on trivial or non-convertible assets:
-* **Format Gate**: Only raster formats (`png`, `jpg`, `jpeg`, `gif`, `bmp`) are converted. Vectors (`svg`) and pre-optimized next-gen formats (`webp`, `avif`) are preserved.
-* **Threshold Gate (`HeavyImageThresholdKB: 100 KB`)**:
-  * Default: **100 KB** (`102,400 bytes`).
-  * Only images whose true on-disk / network size exceeds this threshold are packaged for WordPress deployment.
-* **Stem Deduplication (`webpRel`)**:
-  * If both `hero.png` and `hero.jpg` map to `2026/08/hero.webp`, SpeedMap deduplicates them to a single target WebP entry, prioritizing the highest-resolution original.
-  * Resized WordPress thumbnails (`hero-1024x768.png`) are mapped back to their master original (`hero.png`).
-
----
-
-## 4. Download & Straight RGBA Normalization
-
-When downloading images for processing:
-* **Authentication**: Basic Auth credentials (`AuthUser`, `AuthPass`) and custom HTTP headers are injected if configured.
-* **Go `toStraightRGBA` Color Fix**:
-  > **Note**: Standard Go `image.Decode` converts images into **premultiplied alpha** (`image.NRGBA` → `image.RGBA`). When passed to Google's `libwebp` C-API, premultiplied edge pixels cause dark/black borders around anti-aliased semi-transparent graphics (drop shadows, rounded icons, transparent logos).
-  > 
-  > SpeedMap passes all decoded pixels through `toStraightRGBA()` to preserve raw, unpremultiplied straight RGBA color values, ensuring pixel-perfect alpha blending.
+### 7.6. Пропуск файлів без виграшу (`skipIfNoSavings`):
+* Якщо навіть на мінімальній допустимій планці якості (`minQuality = 75%` або `60%`) розмір WebP не став меншим за оригінал:
+  * Якщо `skipIfNoSavings == true`:
+    $$\text{IsSkipped} = \text{true}, \quad \text{SavingsBytes} = 0, \quad \text{SavingsPercent} = 0$$
+  * Файл не замінюється на сервері, запобігаючи деградації ваги сайту.
 
 ---
 
-## 5. Retina 2x Proportional Resizing
+## Етап 8: Генерація WordPress Deploy Package та артефактів
 
-To fulfill Google Lighthouse's **"Properly Size Images"** Core Web Vital metric:
-* If an image is 4000x2500 px, but across the entire website it is never displayed larger than 600x375 px:
-  * SpeedMap calculates the Retina target dimensions: 600 × 2 = 1200 px.
-  * The image is downscaled proportionally using high-quality Catmull-Rom interpolation (`golang.org/x/image/draw.BiLinear / CatmullRom`).
-* **Aspect Ratio Preservation**: Natural aspect ratio is strictly preserved; images are never distorted or stretched.
-
----
-
-## 6. The Adaptive Decision & Encoding Engine
-
-The core optimization engine balances **zero visual artifacts** with **extreme file size reduction**:
-
-```
-                                  Input Image
-                                       │
-                         ┌─────────────┴─────────────┐
-                         ▼                           ▼
-                 Lossy WebP Engine           Lossless WebP Engine
-                 (Quality 75 - 85)             (Exact RGB 4:4:4)
-                         │                           │
-                         ▼                           ▼
-                 [ lossyData ]               [ losslessData ]
-                         │                           │
-                         └─────────────┬─────────────┘
-                                       │
-                      ┌────────────────┴────────────────┐
-                      ▼                                 ▼
-           Is it a Small UI Asset?           Is it a Photo / Slide?
-           (lossless ≤ 85 KB)                (lossless > 85 KB)
-                      │                                 │
-                      ▼                                 ▼
-               Use LOSSLESS WebP                 Use LOSSY WebP
-            (Crisp text & sharp edges)       (20-60 KB, -90% savings)
-```
-
-### 1. Base Lossy WebP Encoding
-* Encodes with base quality (default **85%**, minimum floor **75%**).
-
-### 2. Target-Budget Optimization (Quality Ascension)
-* If an image compresses to a tiny file size well below the budget (e.g., < 70 KB), SpeedMap tests higher quality levels (**88%, 91%, 93%, 95%, 96%**).
-* If the file remains within budget and maintains ≥ 40% savings, the higher-quality WebP is selected, eliminating compression noise and banding.
-
-### 3. Adaptive Lossless Routing
-* **Lossless WebP (`Q=100, exact=true`)** maintains uncompressed RGB 4:4:4 color fidelity without chroma subsampling.
-* **Routing Rule**: Lossless is chosen **if and only if** `losslessBytes <= safeBudget (85 KB)` and `losslessBytes < originalBytes`.
-  * **Result**: Small badges, UI icons, navigation buttons, and transparent logos get 100% Lossless crispness.
-  * **Result**: 5-megapixel photographic PNGs (`Voice-of-the-Buyer`, `Depositphotos`) are routed to Lossy WebP, dropping from **1.6 MB to 24 KB (-99%)**.
-
-### 4. Safety Guarantee: Zero-Size Regression (Step-Down Quality)
-* If any initial WebP output is larger than the original asset (e.g. `Case-Study_Slider`: 321 KB WebP vs 309 KB PNG):
-  * The engine steps down through fallback quality tiers: `90% -> 85% -> 80% -> 75% -> 70% -> 65% -> 60%`.
-  * As soon as WebP size < Original size, that tier is committed (e.g. `Case-Study_Slider` → **217.8 KB, -30%**).
-  * If even at minimum quality floor WebP ≥ Original, the image is skipped (`skipIfNoSavings: true`).
-
----
-
-## 7. WordPress Deploy Package & Delivery
-
-When optimization finishes, `WriteDeployPackage` produces a self-contained deploy folder (`speedmap-webp-YYYYMMDD-HHMMSS/`):
+Функція `WriteDeployPackage` створює автономну структуру папки `speedmap-webp-YYYYMMDD-HHMMSS`:
 
 ```
 speedmap-webp-20260902-171531/
 ├── images/
 │   ├── 001/optimized.webp
 │   ├── 002/optimized.webp
-│   └── ... (712 converted WebP images)
-├── manifest.json         # Complete JSON map of source URLs, webpRel paths, sizes, and dimensions
-├── apply.php             # Atomic zero-downtime deployment script for WordPress staging/prod
-├── rollback.php          # 1-click instant rollback script to restore original attachments
-├── compare.html          # Interactive visual before/after comparison tool (uses remote originals)
-└── render-report.html    # Standalone diagnostic report with performance statistics
+│   └── ... (лише успішно оптимізовані файли)
+├── manifest.json
+├── apply.php
+├── rollback.php
+├── compare.html
+└── render-report.html
 ```
 
-* **No Duplicate Originals in Package**: Originals are loaded on demand from live URLs in `compare.html`, keeping the package weight at **~46 MB instead of ~400 MB (-87% transfer reduction)**.
+### 8.1. Структура `manifest.json`:
+Для кожного файлу фіксується повний контекст:
+```json
+{
+  "sourceUrl": "https://infuse.com/wp-content/uploads/2026/02/hero.png",
+  "webpRel": "2026/02/hero.webp",
+  "wpUploadRel": "2026/02/hero.webp",
+  "originalBytes": 316416,
+  "optimizedBytes": 223027,
+  "savingsPercent": 29.5,
+  "naturalWidth": 1770,
+  "naturalHeight": 700,
+  "recommendedRetinaWidth": 1770,
+  "recommendedRetinaHeight": 700,
+  "isLossless": false,
+  "quality": 85.0,
+  "pages": [
+    "https://infuse.com/insights/",
+    "https://infuse.com/case-studies/"
+  ]
+}
+```
+
+### 8.2. Правило оптимізації ваги архіву (Вилучення дублікатів оригіналів):
+* **Проблема минулих версій**: Архіви важили по 390–500 МБ, бо дублювали всі вихідні PNG/JPG у папці `images/*/original.*`.
+* **Рішення**: Оригінали **не записуються в пакет**. В `compare.html` вони завантажуються онлайн за URL напряму з продакшну.
+* **Результат**: Вага deploy-пакету скоротилася з **390 МБ до ~46 МБ (-87%)**.
 
 ---
 
-## 8. Export History & Automated Regression Tracking
+## Етап 9: Трекер регресій та зіставлення маніфестів (Regression & Diff Engine)
 
-Every export is recorded in `~/.speedmap/exports.json`:
+Кожен згенерований пакет автоматично реєструється в глобальному реєстрі `~/.speedmap/exports.json`:
 
 ```json
-[
-  {
-    "id": "speedmap-webp-20260902-171531",
-    "domain": "https://infuse.com/sitemap.xml",
-    "timestamp": "2026-09-02T14:15:33Z",
-    "formattedTime": "02.09.2026 17:15:33",
-    "packageDir": "/path/to/speedmap-webp-20260902-171531",
-    "manifestPath": "/path/to/speedmap-webp-20260902-171531/manifest.json",
-    "imageCount": 712,
-    "originalBytes": 344131580,
-    "optimizedBytes": 48863616,
-    "savingsPercent": 85.8,
-    "existsOnDisk": true
-  }
-]
+{
+  "id": "speedmap-webp-20260902-171531",
+  "domain": "https://infuse.com/sitemap.xml",
+  "timestamp": "2026-09-02T14:15:33Z",
+  "formattedTime": "02.09.2026 17:15:33",
+  "packageDir": "/Users/.../speedmap-webp-20260902-171531",
+  "manifestPath": "/Users/.../speedmap-webp-20260902-171531/manifest.json",
+  "imageCount": 712,
+  "originalBytes": 344131580,
+  "optimizedBytes": 48863616,
+  "savingsPercent": 85.8,
+  "existsOnDisk": true
+}
 ```
 
-* **UI Regression Tab (`📈 Регресії`)**: Compares any two on-disk packages or scan runs:
-  * 🔴 **Regressed files**: images whose WebP size increased by > 5 KB.
-  * 🟢 **Improved files**: images whose WebP size decreased by > 5 KB.
-  * ⚪ **Identical / Neutral**: images within ± 5 KB.
-  * **Net Delta**: instant calculation of overall website weight reduction.
+### 9.1. Математичні пороги класифікації регресій (`CompareExportPackages`):
+Для кожного спільного файлу між Базовим (Base) та Поточним (Current) маніфестом обчислюється різниця:
+$$\Delta = \text{Current.OptimizedBytes} - \text{Base.OptimizedBytes}$$
+
+| Статус | Умова | Колір бейджа в UI | Опис |
+| :--- | :--- | :--- | :--- |
+| 🔴 **`degraded`** | $\Delta > 5 \times 1024\text{ байт}$ ($+5\text{ KB}$) | Червоний | Регресія розміру (файл поважчав) |
+| 🟢 **`improved`** | $\Delta < -5 \times 1024\text{ байт}$ ($-5\text{ KB}$) | Зелений | Покращення (файл став легшим) |
+| ⚪ **`same`** | $-5\text{ KB} \le \Delta \le +5\text{ KB}$ | Сірий | Розмір практично не змінився |
+| 🆕 **`new`** | Файл є в поточному, але відсутній у базовому | Синій | Нове зображення |
+| 🗑️ **`removed`** | Файл був у базовому, але відсутній у поточному | Жовтий | Видалене або відфільтроване |
+
+### 9.2. Сортування результатів:
+Усі погіршені файли (`degraded`) автоматично сортуються **в самий верх списку** за спаданням величини регресії ($\Delta$), що дозволяє команді миттєво побачити причину будь-якого збільшення розміру пакету.
