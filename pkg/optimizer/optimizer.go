@@ -158,8 +158,9 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 	meanG := sumG / pixelCount
 	meanB := sumB / pixelCount
 
-	// Blue/Cyan/Teal/Dark gradients have low meanDelta (< 6.0) and blue/green chroma dominance over red.
+	// Blue/Cyan/Teal/Dark smooth gradients have low meanDelta (< 6.0) and blue/green chroma dominance over red.
 	// These are the exact conditions where YUV 4:2:0 subsampling destroys smooth transitions with banding stripes.
+	// Real-world gradients like gts-bg1.png have meanDelta ~1.34, CTA-BG-8.png has ~4.81.
 	isBlueCyanDominant := (meanB > meanR+5.0) || (meanG > meanR+15.0)
 
 	return meanDelta < 6.0 && isBlueCyanDominant
@@ -377,7 +378,9 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 			//    Lossless guarantees 100% silky smoothness without banding while still saving bytes vs original!
 			isSmallerThanLossy := losslessLen <= int64(len(lossyData))
 			isTinyAssetWithSmallDelta := losslessLen <= 25*1024 && (losslessLen-int64(len(lossyData))) <= 5*1024
-			isSmoothGradient := isSmoothGradientOrUI(rawImg)
+			// Cap smooth gradient lossless files to <= 600 KB (fits gts-bg1.png at 582 KB and CTA-BG-8.png at 259 KB)
+			// to guarantee that giant photographic hero assets never bloat to multiple megabytes.
+			isSmoothGradient := isSmoothGradientOrUI(rawImg) && losslessLen <= 600*1024
 
 			shouldUseLossless := isSmallerThanLossy || (losslessLen <= safeBudget && isTinyAssetWithSmallDelta) || isSmoothGradient
 

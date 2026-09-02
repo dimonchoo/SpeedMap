@@ -238,6 +238,23 @@ func TestCtaBg8GradientOnline(t *testing.T) {
 	}
 }
 
+func TestDepositphotosStaysLossy(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2026/03/Depositphotos_166776156_xl-2015-1.png"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("Depositphotos Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+	// Photographic assets MUST stay in Lossy mode and must not bloat into multi-megabyte lossless WebP.
+	if res.IsLossless {
+		t.Errorf("expected Depositphotos to stay Lossy, but got Lossless=%v (%s)", res.IsLossless, res.OptimizedFormatted)
+	}
+	if res.OptimizedBytes > 200*1024 {
+		t.Errorf("expected Depositphotos to stay compact (<200KB), got %s", res.OptimizedFormatted)
+	}
+}
+
 // === Offline Fixture Tests ===
 
 func serveLocalFixture(t *testing.T, fixtureRelPath, contentType string) (*httptest.Server, string) {
