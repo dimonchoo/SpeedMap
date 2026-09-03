@@ -179,12 +179,54 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 		return false
 	}
 
-	// Blue/Cyan/Teal/Dark smooth gradients have low meanDelta (< 5.0) and blue/green chroma dominance over red.
-	// These are the exact conditions where YUV 4:2:0 subsampling destroys smooth transitions with banding stripes.
-	// Real-world gradients like gts-bg1.png have meanDelta ~1.34, CTA-BG-8.png has ~4.81.
+	// Blue/Cyan/Teal/Dark or Purple/Magenta smooth gradients have low meanDelta (< 5.0).
+	// These are the exact conditions where YUV 4:2:0 subsampling destroys smooth transitions with banding stripes/rings.
+	// Real-world gradients: gts-bg1.png (cyan/blue), cmo-bg-new1.jpg (cyan/blue), pav-bg3.jpg (purple/magenta).
 	isBlueCyanDominant := (meanB > meanR+5.0) || (meanG > meanR+15.0)
+	isPurpleOrMagenta := (meanR > 90.0 && meanB > 90.0 && meanG < 140.0)
 
-	return meanDelta < 5.0 && isBlueCyanDominant
+	return meanDelta < 5.0 && (isBlueCyanDominant || isPurpleOrMagenta)
+}
+
+// applyAntiBandingDither adds a subtle 4x4 Bayer dither (±1.5 RGB levels) before lossy encoding
+// to break up Mach-band quantization plateaus (from 150px to 2px) and eliminate concentric rings.
+func applyAntiBandingDither(src *image.RGBA) *image.RGBA {
+	bounds := src.Bounds()
+	w := bounds.Dx()
+	h := bounds.Dy()
+
+	dithered := image.NewRGBA(bounds)
+
+	bayer4x4 := [4][4]float64{
+		{-1.5, 0.5, -1.0, 1.0},
+		{0.0, -2.0, 0.5, -1.5},
+		{-0.5, 1.5, -1.5, 0.5},
+		{1.0, -1.0, 0.0, -2.0},
+	}
+
+	clamp := func(v float64) uint8 {
+		if v < 0 {
+			return 0
+		}
+		if v > 255 {
+			return 255
+		}
+		return uint8(v + 0.5)
+	}
+
+	idx := 0
+	for y := 0; y < h; y++ {
+		bayerRow := bayer4x4[y%4]
+		for x := 0; x < w; x++ {
+			bias := bayerRow[x%4]
+			dithered.Pix[idx] = clamp(float64(src.Pix[idx]) + bias)
+			dithered.Pix[idx+1] = clamp(float64(src.Pix[idx+1]) + bias)
+			dithered.Pix[idx+2] = clamp(float64(src.Pix[idx+2]) + bias)
+			dithered.Pix[idx+3] = src.Pix[idx+3]
+			idx += 4
+		}
+	}
+	return dithered
 }
 
 // toStraightRGBA converts any decoded image into *image.RGBA with STRAIGHT (unpremultiplied) RGBA bytes,
@@ -433,13 +475,39 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 			isTinyAssetWithSmallDelta := losslessLen <= 25*1024 && (losslessLen-int64(len(lossyData))) <= 5*1024
 			isSmoothGradient := isSmoothGradientOrUI(rawImg)
 
-			shouldUseLossless := isSmallerThanLossy || (losslessLen <= safeBudget && isTinyAssetWithSmallDelta) || (isSmoothGradient && losslessLen <= 650*1024)
+			shouldUseLossless := isSmallerThanLossy || (losslessLen <= safeBudget && isTinyAssetWithSmallDelta) || (isSmoothGradient && losslessLen <= 650*1024 && (losslessLen <= int64(float64(origSize)*0.80) || losslessLen <= safeBudget))
 
 			if losslessLen < origSize && shouldUseLossless {
 				webpData = losslessBytes
 				isLossless = true
 				adaptiveApplied = true
 				qualityUsed = 100
+			}
+		}
+	}
+
+	// 3. Anti-Banding Dithered WebP for JPEG / non-lossless Gradient Banners:
+	// If the image is a smooth gradient banner (e.g. pav-bg3.jpg or cmo-bg-new1.jpg)
+	// where Lossless WebP would exceed original JPEG size, apply subtle anti-banding dithering
+	// at high quality (Q=96). This dissolves quantization plateaus (concentric rings) from 150px to 2-3px
+	// while STRICTLY guaranteeing that the output fits within safeBudget (<= 85 KB)!
+	if adaptive && isSmoothGradientOrUI(rawImg) && !isLossless {
+		ditheredImg := applyAntiBandingDither(rawImg)
+		var ditherBuf bytes.Buffer
+		ditherOpts := &webp.Options{
+			Lossless: false,
+			Quality:  96.0,
+			Exact:    false,
+		}
+		if err := webp.Encode(&ditherBuf, ditheredImg, ditherOpts); err == nil {
+			ditherBytes := ditherBuf.Bytes()
+			ditherLen := int64(len(ditherBytes))
+			if ditherLen < origSize && ditherLen <= safeBudget {
+				webpData = ditherBytes
+				lossyData = ditherBytes
+				lossyLen = ditherLen
+				qualityUsed = 96.0
+				adaptiveApplied = true
 			}
 		}
 	}

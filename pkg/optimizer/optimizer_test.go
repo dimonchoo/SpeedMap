@@ -288,6 +288,68 @@ func TestCswCover1GradientOnline(t *testing.T) {
 	}
 }
 
+func TestCmoBgNew1GradientOnline(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2023/12/cmo-bg-new1.jpg"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("cmo-bg-new1 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+
+	// Must use anti-banding dithering at Q=96 to eliminate circular banding rings while staying <= 85KB
+	if res.QualityUsed < 95.0 {
+		t.Errorf("expected cmo-bg-new1 to use high quality (>=95) with anti-banding dither, got Q=%.1f", res.QualityUsed)
+	}
+	if res.OptimizedBytes > 85*1024 {
+		t.Errorf("expected cmo-bg-new1 to be within safe budget (<=85KB), got %s", res.OptimizedFormatted)
+	}
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected cmo-bg-new1 to save bytes vs original, got Opt=%s, Orig=%s", res.OptimizedFormatted, res.OriginalFormatted)
+	}
+}
+
+func TestPavBg3GradientOnline(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2023/05/pav-bg3.jpg"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("pav-bg3 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+
+	if res.QualityUsed < 95.0 {
+		t.Errorf("expected pav-bg3 to use high quality (>=95) with anti-banding dither, got Q=%.1f", res.QualityUsed)
+	}
+	if res.OptimizedBytes > 85*1024 {
+		t.Errorf("expected pav-bg3 to be within safe budget (<=85KB), got %s", res.OptimizedFormatted)
+	}
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected pav-bg3 to save bytes vs original, got Opt=%s, Orig=%s", res.OptimizedFormatted, res.OriginalFormatted)
+	}
+}
+
+func TestSlidePattern2StaysLossy(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2022/02/Slider-image-1770x700_pattern_2.png"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("Slider pattern_2 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+
+	// Must stay in compact Lossy WebP (< 85KB) and NOT bloat to 600KB Lossless
+	if res.IsLossless {
+		t.Errorf("expected slide pattern_2 to stay Lossy, but got Lossless (%s)", res.OptimizedFormatted)
+	}
+	if res.OptimizedBytes > 85*1024 {
+		t.Errorf("expected slide pattern_2 to be compact (<=85KB), got %s", res.OptimizedFormatted)
+	}
+	if res.SavingsPercent < 50.0 {
+		t.Errorf("expected at least 50%% savings on slide pattern_2, got %.1f%%", res.SavingsPercent)
+	}
+}
+
 // === Offline Fixture Tests ===
 
 func serveLocalFixture(t *testing.T, fixtureRelPath, contentType string) (*httptest.Server, string) {
