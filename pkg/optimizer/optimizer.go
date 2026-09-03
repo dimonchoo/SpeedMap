@@ -175,17 +175,17 @@ func isSmoothGradientOrUI(img *image.RGBA) bool {
 
 	// High edge density indicates photographic content, people, furniture, or complex icons.
 	highEdgeRatio := float64(highDeltaCount) / float64(count)
-	if highEdgeRatio > 0.03 {
+	if highEdgeRatio > 0.045 {
 		return false
 	}
 
-	// Blue/Cyan/Teal/Dark or Purple/Magenta smooth gradients have low meanDelta (< 5.0).
+	// Blue/Cyan/Teal/Dark or Purple/Magenta smooth gradients have low-to-medium meanDelta (< 8.0).
 	// These are the exact conditions where YUV 4:2:0 subsampling destroys smooth transitions with banding stripes/rings.
-	// Real-world gradients: gts-bg1.png (cyan/blue), cmo-bg-new1.jpg (cyan/blue), pav-bg3.jpg (purple/magenta).
+	// Real-world gradients: gts-bg1.png (~1.34), cmo-bg-new1.jpg (~1.74), pav-bg3.jpg (~1.98), dow-bg7-7.jpg (~3.90), soa-bg5.jpg (~7.26).
 	isBlueCyanDominant := (meanB > meanR+5.0) || (meanG > meanR+15.0)
 	isPurpleOrMagenta := (meanR > 90.0 && meanB > 90.0 && meanG < 140.0)
 
-	return meanDelta < 5.0 && (isBlueCyanDominant || isPurpleOrMagenta)
+	return meanDelta < 8.0 && (isBlueCyanDominant || isPurpleOrMagenta)
 }
 
 // applyAntiBandingDither adds a subtle 4x4 Bayer dither (±1.5 RGB levels) before lossy encoding

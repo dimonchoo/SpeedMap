@@ -350,6 +350,46 @@ func TestSlidePattern2StaysLossy(t *testing.T) {
 	}
 }
 
+func TestDowBg7GradientOnline(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2023/12/dow-bg7-7.jpg"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("dow-bg7-7 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+
+	if res.QualityUsed < 95.0 {
+		t.Errorf("expected dow-bg7-7 to use high quality (>=95) with anti-banding dither, got Q=%.1f", res.QualityUsed)
+	}
+	if res.OptimizedBytes > 85*1024 {
+		t.Errorf("expected dow-bg7-7 to be within safe budget (<=85KB), got %s", res.OptimizedFormatted)
+	}
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected dow-bg7-7 to save bytes vs original, got Opt=%s, Orig=%s", res.OptimizedFormatted, res.OriginalFormatted)
+	}
+}
+
+func TestSoaBg5GradientOnline(t *testing.T) {
+	url := "https://infuse.com/wp-content/uploads/2023/12/soa-bg5.jpg"
+	res, err := ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(url, 80, 80, true, 100*1024, true, 0, 0, "", "")
+	if err != nil {
+		t.Skipf("network error skipping: %v", err)
+	}
+	t.Logf("soa-bg5 Result: Orig=%s, Opt=%s, Savings=%.1f%%, Q=%.1f, Lossless=%v",
+		res.OriginalFormatted, res.OptimizedFormatted, res.SavingsPercent, res.QualityUsed, res.IsLossless)
+
+	if res.QualityUsed < 95.0 {
+		t.Errorf("expected soa-bg5 to use high quality (>=95) with anti-banding dither, got Q=%.1f", res.QualityUsed)
+	}
+	if res.OptimizedBytes > 85*1024 {
+		t.Errorf("expected soa-bg5 to be within safe budget (<=85KB), got %s", res.OptimizedFormatted)
+	}
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected soa-bg5 to save bytes vs original, got Opt=%s, Orig=%s", res.OptimizedFormatted, res.OriginalFormatted)
+	}
+}
+
 // === Offline Fixture Tests ===
 
 func serveLocalFixture(t *testing.T, fixtureRelPath, contentType string) (*httptest.Server, string) {
