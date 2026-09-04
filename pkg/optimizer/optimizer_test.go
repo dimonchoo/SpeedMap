@@ -537,4 +537,65 @@ func TestStraightRGBAAlphaIntegrity(t *testing.T) {
 	}
 }
 
+func TestConvertImageBytesTuned(t *testing.T) {
+	// Create sample RGBA image
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	for y := 0; y < 100; y++ {
+		for x := 0; x < 100; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 2), G: uint8(y * 2), B: 150, A: 255})
+		}
+	}
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, img); err != nil {
+		t.Fatalf("png encode failed: %v", err)
+	}
+	rawBytes := pngBuf.Bytes()
+
+	// 1. Test lossy tuning at 60% vs 95%
+	res60, err := ConvertImageBytesTuned("http://example.com/test.png", rawBytes, ImageTuneOptions{
+		Quality: 60,
+	})
+	if err != nil {
+		t.Fatalf("tuned lossy 60 failed: %v", err)
+	}
+	if res60.QualityUsed != 60 {
+		t.Errorf("expected quality 60, got %f", res60.QualityUsed)
+	}
+
+	res95, err := ConvertImageBytesTuned("http://example.com/test.png", rawBytes, ImageTuneOptions{
+		Quality: 95,
+	})
+	if err != nil {
+		t.Fatalf("tuned lossy 95 failed: %v", err)
+	}
+	if res95.OptimizedBytes <= res60.OptimizedBytes {
+		t.Errorf("expected Q95 (%d B) > Q60 (%d B)", res95.OptimizedBytes, res60.OptimizedBytes)
+	}
+
+	// 2. Test lossless tuning
+	resLossless, err := ConvertImageBytesTuned("http://example.com/test.png", rawBytes, ImageTuneOptions{
+		Lossless: true,
+	})
+	if err != nil {
+		t.Fatalf("tuned lossless failed: %v", err)
+	}
+	if !resLossless.IsLossless {
+		t.Errorf("expected IsLossless=true")
+	}
+
+	// 3. Test proportional resize tuning
+	resResize, err := ConvertImageBytesTuned("http://example.com/test.png", rawBytes, ImageTuneOptions{
+		Quality: 80,
+		MaxW:    50,
+		MaxH:    50,
+	})
+	if err != nil {
+		t.Fatalf("tuned resize failed: %v", err)
+	}
+	if resResize.OptimizedWidth != 50 || resResize.OptimizedHeight != 50 {
+		t.Errorf("expected 50x50, got %dx%d", resResize.OptimizedWidth, resResize.OptimizedHeight)
+	}
+}
+
+
 

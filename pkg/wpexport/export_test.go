@@ -394,3 +394,97 @@ func TestBenchmark137ImagesFromDump(t *testing.T) {
 	t.Logf("  - Review ZIP       : %s", out.ReviewZIP)
 	t.Logf("===========================================================\n")
 }
+
+func TestConvertHeavyImagesWithOverrides(t *testing.T) {
+	// Create mock HTTP server serving 3 images
+	img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+	for y := 0; y < 100; y++ {
+		for x := 0; x < 100; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 2), G: uint8(y * 2), B: 120, A: 255})
+		}
+	}
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, img); err != nil {
+		t.Fatalf("png encode failed: %v", err)
+	}
+	payload := pngBuf.Bytes()
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(payload)
+	}))
+	defer ts.Close()
+
+	images := []ManifestImage{
+		{
+			SourceURL: ts.URL + "/default.png",
+			Basename:  "default.png",
+			WebpRel:   "default.webp",
+			Format:    "png",
+			IsHeavy:   true,
+			Bytes:     int64(len(payload)),
+		},
+		{
+			SourceURL: ts.URL + "/tuned.png",
+			Basename:  "tuned.png",
+			WebpRel:   "tuned.webp",
+			Format:    "png",
+			IsHeavy:   true,
+			Bytes:     int64(len(payload)),
+		},
+		{
+			SourceURL: ts.URL + "/skipped.png",
+			Basename:  "skipped.png",
+			WebpRel:   "skipped.webp",
+			Format:    "png",
+			IsHeavy:   true,
+			Bytes:     int64(len(payload)),
+		},
+	}
+
+	overrides := map[string]ImageOverride{
+		ts.URL + "/tuned.png": {
+			Quality:  93,
+			Lossless: false,
+		},
+		ts.URL + "/skipped.png": {
+			Skip: true,
+		},
+	}
+
+	written, err := ConvertHeavyImagesWithProgressAndOverrides(
+		images,
+		80, 70, false, 0, false, false,
+		"", "",
+		overrides,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("ConvertHeavyImagesWithProgressAndOverrides failed: %v", err)
+	}
+
+	// Skipped image must not be in written list
+	if len(written) != 2 {
+		t.Fatalf("expected 2 images (skipped excluded), got %d", len(written))
+	}
+
+	foundTuned := false
+	for _, w := range written {
+		if w.SourceURL == ts.URL+"/skipped.png" {
+			t.Errorf("skipped image was included in output!")
+		}
+		if w.SourceURL == ts.URL+"/tuned.png" {
+			foundTuned = true
+			if !w.IsOverridden {
+				t.Errorf("expected IsOverridden=true for tuned image")
+			}
+			if w.Quality != 93 {
+				t.Errorf("expected tuned quality 93, got %f", w.Quality)
+			}
+		}
+	}
+	if !foundTuned {
+		t.Errorf("tuned image not found in results")
+	}
+}
+

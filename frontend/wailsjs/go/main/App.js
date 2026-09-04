@@ -38,6 +38,10 @@ export function DownloadSingleWebPImage(arg1, arg2) {
   return window['go']['main']['App']['DownloadSingleWebPImage'](arg1, arg2);
 }
 
+export function DownloadSingleWebPTuned(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DownloadSingleWebPTuned'](arg1, arg2, arg3);
+}
+
 export function ExportFontsCSV(arg1) {
   return window['go']['main']['App']['ExportFontsCSV'](arg1);
 }
@@ -68,6 +72,10 @@ export function ExportImageComparisonHTML(arg1, arg2, arg3) {
 
 export function ExportWordPressWebPApplyPHP(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ExportWordPressWebPApplyPHP'](arg1, arg2, arg3, arg4);
+}
+
+export function ExportWordPressWebPApplyPHPWithOverrides(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['ExportWordPressWebPApplyPHPWithOverrides'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function GetAllHistoryRuns(arg1) {
@@ -136,6 +144,10 @@ export function StartGDriveAuth(arg1, arg2) {
 
 export function StartScan(arg1, arg2) {
   return window['go']['main']['App']['StartScan'](arg1, arg2);
+}
+
+export function TuneImagePreview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TuneImagePreview'](arg1, arg2, arg3);
 }
 
 export function UploadFileToGDrive(arg1, arg2) {

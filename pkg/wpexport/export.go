@@ -49,6 +49,22 @@ type ManifestImage struct {
 	MaxRenderedHeight       int      `json:"maxRenderedHeight,omitempty"`
 	RecommendedRetinaWidth  int      `json:"recommendedRetinaWidth,omitempty"`
 	RecommendedRetinaHeight int      `json:"recommendedRetinaHeight,omitempty"`
+	Quality                 float32  `json:"quality,omitempty"`
+	IsLossless              bool     `json:"isLossless,omitempty"`
+	IsOverridden            bool     `json:"isOverridden,omitempty"`
+}
+
+// ImageOverride specifies per-image customization applied in Image Studio.
+type ImageOverride struct {
+	Quality  float32 `json:"quality"`
+	Lossless bool    `json:"lossless"`
+	Exact    bool    `json:"exact"`
+	Retina   bool    `json:"retina"`
+	MaxW     int     `json:"maxW"`
+	MaxH     int     `json:"maxH"`
+	Dither   bool    `json:"dither"`
+	Skip     bool    `json:"skip"`
+	Approved bool    `json:"approved"`
 }
 
 type Manifest struct {
@@ -212,6 +228,11 @@ func ConvertHeavyImagesWithProgress(images []ManifestImage, quality float32, thr
 
 // ConvertHeavyImagesWithProgressExt converts images with custom threshold byte budget, min quality floor, and skip protection.
 func ConvertHeavyImagesWithProgressExt(images []ManifestImage, quality float32, minQuality float32, skipIfNoSavings bool, thresholdBytes int64, adaptive bool, resizeToRetina bool, authUser, authPass string, onProgress func(done, total int, name string)) ([]WrittenImage, error) {
+	return ConvertHeavyImagesWithProgressAndOverrides(images, quality, minQuality, skipIfNoSavings, thresholdBytes, adaptive, resizeToRetina, authUser, authPass, nil, onProgress)
+}
+
+// ConvertHeavyImagesWithProgressAndOverrides converts images with support for per-image Image Studio overrides.
+func ConvertHeavyImagesWithProgressAndOverrides(images []ManifestImage, quality float32, minQuality float32, skipIfNoSavings bool, thresholdBytes int64, adaptive bool, resizeToRetina bool, authUser, authPass string, overrides map[string]ImageOverride, onProgress func(done, total int, name string)) ([]WrittenImage, error) {
 	if len(images) == 0 {
 		return nil, fmt.Errorf("no images to convert")
 	}
@@ -258,14 +279,64 @@ func ConvertHeavyImagesWithProgressExt(images []ManifestImage, quality float32, 
 						}
 					}()
 
+					var override *ImageOverride
+					if overrides != nil {
+						if o, ok := overrides[img.SourceURL]; ok {
+							override = &o
+						} else if o, ok := overrides[img.WebpRel]; ok {
+							override = &o
+						}
+					}
+
+					// User explicitly chose to skip this image in Image Studio
+					if override != nil && override.Skip {
+						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: marked as skipped in studio", img.SourceURL)}
+						return
+					}
+
 					maxW := 0
 					maxH := 0
 					if resizeToRetina && img.MaxRenderedWidth > 0 {
 						maxW = img.MaxRenderedWidth * 2
 						maxH = img.MaxRenderedHeight * 2
 					}
+					if override != nil {
+						if override.Retina && (override.MaxW > 0 || override.MaxH > 0) {
+							maxW = override.MaxW
+							maxH = override.MaxH
+						} else if !override.Retina {
+							maxW = 0
+							maxH = 0
+						}
+					}
 
-					res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(img.SourceURL, quality, minQuality, skipIfNoSavings, thresholdBytes, adaptive, maxW, maxH, authUser, authPass)
+					var res *optimizer.ConversionResult
+					var err error
+
+					if override != nil {
+						// Convert with user-specified overrides
+						origBytes, fetchErr := optimizer.FetchImageBytes(img.SourceURL, authUser, authPass)
+						if fetchErr != nil {
+							resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: %w", img.SourceURL, fetchErr)}
+							return
+						}
+						q := override.Quality
+						if q <= 0 {
+							q = quality
+						}
+						tuneOpts := optimizer.ImageTuneOptions{
+							Quality:  q,
+							Lossless: override.Lossless,
+							Exact:    override.Exact,
+							MaxW:     maxW,
+							MaxH:     maxH,
+							Dither:   override.Dither,
+						}
+						res, err = optimizer.ConvertImageBytesTuned(img.SourceURL, origBytes, tuneOpts)
+					} else {
+						res, err = optimizer.ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(img.SourceURL, quality, minQuality, skipIfNoSavings, thresholdBytes, adaptive, maxW, maxH, authUser, authPass)
+					}
+
 					if err != nil {
 						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: %w", img.SourceURL, err)}
 						return
@@ -285,8 +356,8 @@ func ConvertHeavyImagesWithProgressExt(images []ManifestImage, quality float32, 
 						return
 					}
 
-					// If thresholdBytes is set, ensure the actual downloaded original meets the heavy threshold
-					if thresholdBytes > 0 && int64(len(origData)) < thresholdBytes {
+					// If thresholdBytes is set, ensure the actual downloaded original meets the heavy threshold (unless user explicitly tuned/approved it)
+					if override == nil && thresholdBytes > 0 && int64(len(origData)) < thresholdBytes {
 						resultsChan <- convertResult{index: task.index, err: fmt.Errorf("skip %s: downloaded size %d B < threshold %d B", img.SourceURL, len(origData), thresholdBytes)}
 						return
 					}
@@ -309,6 +380,10 @@ func ConvertHeavyImagesWithProgressExt(images []ManifestImage, quality float32, 
 						img.RecommendedRetinaWidth = retW
 						img.RecommendedRetinaHeight = retH
 					}
+
+					img.Quality = res.QualityUsed
+					img.IsLossless = res.IsLossless
+					img.IsOverridden = (override != nil)
 
 					rel := img.WebpRel
 					if rel == "" {

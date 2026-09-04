@@ -274,6 +274,69 @@ func (a *App) ExportImageComparisonHTML(domain string, cfg config.ScanConfig, re
 	return savePath, nil
 }
 
+var (
+	previewBytesCache = make(map[string][]byte)
+	previewCacheMutex sync.RWMutex
+)
+
+// TuneImagePreview converts an image with exact tuned parameters for Image Studio live preview.
+// Original bytes are cached in memory so subsequent slider movements respond in 10-30ms.
+func (a *App) TuneImagePreview(rawURL string, opts optimizer.ImageTuneOptions, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {
+	previewCacheMutex.RLock()
+	cachedBytes, found := previewBytesCache[rawURL]
+	previewCacheMutex.RUnlock()
+
+	if !found || len(cachedBytes) == 0 {
+		var err error
+		cachedBytes, err = optimizer.FetchImageBytes(rawURL, cfg.AuthUser, cfg.AuthPass)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch image: %w", err)
+		}
+		previewCacheMutex.Lock()
+		previewBytesCache[rawURL] = cachedBytes
+		previewCacheMutex.Unlock()
+	}
+
+	return optimizer.ConvertImageBytesTuned(rawURL, cachedBytes, opts)
+}
+
+// DownloadSingleWebPTuned converts and saves a single image using exact tuned options from Image Studio
+func (a *App) DownloadSingleWebPTuned(rawURL string, opts optimizer.ImageTuneOptions, cfg config.ScanConfig) (string, error) {
+	res, err := a.TuneImagePreview(rawURL, opts, cfg)
+	if err != nil {
+		return "", err
+	}
+
+	idx := strings.Index(res.OptimizedWebPBase64, ",")
+	if idx == -1 {
+		return "", fmt.Errorf("invalid base64 image data")
+	}
+	data, err := base64.StdEncoding.DecodeString(res.OptimizedWebPBase64[idx+1:])
+	if err != nil {
+		return "", fmt.Errorf("failed to decode base64: %w", err)
+	}
+
+	var savePath string
+	if a.ctx != nil {
+		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Зберегти налаштоване WebP зображення",
+			DefaultFilename: res.Filename,
+			Filters: []runtime.FileFilter{
+				{DisplayName: "WebP Зображення (*.webp)", Pattern: "*.webp"},
+			},
+		})
+	}
+	if savePath == "" || err != nil {
+		savePath = res.Filename
+	}
+
+	if err := os.WriteFile(savePath, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return savePath, nil
+}
+
 // ConvertImageToWebP encodes a single image to WebP with the configured quality setting
 func (a *App) ConvertImageToWebP(rawURL string, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {
 	fmt.Printf("[GO LOG] ConvertImageToWebP called for %s (quality=%.0f, threshold=%d KB, adaptive=%v)\n", rawURL, cfg.NormalizedWebPQuality(), cfg.HeavyImageThresholdKB, cfg.IsAdaptiveQualityEnabled())
@@ -398,8 +461,13 @@ func (a *App) DownloadOptimizedWebPZIP(urls []string, cfg config.ScanConfig) (st
 // (images/ + apply.php + rollback.php + compare.html). PHP apply copies webp into
 // uploads and retargets attachments — SpeedMap does not write into WP uploads.
 func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, results []scanner.PageResult, wordpressPath string) (*wpexport.ExportResult, error) {
+	return a.ExportWordPressWebPApplyPHPWithOverrides(domain, cfg, results, wordpressPath, nil)
+}
+
+// ExportWordPressWebPApplyPHPWithOverrides converts heavy images taking per-image studio overrides into account.
+func (a *App) ExportWordPressWebPApplyPHPWithOverrides(domain string, cfg config.ScanConfig, results []scanner.PageResult, wordpressPath string, overrides map[string]wpexport.ImageOverride) (*wpexport.ExportResult, error) {
 	outBase := strings.TrimSpace(wordpressPath)
-	fmt.Printf("[GO LOG] ExportWordPressWebPApplyPHP called for %s (%d pages, out=%s)\n", domain, len(results), outBase)
+	fmt.Printf("[GO LOG] ExportWordPressWebPApplyPHPWithOverrides called for %s (%d pages, out=%s, overrides=%d)\n", domain, len(results), outBase, len(overrides))
 
 	site := analytics.ComputeSiteAnalytics(results, cfg.HeavyImageThresholdKB)
 	heavy := wpexport.CollectHeavyImages(site.AllImages)
@@ -407,7 +475,7 @@ func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, 
 		return nil, fmt.Errorf("no heavy convertible images in scan")
 	}
 
-	written, err := wpexport.ConvertHeavyImagesWithProgressExt(
+	written, err := wpexport.ConvertHeavyImagesWithProgressAndOverrides(
 		heavy,
 		cfg.NormalizedWebPQuality(),
 		cfg.NormalizedMinWebPQuality(),
@@ -417,6 +485,7 @@ func (a *App) ExportWordPressWebPApplyPHP(domain string, cfg config.ScanConfig, 
 		cfg.IsResizeToRetinaEnabled(),
 		cfg.AuthUser,
 		cfg.AuthPass,
+		overrides,
 		func(done, total int, name string) {
 			if a.ctx != nil {
 				runtime.EventsEmit(a.ctx, "export:progress", map[string]interface{}{

@@ -33,7 +33,27 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
   <style>
-    [x-cloak] { display: none !important; }
+    /* macOS Native Wails Draggable Window Header */
+    .wails-drag {
+      --wails-draggable: drag;
+    }
+    .wails-no-drag,
+    .wails-drag button,
+    .wails-drag input,
+    .wails-drag select,
+    .wails-drag a,
+    .wails-drag [role="button"],
+    .wails-drag nav,
+    .wails-drag label {
+      --wails-draggable: no-drag;
+    }
+
+    /* Silk-smooth horizontal fade out to the right */
+    .mask-fade-right {
+      mask-image: linear-gradient(to right, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%);
+      -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%);
+    }
+
     /* Custom scrollbar */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: #0f172a; }
@@ -110,79 +130,84 @@
 
   <div class="flex flex-col h-screen overflow-hidden relative">
     
-    <!-- Top Navigation Header -->
-    <header class="bg-slate-950/80 backdrop-blur border-b border-slate-800 px-6 py-3.5 flex items-center justify-between z-20 shrink-0">
-      <div class="flex items-center">
-        <!-- Main Uncropped SpeedMap Pikachu Logo Banner (Aligned with Left Sidebar 384px width) -->
-        <div class="w-[360px] flex items-center shrink-0">
-          <div class="relative group cursor-pointer shrink-0" @click="showSettings = true" title="SpeedMap PRO (Налаштування)">
-            <img src="logo.webp" alt="SpeedMap Logo"
-              class="h-16 sm:h-20 w-auto object-contain rounded-xl border border-emerald-500/40 shadow-2xl shadow-emerald-500/20 group-hover:scale-105 transition-all duration-200">
-          </div>
+    <!-- Top Navigation Header (macOS draggable with native traffic lights inset & seamless background artwork) -->
+    <header class="wails-drag h-[96px] bg-slate-950 border-b border-slate-800 px-6 flex items-center justify-between z-20 shrink-0 relative overflow-hidden select-none">
+      
+      <!-- Seamless Background Artwork (Flush edge-to-edge on the left, fades out smoothly to the right) -->
+      <div class="mask-fade-right absolute left-0 top-0 bottom-0 pointer-events-none overflow-hidden w-[400px]">
+        <div class="w-full h-full relative" style="transform: scale(1.02); transform-origin: left 42%;">
+          <img src="logo.webp"
+            class="w-full h-full object-cover object-left select-none pointer-events-none"
+            style="object-position: left 42%;"
+            alt="SpeedMap Logo Artwork">
         </div>
-
-        <!-- Primary View Switcher Tabs (Aligned with Main Table) -->
-        <nav class="flex space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
-          <button @click="activeTab = 'pages'"
-            :class="activeTab === 'pages' ? 'bg-slate-800 text-emerald-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
-            <span>📄 Сторінки</span>
-            <template x-if="scanResults.length > 0">
-              <span class="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px]" x-text="scanResults.length"></span>
-            </template>
-          </button>
-          
-          <button @click="activeTab = 'analytics'; updateAnalytics()"
-            :class="activeTab === 'analytics' ? 'bg-slate-800 text-cyan-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
-            <span>📊 Статистика сайту</span>
-            <template x-if="siteAnalytics">
-              <span class="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px]" x-text="siteAnalytics.healthScore + '%'"></span>
-            </template>
-          </button>
-
-          <button @click="activeTab = 'images'; updateAnalytics()"
-            :class="activeTab === 'images' ? 'bg-slate-800 text-amber-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
-            <span>🖼️ Зображення</span>
-            <template x-if="siteAnalytics && siteAnalytics.totalImageCount > 0">
-              <span class="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px]" x-text="siteAnalytics.totalImageCount"></span>
-            </template>
-            <template x-if="exportDiffReport && exportDiffReport.degradedCount > 0">
-              <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" title="Виявлено регресії" x-text="'🔴 ' + exportDiffReport.degradedCount"></span>
-            </template>
-          </button>
-
-          <button @click="activeTab = 'fonts'; updateAnalytics()"
-            :class="activeTab === 'fonts' ? 'bg-slate-800 text-purple-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
-            <span>🔤 Шрифти</span>
-            <template x-if="siteAnalytics && siteAnalytics.fontUsage && siteAnalytics.fontUsage.length > 0">
-              <span class="px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 text-[10px]" x-text="siteAnalytics.fontUsage.length"></span>
-            </template>
-          </button>
-
-          <button @click="activeTab = 'iframes'; updateAnalytics()"
-            :class="activeTab === 'iframes' ? 'bg-slate-800 text-rose-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
-            <span>⧉ iframe</span>
-            <template x-if="siteAnalytics && siteAnalytics.totalIframeCount > 0">
-              <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="siteAnalytics.totalIframeCount"></span>
-            </template>
-          </button>
-
-          <button @click="activeTab = 'forms'; updateAnalytics()"
-            :class="activeTab === 'forms' ? 'bg-slate-800 text-blue-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-            class="px-4 py-1.5 rounded-lg transition flex items-center space-x-2">
-            <span>📝 Форми</span>
-            <template x-if="siteAnalytics && siteAnalytics.totalFormsCount > 0">
-              <span class="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 text-[10px]" x-text="siteAnalytics.totalFormsCount"></span>
-            </template>
-          </button>
-        </nav>
       </div>
 
-      <div class="flex items-center space-x-2">
+      <!-- Left: macOS Traffic Lights Spacing Clearance -->
+      <div class="w-20 shrink-0 pointer-events-none"></div>
+
+      <!-- CENTERED NAVIGATION TABS (Strictly centered, No scrollbar, Pill design) -->
+      <nav class="wails-no-drag absolute left-1/2 -translate-x-1/2 flex items-center space-x-1 bg-slate-900/90 backdrop-blur-md p-1 rounded-xl border border-slate-800/80 text-xs shadow-2xl z-20 whitespace-nowrap">
+        <button @click="activeTab = 'pages'"
+          :class="activeTab === 'pages' ? 'bg-slate-800 text-emerald-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+          class="px-3.5 py-1.5 rounded-lg transition flex items-center space-x-1.5 shrink-0">
+          <span>📄 Сторінки</span>
+          <template x-if="scanResults.length > 0">
+            <span class="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px]" x-text="scanResults.length"></span>
+          </template>
+        </button>
+        
+        <button @click="activeTab = 'analytics'; updateAnalytics()"
+          :class="activeTab === 'analytics' ? 'bg-slate-800 text-cyan-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+          class="px-3.5 py-1.5 rounded-lg transition flex items-center space-x-1.5 shrink-0">
+          <span>📊 Статистика сайту</span>
+          <template x-if="siteAnalytics">
+            <span class="px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px]" x-text="siteAnalytics.healthScore + '%'"></span>
+          </template>
+        </button>
+
+        <button @click="activeTab = 'images'; updateAnalytics()"
+          :class="activeTab === 'images' ? 'bg-slate-800 text-amber-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+          class="px-3.5 py-1.5 rounded-lg transition flex items-center space-x-1.5 shrink-0">
+          <span>🖼️ Зображення</span>
+          <template x-if="siteAnalytics && siteAnalytics.totalImageCount > 0">
+            <span class="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px]" x-text="siteAnalytics.totalImageCount"></span>
+          </template>
+          <template x-if="exportDiffReport && exportDiffReport.degradedCount > 0">
+            <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" title="Виявлено регресії" x-text="'🔴 ' + exportDiffReport.degradedCount"></span>
+          </template>
+        </button>
+
+        <button @click="activeTab = 'fonts'; updateAnalytics()"
+          :class="activeTab === 'fonts' ? 'bg-slate-800 text-purple-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+          class="px-3.5 py-1.5 rounded-lg transition flex items-center space-x-1.5 shrink-0">
+          <span>🔤 Шрифти</span>
+          <template x-if="siteAnalytics && siteAnalytics.fontUsage && siteAnalytics.fontUsage.length > 0">
+            <span class="px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 text-[10px]" x-text="siteAnalytics.fontUsage.length"></span>
+          </template>
+        </button>
+
+        <button @click="activeTab = 'iframes'; updateAnalytics()"
+          :class="activeTab === 'iframes' ? 'bg-slate-800 text-rose-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+          class="px-3.5 py-1.5 rounded-lg transition flex items-center space-x-1.5 shrink-0">
+          <span>⧉ iframe</span>
+          <template x-if="siteAnalytics && siteAnalytics.totalIframeCount > 0">
+            <span class="px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 text-[10px]" x-text="siteAnalytics.totalIframeCount"></span>
+          </template>
+        </button>
+
+        <button @click="activeTab = 'forms'; updateAnalytics()"
+          :class="activeTab === 'forms' ? 'bg-slate-800 text-blue-400 font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+          class="px-3.5 py-1.5 rounded-lg transition flex items-center space-x-1.5 shrink-0">
+          <span>📝 Форми</span>
+          <template x-if="siteAnalytics && siteAnalytics.totalFormsCount > 0">
+            <span class="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 text-[10px]" x-text="siteAnalytics.totalFormsCount"></span>
+          </template>
+        </button>
+      </nav>
+
+      <!-- Right Action Controls (Activity Log, Device toggle, Settings) -->
+      <div class="wails-no-drag flex items-center space-x-2 relative z-20 shrink-0">
         <!-- Activity Log: icon only -->
         <button @click="showLogDrawer = true"
           class="relative flex items-center justify-center w-9 h-9 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-300 border border-slate-700 rounded-lg transition"
@@ -1144,6 +1169,16 @@
                         </svg>
                       </button>
                     </div>
+
+                    <!-- Instant Launcher: Image Tuning Studio -->
+                    <button @click="openImageStudio()"
+                      class="w-full mt-2 bg-gradient-to-r from-cyan-600 to-emerald-600 hover:from-cyan-500 hover:to-emerald-500 text-white font-bold py-1.5 px-3 rounded-lg text-xs transition flex items-center justify-center space-x-2 shadow-lg"
+                      title="Відкрити інтерактивну Image Studio для тонкого налаштування">
+                      <span>🎨 Відкрити Image Studio</span>
+                      <template x-if="studioOverridesCount > 0">
+                        <span class="px-1.5 py-0.2 bg-slate-950/70 rounded-full text-[10px] text-cyan-200" x-text="studioOverridesCount + ' змінено'"></span>
+                      </template>
+                    </button>
                   </div>
 
                 </div>
@@ -1255,6 +1290,15 @@
                       <option value="duration">Сортувати: За часом</option>
                       <option value="pages">Сортувати: За сторінками</option>
                     </select>
+
+                    <button @click="openImageStudio()"
+                      class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition flex items-center space-x-1.5 shadow"
+                      title="Відкрити інтерактивну Image Studio для тонкого налаштування">
+                      <span>🎨 Відкрити Studio</span>
+                      <template x-if="studioOverridesCount > 0">
+                        <span class="px-1.5 py-0.2 bg-slate-950/80 rounded-full text-[10px] text-cyan-300" x-text="studioOverridesCount"></span>
+                      </template>
+                    </button>
                   </div>
 
                 </div>
@@ -1291,9 +1335,17 @@
                           
                           <td class="p-3.5 max-w-xs truncate text-slate-200 font-medium">
                             <a :href="img.url" target="_blank" class="hover:text-amber-400 underline font-mono text-xs block truncate" :title="img.url" x-text="img.url"></a>
-                            <template x-if="img.isLCP">
-                              <span class="inline-block mt-0.5 px-1.5 py-0.2 rounded text-[10px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">LCP Hero 🔥</span>
-                            </template>
+                            <div class="flex items-center space-x-1 mt-0.5">
+                              <template x-if="img.isLCP">
+                                <span class="px-1.5 py-0.2 rounded text-[10px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">LCP Hero 🔥</span>
+                              </template>
+                              <template x-if="imageStudio.overrides[img.url]?.skip">
+                                <span class="px-1.5 py-0.2 rounded text-[10px] bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">Пропущено ⊘</span>
+                              </template>
+                              <template x-if="!imageStudio.overrides[img.url]?.skip && imageStudio.overrides[img.url]">
+                                <span class="px-1.5 py-0.2 rounded text-[10px] bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30" x-text="'⚡ Q: ' + (imageStudio.overrides[img.url].quality || 80) + '%'"></span>
+                              </template>
+                            </div>
                           </td>
 
                           <td class="p-3.5 text-center">
@@ -1324,6 +1376,11 @@
                           </td>
 
                           <td class="p-3.5 text-center space-x-1 whitespace-nowrap">
+                            <button @click="openImageStudio(img)"
+                              class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-2 py-1 rounded text-[10px] transition shadow inline-flex items-center space-x-1"
+                              title="Відкрити Image Tuning Studio (Live Preview & Налаштування)">
+                              <span>🎨 Studio</span>
+                            </button>
                             <button @click="openImageQualityModal(img)"
                               class="bg-amber-600/90 hover:bg-amber-500 text-white font-semibold px-2 py-1 rounded text-[10px] transition shadow"
                               title="Відкрити порівняння якості (Original vs Real WebP)">
@@ -3177,6 +3234,636 @@
 
         </div>
       </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- 🎨 FULLSCREEN IMAGE TUNING STUDIO (SEOAEO-235 80/20 UI) -->
+    <!-- ======================================================== -->
+    <div x-show="imageStudio.isOpen" x-cloak
+      @mousemove.window="onSplitMouseMove($event)"
+      @mouseup.window="stopSplitDrag()"
+      @touchmove.window="onSplitMouseMove($event)"
+      @touchend.window="stopSplitDrag()"
+      @keydown.window="handleStudioKeydown($event)"
+      @keyup.window="handleStudioKeyup($event)"
+      class="fixed inset-0 z-[65] bg-slate-950 flex flex-col text-slate-100 overflow-hidden select-none font-sans"
+      role="dialog" aria-modal="true">
+
+      <!-- TOPBAR: Navigation, Modes, Zoom, Close (macOS draggable with native traffic lights inset) -->
+      <div class="wails-drag h-14 border-b border-slate-800 bg-slate-900/90 pl-20 pr-4 flex items-center justify-between shrink-0 shadow-md select-none">
+        
+        <!-- Left: Image Nav & Title -->
+        <div class="flex items-center space-x-3 min-w-0">
+          <div class="flex items-center space-x-1 shrink-0">
+            <button @click="studioPrevImage()" :disabled="imageStudio.currentIndex === 0"
+              class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs text-slate-200 font-mono transition"
+              title="Попереднє зображення (Стрілка вліво ←)">
+              ◄
+            </button>
+            <span class="text-xs font-mono text-slate-400 px-1">
+              <strong class="text-slate-100" x-text="imageStudio.currentIndex + 1"></strong> / <span x-text="imageStudioImages.length"></span>
+            </span>
+            <button @click="studioNextImage()" :disabled="imageStudio.currentIndex >= imageStudioImages.length - 1"
+              class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs text-slate-200 font-mono transition"
+              title="Наступне зображення (Стрілка вправо →)">
+              ►
+            </button>
+          </div>
+
+          <div class="truncate flex items-center space-x-2">
+            <span class="text-sm font-bold text-amber-400 font-mono truncate" x-text="currentStudioImage?.basename || 'image'"></span>
+            
+            <template x-if="currentStudioSkip">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-900/60 text-rose-300 border border-rose-700">Пропущено ⊘</span>
+            </template>
+            <template x-if="!currentStudioSkip && isCurrentStudioOverridden">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-900/60 text-purple-300 border border-purple-700">Кастомні налаштування ⚡</span>
+            </template>
+          </div>
+        </div>
+
+        <!-- Center: Comparison View Modes & Zoom -->
+        <div class="flex items-center space-x-3">
+          
+          <!-- View Modes -->
+          <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs">
+            <button @click="imageStudio.viewMode = 'split'"
+              :class="imageStudio.viewMode === 'split' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-1 rounded-lg transition flex items-center space-x-1.5"
+              title="Інтерактивна шторка-роздільник (Split)">
+              <span>↔ Шторка</span>
+            </button>
+
+            <button @click="imageStudio.viewMode = 'toggle'"
+              :class="imageStudio.viewMode === 'toggle' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-1 rounded-lg transition flex items-center space-x-1.5"
+              title="Швидкий перемикач: клавіша T або Space">
+              <span>🔀 Toggle (T)</span>
+            </button>
+
+            <button @click="imageStudio.viewMode = 'side'"
+              :class="imageStudio.viewMode === 'side' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-1 rounded-lg transition flex items-center space-x-1.5"
+              title="Два зображення поруч">
+              <span>⫴ Поруч</span>
+            </button>
+          </div>
+
+          <!-- Zoom Modes -->
+          <div class="hidden sm:flex bg-slate-950 p-1 rounded-xl border border-slate-800 items-center text-xs">
+            <button @click="imageStudio.zoomMode = 'fit'"
+              :class="imageStudio.zoomMode === 'fit' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+              class="px-2.5 py-1 rounded-lg transition">
+              Fit
+            </button>
+            <button @click="imageStudio.zoomMode = '100'"
+              :class="imageStudio.zoomMode === '100' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+              class="px-2.5 py-1 rounded-lg transition">
+              100%
+            </button>
+            <button @click="imageStudio.zoomMode = '200'"
+              :class="imageStudio.zoomMode === '200' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+              class="px-2.5 py-1 rounded-lg transition">
+              150%
+            </button>
+          </div>
+
+          <!-- Canvas Background Switcher (Dark, Light/White, Checkerboard, Custom Color Picker) -->
+          <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs space-x-1" title="Колір фону робочої області">
+            <!-- Dark Theme -->
+            <button @click="imageStudio.canvasBgMode = 'dark'"
+              :class="imageStudio.canvasBgMode === 'dark' ? 'ring-2 ring-cyan-400 bg-slate-800 shadow' : 'opacity-60 hover:opacity-100'"
+              class="w-6 h-6 rounded-lg bg-slate-950 border border-slate-700 flex items-center justify-center transition"
+              title="Темний фон">
+              <span class="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-600"></span>
+            </button>
+
+            <!-- Pure White (for dark images and black text) -->
+            <button @click="imageStudio.canvasBgMode = 'light'"
+              :class="imageStudio.canvasBgMode === 'light' ? 'ring-2 ring-cyan-400 bg-slate-800 shadow' : 'opacity-60 hover:opacity-100'"
+              class="w-6 h-6 rounded-lg bg-white border border-slate-300 flex items-center justify-center transition"
+              title="Світлий / білий фон (для темних або прозорих фото)">
+              <span class="w-2.5 h-2.5 rounded-full bg-white shadow-sm"></span>
+            </button>
+
+            <!-- Transparency Checkerboard -->
+            <button @click="imageStudio.canvasBgMode = 'checker'"
+              :class="imageStudio.canvasBgMode === 'checker' ? 'ring-2 ring-cyan-400 bg-slate-800 shadow' : 'opacity-60 hover:opacity-100'"
+              class="w-6 h-6 rounded-lg border border-slate-700 flex items-center justify-center transition overflow-hidden"
+              style="background-image: repeating-conic-gradient(#94a3b8 0% 25%, #ffffff 0% 50%); background-size: 8px 8px;"
+              title="Прозорість (шахова сітка)">
+            </button>
+
+            <!-- Native Color Picker -->
+            <label class="relative w-6 h-6 rounded-lg border border-slate-700 flex items-center justify-center cursor-pointer transition overflow-hidden group"
+              :class="imageStudio.canvasBgMode === 'custom' ? 'ring-2 ring-cyan-400 shadow' : 'opacity-70 hover:opacity-100'"
+              :style="'background-color: ' + (imageStudio.canvasCustomColor || '#ffffff')"
+              title="Вибрати довільний колір фону (Color Picker)">
+              <input type="color"
+                x-model="imageStudio.canvasCustomColor"
+                @input="imageStudio.canvasBgMode = 'custom'"
+                class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+              <span class="text-[10px] select-none pointer-events-none drop-shadow">🎨</span>
+            </label>
+          </div>
+
+        </div>
+
+        <!-- Right: Settings, Download & Close -->
+        <div class="flex items-center space-x-2 shrink-0">
+          <button @click="toggleStudioSettingsDrawer()"
+            :class="imageStudio.showSettingsDrawer ? 'bg-cyan-600 text-white font-bold shadow ring-2 ring-cyan-400/50' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'"
+            class="px-3 py-1.5 rounded-xl text-xs transition flex items-center space-x-1.5 shadow"
+            title="Панель налаштувань (Клавіша O)">
+            <span>⚙️ Налаштування</span>
+            <span class="text-[10px] opacity-75 font-mono hidden sm:inline">[O]</span>
+            <template x-if="isCurrentStudioOverridden">
+              <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+            </template>
+          </button>
+
+          <button @click="downloadCurrentStudioWebP()" :disabled="!imageStudio.currentResult"
+            class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow">
+            <span>💾 WebP</span>
+          </button>
+
+          <button @click="closeImageStudio()"
+            class="text-slate-400 hover:text-slate-100 p-2 rounded-xl bg-slate-800 hover:bg-slate-700 transition"
+            title="Закрити Студію (Esc)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- MAIN WORKSPACE: Preview Canvas & Floating Controls -->
+      <div class="flex-1 flex overflow-hidden relative">
+        
+        <!-- CANVAS: Visual Comparator -->
+        <div class="flex-1 min-w-0 flex flex-col bg-slate-950 overflow-hidden relative">
+          
+          <!-- Top Hint Banner for Toggle Mode -->
+          <div x-show="imageStudio.viewMode === 'toggle'"
+            class="bg-slate-900/90 border-b border-slate-800/80 px-4 py-2 flex items-center justify-between text-xs font-mono shrink-0">
+            <div class="flex items-center space-x-3">
+              <!-- Switcher: Click either button to toggle -->
+              <div class="flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800">
+                <button @click="imageStudio.toggleShowOriginal = false"
+                  :class="!imageStudio.toggleShowOriginal ? 'bg-emerald-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-3 py-1 rounded-lg transition text-xs flex items-center space-x-1.5">
+                  <span class="w-2 h-2 rounded-full bg-emerald-300"></span>
+                  <span>🟢 WebP</span>
+                </button>
+                <button @click="imageStudio.toggleShowOriginal = true"
+                  :class="imageStudio.toggleShowOriginal ? 'bg-rose-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                  class="px-3 py-1 rounded-lg transition text-xs flex items-center space-x-1.5">
+                  <span class="w-2 h-2 rounded-full bg-rose-300"></span>
+                  <span>🔴 Оригінал</span>
+                </button>
+              </div>
+
+              <!-- Hold button for quick compare -->
+              <button @mousedown="imageStudio.toggleShowOriginal = true" @mouseup="imageStudio.toggleShowOriginal = false"
+                @touchstart="imageStudio.toggleShowOriginal = true" @touchend="imageStudio.toggleShowOriginal = false"
+                class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 transition active:bg-rose-600 active:text-white select-none text-xs">
+                <span>Затиснути для Оригіналу</span>
+              </button>
+
+              <span class="text-[11px] text-slate-400 font-sans hidden md:inline">(Клік по зображенню або клавіша <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-amber-300">T</kbd> / <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-amber-300">Пробіл</kbd>)</span>
+            </div>
+
+            <div>
+              <span x-show="!imageStudio.toggleShowOriginal" class="text-emerald-400 font-bold flex items-center space-x-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                <span>Показується Оптимізоване WebP</span>
+              </span>
+              <span x-show="imageStudio.toggleShowOriginal" class="text-rose-400 font-bold flex items-center space-x-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span>
+                <span>Показується Оригінал</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Canvas Viewport -->
+          <div class="flex-1 overflow-auto flex items-center justify-center p-4 transition-colors duration-150 relative"
+            :style="studioCanvasBgStyle">
+            
+            <!-- Loading Spinner Overlay -->
+            <template x-if="imageStudio.isConverting && !imageStudio.currentResult">
+              <div class="flex flex-col items-center justify-center space-y-3">
+                <svg class="animate-spin h-10 w-10 text-cyan-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-xs font-mono text-slate-400">Генерація WebP у реальному часі...</span>
+              </div>
+            </template>
+
+            <!-- Conversion Error Display -->
+            <template x-if="imageStudio.error">
+              <div class="bg-rose-950/60 border border-rose-800 p-6 rounded-2xl max-w-md text-center space-y-2">
+                <div class="text-rose-400 font-bold text-sm">⚠️ Помилка обробки зображення</div>
+                <div class="text-xs font-mono text-rose-300" x-text="imageStudio.error"></div>
+              </div>
+            </template>
+
+            <!-- Active Visualizer (Each mode is in its own isolated wrapper div to prevent style collisions) -->
+            <template x-if="imageStudio.currentResult && !imageStudio.error">
+              <div class="w-full h-full relative flex items-center justify-center">
+
+                <!-- 1. SPLIT SLIDER VIEW -->
+                <div x-show="imageStudio.viewMode === 'split'"
+                  class="w-full h-full flex items-center justify-center">
+                  <div id="studio-split-container"
+                    @mousedown="startSplitDrag($event)"
+                    @touchstart="startSplitDrag($event)"
+                    class="relative overflow-hidden rounded-2xl border border-slate-700/60 shadow-2xl select-none cursor-ew-resize flex items-center justify-center"
+                    :style="studioContainerStyle">
+                    
+                    <!-- Base Layer: Optimized WebP -->
+                    <img :src="imageStudio.currentResult.optimizedWebPBase64"
+                      class="w-full h-full object-contain block pointer-events-none"
+                      alt="Optimized WebP">
+
+                    <!-- Overlay Layer: Original Image clipped by splitPos -->
+                    <div class="absolute inset-0 overflow-hidden pointer-events-none"
+                      :style="'clip-path: inset(0 ' + (100 - imageStudio.splitPos) + '% 0 0);'">
+                      <img :src="imageStudio.currentResult.originalDataBase64 || currentStudioImage?.url"
+                        class="w-full h-full object-contain block"
+                        alt="Original">
+                    </div>
+
+                    <!-- Split Handle / Divider Bar -->
+                    <div class="absolute top-0 bottom-0 w-0.5 bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.9)] pointer-events-none"
+                      :style="'left: ' + imageStudio.splitPos + '%;'">
+                      <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-cyan-500 border-2 border-slate-900 shadow-2xl flex items-center justify-center text-xs text-slate-950 font-black">
+                        ↔
+                      </div>
+                    </div>
+
+                    <!-- Left / Right Floating Tags -->
+                    <div class="absolute top-3 left-3 px-2.5 py-1 bg-slate-950/80 backdrop-blur rounded-lg border border-rose-500/50 text-[11px] font-mono font-bold text-rose-300 pointer-events-none shadow">
+                      🔴 ОРИГІНАЛ
+                    </div>
+                    <div class="absolute top-3 right-3 px-2.5 py-1 bg-slate-950/80 backdrop-blur rounded-lg border border-emerald-500/50 text-[11px] font-mono font-bold text-emerald-300 pointer-events-none shadow">
+                      🟢 WEBP
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. TOGGLE VIEW (Click image to toggle, or use top switch/keys) -->
+                <div x-show="imageStudio.viewMode === 'toggle'"
+                  class="w-full h-full flex items-center justify-center">
+                  <div @click="imageStudio.toggleShowOriginal = !imageStudio.toggleShowOriginal"
+                    class="relative overflow-hidden rounded-2xl border border-slate-800 shadow-2xl flex items-center justify-center cursor-pointer select-none group"
+                    :style="studioContainerStyle"
+                    title="Клікніть для перемикання між WebP та Оригіналом (або затисніть T / Пробіл)">
+                    
+                    <!-- WebP Image -->
+                    <img x-show="!imageStudio.toggleShowOriginal"
+                      :src="imageStudio.currentResult.optimizedWebPBase64"
+                      class="w-full h-full object-contain block select-none pointer-events-none" alt="WebP">
+
+                    <!-- Original Image -->
+                    <img x-show="imageStudio.toggleShowOriginal"
+                      :src="imageStudio.currentResult.originalDataBase64 || currentStudioImage?.url"
+                      class="w-full h-full object-contain block select-none pointer-events-none" alt="Original">
+
+                    <!-- Floating Pill Indicator -->
+                    <div class="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl backdrop-blur bg-slate-950/85 border text-xs font-mono font-bold select-none pointer-events-none shadow-lg flex items-center space-x-2"
+                      :class="imageStudio.toggleShowOriginal ? 'border-rose-500/60 text-rose-300' : 'border-emerald-500/60 text-emerald-300'">
+                      <span class="w-2.5 h-2.5 rounded-full" :class="imageStudio.toggleShowOriginal ? 'bg-rose-400' : 'bg-emerald-400 animate-pulse'"></span>
+                      <span x-text="imageStudio.toggleShowOriginal ? '🔴 ОРИГІНАЛ' : '🟢 WEBP'"></span>
+                    </div>
+
+                    <!-- Top Left Hint -->
+                    <div class="absolute top-3 left-3 px-2 py-1 rounded bg-slate-950/70 backdrop-blur text-[10px] text-slate-400 font-sans border border-slate-800 pointer-events-none opacity-80 group-hover:opacity-100 transition">
+                      Клікніть або клавіша <kbd class="font-mono text-amber-300 font-bold">T</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 3. SIDE BY SIDE VIEW -->
+                <div x-show="imageStudio.viewMode === 'side'"
+                  class="w-full h-full flex items-center justify-center">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full max-h-[calc(100vh-200px)]">
+                    <!-- Left: Original -->
+                    <div class="flex flex-col bg-slate-900/70 rounded-2xl border border-slate-800 p-3 overflow-hidden">
+                      <div class="flex items-center justify-between text-xs font-mono text-rose-400 font-bold mb-2 px-1">
+                        <span>🔴 ОРИГІНАЛ</span>
+                        <span class="text-slate-400 text-[11px]" x-text="imageStudio.currentResult.originalFormatted"></span>
+                      </div>
+                      <div class="flex-1 flex items-center justify-center overflow-hidden">
+                        <img :src="imageStudio.currentResult.originalDataBase64 || currentStudioImage?.url"
+                          class="max-h-full max-w-full object-contain rounded-lg" alt="Original">
+                      </div>
+                    </div>
+                    <!-- Right: WebP -->
+                    <div class="flex flex-col bg-slate-900/70 rounded-2xl border border-emerald-900/50 p-3 overflow-hidden">
+                      <div class="flex items-center justify-between text-xs font-mono text-emerald-400 font-bold mb-2 px-1">
+                        <span>🟢 ОПТИМІЗОВАНЕ WEBP</span>
+                        <span class="text-emerald-400 text-[11px]" x-text="imageStudio.currentResult.optimizedFormatted"></span>
+                      </div>
+                      <div class="flex-1 flex items-center justify-center overflow-hidden">
+                        <img :src="imageStudio.currentResult.optimizedWebPBase64"
+                          class="max-h-full max-w-full object-contain rounded-lg" alt="WebP">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </template>
+
+          </div>
+
+          <!-- Bottom Metrics Bar & Quick Controls -->
+          <template x-if="imageStudio.currentResult">
+            <div class="h-14 border-t border-slate-800 bg-slate-900/90 backdrop-blur px-4 flex items-center justify-between text-xs font-mono shrink-0 gap-3">
+              
+              <!-- Left: Image Dims & Format Compare -->
+              <div class="flex items-center space-x-3 truncate">
+                <div class="flex items-center space-x-1.5">
+                  <span class="text-slate-400 font-sans">Оригінал:</span>
+                  <span class="text-slate-200 font-bold" x-text="imageStudio.currentResult.originalFormatted"></span>
+                  <span class="text-slate-500 text-[11px]" x-text="'(' + imageStudio.currentResult.originalWidth + '×' + imageStudio.currentResult.originalHeight + ')'"></span>
+                </div>
+                <span class="text-slate-600">➔</span>
+                <div class="flex items-center space-x-1.5">
+                  <span class="text-emerald-400 font-sans">WebP:</span>
+                  <span class="text-emerald-400 font-bold" x-text="imageStudio.currentResult.optimizedFormatted"></span>
+                  <span class="text-emerald-600 text-[11px]" x-text="'(' + imageStudio.currentResult.optimizedWidth + '×' + imageStudio.currentResult.optimizedHeight + ')'"></span>
+                </div>
+
+                <!-- Size Reduced (Savings) -->
+                <template x-if="imageStudio.currentResult.savingsBytes >= 0">
+                  <div class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 flex items-center space-x-1 shadow">
+                    <span>📉</span>
+                    <span x-text="'-' + imageStudio.currentResult.savingsFormatted + ' (-' + imageStudio.currentResult.savingsPercent.toFixed(1) + '%)'"></span>
+                  </div>
+                </template>
+
+                <!-- Size Increased (Warning) -->
+                <template x-if="imageStudio.currentResult.savingsBytes < 0">
+                  <div class="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40 flex items-center space-x-1 shadow"
+                    title="WebP більший за оригінал. Рекомендовано зменшити якість або вимкнути Lossless.">
+                    <span>⚠️</span>
+                    <span x-text="'+' + imageStudio.currentResult.savingsFormatted.replace('-', '') + ' (+' + Math.abs(imageStudio.currentResult.savingsPercent).toFixed(1) + '%)'"></span>
+                  </div>
+                </template>
+
+                <template x-if="imageStudio.isConverting">
+                  <span class="text-[11px] text-cyan-400 animate-pulse font-sans">Оновлення...</span>
+                </template>
+              </div>
+
+              <!-- Right: Quick Controls (Always accessible directly in the bar) -->
+              <div class="flex items-center space-x-2.5 shrink-0">
+                
+                <!-- Quick Skip Toggle -->
+                <button @click="toggleStudioSkip()"
+                  :class="currentStudioSkip ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/30' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'"
+                  class="px-2.5 py-1.5 rounded-xl font-bold text-xs transition flex items-center space-x-1 shadow"
+                  title="Включити або виключити з експорту (Клавіша S)">
+                  <span x-show="!currentStudioSkip">✓ Експорт</span>
+                  <span x-show="currentStudioSkip">⊘ Пропущено</span>
+                </button>
+
+                <!-- Quick Lossy / Lossless pills -->
+                <div class="hidden sm:flex items-center bg-slate-950 p-0.5 rounded-xl border border-slate-800 text-xs">
+                  <button @click="setStudioLossless(false)"
+                    :class="!currentStudioLossless ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                    class="px-2.5 py-1 rounded-lg transition">
+                    Lossy
+                  </button>
+                  <button @click="setStudioLossless(true)"
+                    :class="currentStudioLossless ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+                    class="px-2.5 py-1 rounded-lg transition">
+                    Lossless
+                  </button>
+                </div>
+
+                <!-- Quick Quality Slider (Active when Lossy) -->
+                <div x-show="!currentStudioLossless" class="hidden md:flex items-center space-x-2 bg-slate-950 px-3 py-1 rounded-xl border border-slate-800">
+                  <span class="text-[11px] text-slate-400 font-sans">Якість:</span>
+                  <input type="range" min="30" max="98" step="1"
+                    :value="currentStudioQuality"
+                    @input="setStudioQuality($event.target.value)"
+                    class="w-24 lg:w-32 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+                  <span class="text-xs font-bold text-cyan-400 w-8 text-right font-mono" x-text="currentStudioQuality + '%'"></span>
+                </div>
+
+                <!-- Open Detailed Floating Settings Drawer Button -->
+                <button @click="toggleStudioSettingsDrawer()"
+                  :class="imageStudio.showSettingsDrawer ? 'bg-cyan-600 text-white font-bold shadow ring-2 ring-cyan-400/50' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'"
+                  class="px-3 py-1.5 rounded-xl text-xs transition flex items-center space-x-1.5 shadow"
+                  title="Відкрити повну панель опцій (Клавіша O)">
+                  <span>⚙️ Всі опції</span>
+                  <template x-if="isCurrentStudioOverridden">
+                    <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                  </template>
+                </button>
+
+              </div>
+            </div>
+          </template>
+
+        </div>
+
+        <!-- FLOATING SETTINGS DRAWER (On-Demand Overlay over Canvas) -->
+        <div x-show="imageStudio.showSettingsDrawer"
+          x-transition:enter="transition ease-out duration-200"
+          x-transition:enter-start="opacity-0 translate-x-8"
+          x-transition:enter-end="opacity-100 translate-x-0"
+          x-transition:leave="transition ease-in duration-150"
+          x-transition:leave-start="opacity-100 translate-x-0"
+          x-transition:leave-end="opacity-0 translate-x-8"
+          class="absolute top-3 right-4 bottom-3 w-88 max-w-[calc(100vw-2rem)] bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl z-30 p-5 flex flex-col justify-between overflow-y-auto space-y-5 text-xs">
+          
+          <div class="space-y-5">
+            <!-- Header with Title and Close Button -->
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div class="flex items-center space-x-2">
+                <span class="text-sm font-bold text-slate-100">⚙️ Налаштування</span>
+                <template x-if="isCurrentStudioOverridden">
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-900/60 text-purple-300 border border-purple-700">⚡ Custom</span>
+                </template>
+              </div>
+              <button @click="imageStudio.showSettingsDrawer = false"
+                class="text-slate-400 hover:text-slate-100 p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition"
+                title="Сховати панель (O або Esc)">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Size increase advisory banner -->
+            <template x-if="imageStudio.currentResult && imageStudio.currentResult.savingsBytes < 0">
+              <div class="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-200 text-xs space-y-1">
+                <div class="font-bold flex items-center space-x-1 text-rose-300">
+                  <span>⚠️</span>
+                  <span>WebP більший за оригінал</span>
+                </div>
+                <div class="text-[10px] text-rose-200/80 leading-relaxed">
+                  Оригінал уже був сильно стиснений. Рекомендовано вибрати <strong>Lossy</strong> та якість <strong>75-80%</strong>, або натиснути <strong>«Пропустити»</strong> нижче.
+                </div>
+              </div>
+            </template>
+            
+            <!-- Section 1: Override Status & Skip Toggle -->
+            <div class="space-y-2">
+              <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Статус для експорту</div>
+              
+              <button @click="toggleStudioSkip()"
+                :class="currentStudioSkip ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/40' : 'bg-emerald-600/90 hover:bg-emerald-500 text-white shadow-emerald-900/40'"
+                class="w-full py-2.5 px-3 rounded-xl font-bold transition flex items-center justify-center space-x-2 shadow-lg">
+                <span x-show="!currentStudioSkip">✓ Включено в експорт</span>
+                <span x-show="currentStudioSkip">⊘ Пропустити (Не експортувати)</span>
+              </button>
+
+              <template x-if="isCurrentStudioOverridden">
+                <div class="flex items-center justify-between pt-1">
+                  <span class="text-[11px] text-purple-400 font-mono">Кастомні налаштування</span>
+                  <button @click="resetStudioCurrent()" class="text-[11px] text-slate-400 hover:text-amber-300 underline font-sans">
+                    Скинути до дефолту
+                  </button>
+                </div>
+              </template>
+            </div>
+
+            <!-- Section 2: Format (Lossy vs Lossless) -->
+            <div class="space-y-2 pt-2 border-t border-slate-800">
+              <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Режим WebP</div>
+              
+              <div class="grid grid-cols-2 gap-2">
+                <button @click="setStudioLossless(false)"
+                  :class="!currentStudioLossless ? 'bg-cyan-600 text-white font-bold shadow' : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'"
+                  class="py-2 px-2 rounded-xl transition text-center">
+                  Lossy (Стиснення)
+                </button>
+                <button @click="setStudioLossless(true)"
+                  :class="currentStudioLossless ? 'bg-cyan-600 text-white font-bold shadow' : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'"
+                  class="py-2 px-2 rounded-xl transition text-center">
+                  Lossless (100%)
+                </button>
+              </div>
+            </div>
+
+            <!-- Section 3: Quality Slider (Active when Lossy) -->
+            <div class="space-y-3 pt-2 border-t border-slate-800" :class="currentStudioLossless ? 'opacity-40 pointer-events-none' : ''">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Якість (Quality)</span>
+                <span class="text-sm font-extrabold text-cyan-400 font-mono" x-text="currentStudioQuality + '%'"></span>
+              </div>
+
+              <input type="range" min="30" max="98" step="1"
+                :value="currentStudioQuality"
+                @input="setStudioQuality($event.target.value)"
+                class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+
+              <!-- Quick Presets -->
+              <div class="flex items-center justify-between text-[11px] font-mono">
+                <template x-for="q in [70, 75, 80, 85, 90, 95]">
+                  <button @click="setStudioQuality(q)"
+                    :class="currentStudioQuality === q ? 'bg-cyan-600 text-white font-bold shadow' : 'bg-slate-800 text-slate-400 hover:text-slate-200'"
+                    class="px-2 py-1 rounded transition"
+                    x-text="q + '%'"></button>
+                </template>
+              </div>
+            </div>
+
+            <!-- Section 4: Geometry (Retina 2x) -->
+            <div class="space-y-3 pt-2 border-t border-slate-800">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Геометрія та Масштаб</span>
+                <span class="text-[10px] font-mono"
+                  :class="currentStudioRetina ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'"
+                  x-text="currentStudioRetina ? 'Downscaled' : '100% Оригінал'"></span>
+              </div>
+
+              <label class="flex items-start space-x-2.5 cursor-pointer select-none p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition">
+                <input type="checkbox" :checked="currentStudioRetina" @change="toggleStudioRetina()"
+                  class="mt-0.5 rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer">
+                <div class="text-slate-300 text-xs">
+                  <div class="font-medium">Зменшити до Retina 2x</div>
+                  <div class="text-[10px] mt-0.5 leading-snug">
+                    <span x-show="!currentStudioRetina" class="text-emerald-400">
+                      ✓ 100% оригінальна якість (<span x-text="(currentStudioImage?.naturalWidth || currentStudioImage?.width || 0) + '×' + (currentStudioImage?.naturalHeight || currentStudioImage?.height || 0) + ' px'"></span>)
+                    </span>
+                    <span x-show="currentStudioRetina" class="text-amber-300">
+                      ⚠️ Зменшується до: <span class="font-bold font-mono" x-text="(currentStudioImage?.recommendedRetinaWidth || (currentStudioImage?.maxRenderedWidth ? currentStudioImage?.maxRenderedWidth * 2 : 0) || 200) + ' px'"></span>
+                    </span>
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <!-- Section 5: Gradient Enhancements -->
+            <div class="space-y-3 pt-2 border-t border-slate-800">
+              <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Градієнти та Деталі</div>
+
+              <label class="flex items-start space-x-2.5 cursor-pointer select-none p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition">
+                <input type="checkbox" :checked="currentStudioDither" @change="toggleStudioDither()"
+                  class="mt-0.5 rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer">
+                <div class="text-slate-300 text-xs">
+                  <div class="font-medium">Anti-Banding Dither</div>
+                  <div class="text-[10px] text-slate-500">Прибирає смуги та кільця на плавних градієнтах</div>
+                </div>
+              </label>
+            </div>
+
+          </div>
+
+          <!-- Bottom Sidebar Actions -->
+          <div class="space-y-2 pt-4 border-t border-slate-800 shrink-0">
+            <template x-if="studioOverridesCount > 0">
+              <button @click="resetAllStudioOverrides()"
+                class="w-full py-1.5 text-slate-400 hover:text-rose-300 text-[11px] text-center transition">
+                Скинути всі кастомні оверрайди (<span x-text="studioOverridesCount"></span>)
+              </button>
+            </template>
+
+            <button @click="downloadCurrentStudioWebP()"
+              class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition text-center shadow">
+              💾 Завантажити цей WebP
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- BOTTOM FILMSTRIP (HORIZONTAL THUMBNAILS CAROUSEL) -->
+      <div class="h-24 border-t border-slate-800 bg-slate-950 px-4 flex items-center space-x-2 overflow-x-auto shrink-0 shadow-inner">
+        <template x-for="(img, idx) in imageStudioImages" :key="img.url">
+          <div @click="studioSelectImage(idx)"
+            :class="idx === imageStudio.currentIndex ? 'ring-2 ring-cyan-400 bg-slate-800/90 scale-105' : 'opacity-60 hover:opacity-100 bg-slate-900 border border-slate-800'"
+            class="h-18 w-24 shrink-0 rounded-xl p-1.5 cursor-pointer transition flex flex-col justify-between overflow-hidden relative">
+            
+            <!-- Thumbnail preview -->
+            <div class="h-10 w-full flex items-center justify-center overflow-hidden rounded bg-slate-950/60">
+              <img :src="img.url" class="max-h-full max-w-full object-cover" loading="lazy" alt="thumb">
+            </div>
+
+            <!-- Meta badge -->
+            <div class="flex items-center justify-between text-[9px] font-mono mt-1">
+              <span class="truncate text-slate-300 font-bold" x-text="img.basename"></span>
+              
+              <!-- Status indicator -->
+              <template x-if="imageStudio.overrides[img.url]?.skip">
+                <span class="text-rose-400 font-bold">⊘</span>
+              </template>
+              <template x-if="!imageStudio.overrides[img.url]?.skip && imageStudio.overrides[img.url]">
+                <span class="text-purple-400 font-bold">⚡</span>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+
     </div>
 
     <!-- DETAIL SLIDE-OVER PANEL -->

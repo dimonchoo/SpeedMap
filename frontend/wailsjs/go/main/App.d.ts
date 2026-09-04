@@ -28,6 +28,8 @@ export function DownloadOptimizedWebPZIP(arg1:Array<string>,arg2:config.ScanConf
 
 export function DownloadSingleWebPImage(arg1:string,arg2:config.ScanConfig):Promise<string>;
 
+export function DownloadSingleWebPTuned(arg1:string,arg2:optimizer.ImageTuneOptions,arg3:config.ScanConfig):Promise<string>;
+
 export function ExportFontsCSV(arg1:string):Promise<string>;
 
 export function ExportFontsJSON(arg1:string):Promise<string>;
@@ -43,6 +45,8 @@ export function ExportIframesJSON(arg1:string):Promise<string>;
 export function ExportImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 
 export function ExportWordPressWebPApplyPHP(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>,arg4:string):Promise<wpexport.ExportResult>;
+
+export function ExportWordPressWebPApplyPHPWithOverrides(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>,arg4:string,arg5:Record<string, wpexport.ImageOverride>):Promise<wpexport.ExportResult>;
 
 export function GetAllHistoryRuns(arg1:string):Promise<Array<history.ScanRunSummary>>;
 
@@ -77,6 +81,8 @@ export function SendSystemNotification(arg1:string,arg2:string,arg3:string):Prom
 export function StartGDriveAuth(arg1:string,arg2:string):Promise<string>;
 
 export function StartScan(arg1:config.ScanConfig,arg2:Array<string>):Promise<void>;
+
+export function TuneImagePreview(arg1:string,arg2:optimizer.ImageTuneOptions,arg3:config.ScanConfig):Promise<optimizer.ConversionResult>;
 
 export function UploadFileToGDrive(arg1:string,arg2:string):Promise<cloud.DriveUploadResult>;
 

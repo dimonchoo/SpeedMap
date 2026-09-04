@@ -57,8 +57,11 @@ type ConversionResult struct {
 }
 
 func FormatBytes(bytes int64) string {
-	if bytes <= 0 {
+	if bytes == 0 {
 		return "0 B"
+	}
+	if bytes < 0 {
+		return "-" + FormatBytes(-bytes)
 	}
 	const k = 1024
 	sizes := []string{"B", "KB", "MB", "GB"}
@@ -328,6 +331,31 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL string, quality float3
 	return ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL, quality, 80.0, true, thresholdBytes, adaptive, maxW, maxH, user, pass)
 }
 
+// FetchImageBytes downloads the raw image bytes at rawURL with optional HTTP Basic Auth.
+func FetchImageBytes(rawURL, user, pass string) ([]byte, error) {
+	client := sharedClient
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", "SpeedMap-Optimizer/1.0")
+	if user != "" {
+		req.SetBasicAuth(user, pass)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP error %d fetching image", resp.StatusCode)
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
 // ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality encodes to WebP with a strict minimum quality floor (e.g. 80%)
 // and option to skip images if WebP output exceeds original file size.
 func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, quality float32, minQuality float32, skipIfNoSavings bool, thresholdBytes int64, adaptive bool, maxW, maxH int, user, pass string) (*ConversionResult, error) {
@@ -349,29 +377,9 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 		safeBudget = thresholdBytes
 	}
 
-	client := sharedClient
-	req, err := http.NewRequest("GET", rawURL, nil)
+	origBytes, err := FetchImageBytes(rawURL, user, pass)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("User-Agent", "SpeedMap-Optimizer/1.0")
-	if user != "" {
-		req.SetBasicAuth(user, pass)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download image: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error %d fetching image", resp.StatusCode)
-	}
-
-	origBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read image body: %w", err)
+		return nil, err
 	}
 
 	img, formatName, err := image.Decode(bytes.NewReader(origBytes))
@@ -555,12 +563,19 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 		savingsPct = float64(savings) / float64(origSize) * 100
 	}
 
-	filename := ExtractFilenameFromURL(rawURL)
-
-	mimeType := resp.Header.Get("Content-Type")
-	if mimeType == "" {
-		mimeType = "image/jpeg"
+	mimeType := "image/jpeg"
+	switch strings.ToLower(formatName) {
+	case "png":
+		mimeType = "image/png"
+	case "gif":
+		mimeType = "image/gif"
+	case "webp":
+		mimeType = "image/webp"
+	case "bmp":
+		mimeType = "image/bmp"
 	}
+
+	filename := ExtractFilenameFromURL(rawURL)
 
 	origBase64 := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(origBytes))
 	webpBase64 := fmt.Sprintf("data:image/webp;base64,%s", base64.StdEncoding.EncodeToString(webpData))
@@ -647,3 +662,114 @@ func CreateZIPArchive(results []*ConversionResult) ([]byte, error) {
 
 	return buf.Bytes(), nil
 }
+
+// ImageTuneOptions specifies granular optimization parameters for live per-image tuning.
+type ImageTuneOptions struct {
+	Quality    float32 `json:"quality"`    // 1-100 (for lossy)
+	Lossless   bool    `json:"lossless"`   // true = encode in WebP Lossless
+	Exact      bool    `json:"exact"`      // true = preserve RGB in transparent areas
+	MaxW       int     `json:"maxW"`       // downscale max width (0 = maintain orig)
+	MaxH       int     `json:"maxH"`       // downscale max height (0 = maintain orig)
+	Dither     bool    `json:"dither"`     // apply anti-banding Bayer dither on lossy
+}
+
+// ConvertImageBytesTuned converts in-memory raw image bytes directly to WebP using exact tuned options.
+func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptions) (*ConversionResult, error) {
+	if len(origBytes) == 0 {
+		return nil, fmt.Errorf("empty image bytes provided")
+	}
+
+	img, formatName, err := image.Decode(bytes.NewReader(origBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image (format %s): %w", formatName, err)
+	}
+
+	origBounds := img.Bounds()
+	origW := origBounds.Dx()
+	origH := origBounds.Dy()
+	origSize := int64(len(origBytes))
+
+	rawImg := toStraightRGBA(img)
+
+	// Downscale if requested
+	if opts.MaxW > 0 || opts.MaxH > 0 {
+		rawImg = resizeProportional(rawImg, opts.MaxW, opts.MaxH)
+	}
+
+	optBounds := rawImg.Bounds()
+	optW := optBounds.Dx()
+	optH := optBounds.Dy()
+
+	if opts.Dither && !opts.Lossless {
+		rawImg = applyAntiBandingDither(rawImg)
+	}
+
+	var webpBuf bytes.Buffer
+	quality := opts.Quality
+	if quality <= 0 || quality > 100 {
+		quality = 80.0
+	}
+
+	webpOpts := &webp.Options{
+		Lossless: opts.Lossless,
+		Quality:  quality,
+		Exact:    opts.Exact,
+	}
+	if opts.Lossless {
+		webpOpts.Quality = 100.0
+		quality = 100.0
+	}
+
+	if err := webp.Encode(&webpBuf, rawImg, webpOpts); err != nil {
+		return nil, fmt.Errorf("failed to encode to WebP: %w", err)
+	}
+
+	webpData := webpBuf.Bytes()
+	webpSize := int64(len(webpData))
+
+	savings := origSize - webpSize
+	var savingsPct float64
+	if origSize > 0 {
+		savingsPct = float64(savings) / float64(origSize) * 100
+	}
+
+	filename := ExtractFilenameFromURL(rawURL)
+
+	mimeType := "image/jpeg"
+	switch strings.ToLower(formatName) {
+	case "png":
+		mimeType = "image/png"
+	case "gif":
+		mimeType = "image/gif"
+	case "webp":
+		mimeType = "image/webp"
+	case "bmp":
+		mimeType = "image/bmp"
+	}
+
+	origBase64 := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(origBytes))
+	webpBase64 := fmt.Sprintf("data:image/webp;base64,%s", base64.StdEncoding.EncodeToString(webpData))
+
+	return &ConversionResult{
+		URL:                 rawURL,
+		Filename:            filename,
+		OriginalWidth:       origW,
+		OriginalHeight:      origH,
+		OptimizedWidth:      optW,
+		OptimizedHeight:     optH,
+		OriginalBytes:       origSize,
+		OriginalFormatted:   FormatBytes(origSize),
+		OptimizedBytes:      webpSize,
+		OptimizedFormatted:  FormatBytes(webpSize),
+		SavingsBytes:        savings,
+		SavingsFormatted:    FormatBytes(savings),
+		SavingsPercent:      savingsPct,
+		QualityUsed:         quality,
+		IsLossless:          opts.Lossless,
+		IsSkipped:           false,
+		AdaptiveApplied:     false,
+		OriginalDataBase64:  origBase64,
+		OptimizedWebPBase64: webpBase64,
+	}, nil
+}
+

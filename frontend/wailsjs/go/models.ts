@@ -660,6 +660,28 @@ export namespace optimizer {
 	        this.error = source["error"];
 	    }
 	}
+	export class ImageTuneOptions {
+	    quality: number;
+	    lossless: boolean;
+	    exact: boolean;
+	    maxW: number;
+	    maxH: number;
+	    dither: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImageTuneOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.quality = source["quality"];
+	        this.lossless = source["lossless"];
+	        this.exact = source["exact"];
+	        this.maxW = source["maxW"];
+	        this.maxH = source["maxH"];
+	        this.dither = source["dither"];
+	    }
+	}
 
 }
 
