@@ -13,33 +13,50 @@ import { createCloudModule } from './modules/cloud.js';
 import { createShortcutsModule } from './modules/shortcuts.js';
 
 /**
+ * Safely merges module objects preserving property descriptors (getters/setters)
+ * without triggering eager evaluation or converting getters into static properties.
+ */
+function mergeModules(target, ...modules) {
+  for (const mod of modules) {
+    if (mod) {
+      Object.defineProperties(target, Object.getOwnPropertyDescriptors(mod));
+    }
+  }
+  return target;
+}
+
+/**
  * speedMapApp - Root application store composition.
  * Aggregates domain-driven feature modules following the Single Responsibility Principle.
  */
 export function speedMapApp() {
-  return {
-    ...createConfigModule(),
-    ...createNotificationsModule(),
-    ...createScannerModule(),
-    ...createAnalyticsModule(),
-    ...createImagesModule(),
-    ...createStudioModule(),
-    ...createFormsModule(),
-    ...createFontsModule(),
-    ...createIframesModule(),
-    ...createDiffModule(),
-    ...createProfilesModule(),
-    ...createCloudModule(),
-    ...createShortcutsModule(),
+  const store = {};
+  mergeModules(
+    store,
+    createConfigModule(),
+    createNotificationsModule(),
+    createScannerModule(),
+    createAnalyticsModule(),
+    createImagesModule(),
+    createStudioModule(),
+    createFormsModule(),
+    createFontsModule(),
+    createIframesModule(),
+    createDiffModule(),
+    createProfilesModule(),
+    createCloudModule(),
+    createShortcutsModule()
+  );
 
-    initApp() {
-      console.log("[JS LOG] speedMapApp modularized and initialized.");
-      this.loadSavedConfig?.();
-      this.loadSiteProfiles?.();
-      this.checkGDriveStatus?.();
-      this.initShortcuts?.();
-      this.initScannerEvents?.();
-      this.addLog?.('info', 'SpeedMap додаток готовий до роботи.');
-    }
+  store.initApp = function() {
+    console.log("[JS LOG] speedMapApp modularized and initialized.");
+    this.loadSavedConfig?.();
+    this.loadSiteProfiles?.();
+    this.checkGDriveStatus?.();
+    this.initShortcuts?.();
+    this.initScannerEvents?.();
+    this.addLog?.('info', 'SpeedMap додаток готовий до роботи.');
   };
+
+  return store;
 }

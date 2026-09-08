@@ -8,8 +8,9 @@ export function createAppStore() {
     const raw = speedMapApp();
     instance = reactive(raw);
     for (const key of Object.keys(raw)) {
-      if (typeof raw[key] === 'function') {
-        instance[key] = raw[key].bind(instance);
+      const desc = Object.getOwnPropertyDescriptor(raw, key);
+      if (desc && typeof desc.value === 'function') {
+        instance[key] = desc.value.bind(instance);
       }
     }
 
