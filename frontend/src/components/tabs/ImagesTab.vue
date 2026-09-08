@@ -180,45 +180,47 @@
                 </template>
 
                 <!-- Filter Toolbar & Search Bar -->
-                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 shrink-0">
+                <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex flex-col 2xl:flex-row items-stretch 2xl:items-center justify-between gap-3 shrink-0">
                   
-                  <div class="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs w-full md:w-auto overflow-x-auto">
-                    <button @click="imageFilterTab = 'all'"
+                  <!-- Filter Pills (No horizontal scroll, clean wrap if needed) -->
+                  <div class="flex items-center flex-wrap gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button @click="setImageFilterTab('all')"
                       :class="imageFilterTab === 'all' ? 'bg-slate-800 text-white font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap">
                       Усі (<span v-text="siteAnalytics.allImages?.length || 0"></span>)
                     </button>
-                    <button @click="imageFilterTab = 'heavy'"
+                    <button @click="setImageFilterTab('heavy')"
+                      :title="'Важкі зображення понад ' + (config.heavyImageThresholdKB || 100) + ' KB'"
                       :class="imageFilterTab === 'heavy' ? 'bg-slate-800 text-rose-300 font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap flex items-center space-x-1.5">
+                      class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap flex items-center space-x-1.5">
                       <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-                      <span>Важкі &gt;<span v-text="config.heavyImageThresholdKB || 100"></span>KB (<span v-text="siteAnalytics?.heavyImagesCount || 0"></span>)</span>
+                      <span>Важкі (<span v-text="siteAnalytics?.heavyImagesCount || 0"></span>)</span>
                     </button>
-                    <button @click="imageFilterTab = 'non-webp'"
+                    <button @click="setImageFilterTab('non-webp')"
                       :class="imageFilterTab === 'non-webp' ? 'bg-slate-800 text-amber-300 font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap flex items-center space-x-1.5">
+                      class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap flex items-center space-x-1.5">
                       <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                       <span>Не-WebP (<span v-text="siteAnalytics?.nonWebPCount || 0"></span>)</span>
                     </button>
-                    <button @click="imageFilterTab = 'missing-lazy'"
+                    <button @click="setImageFilterTab('missing-lazy')"
                       :class="imageFilterTab === 'missing-lazy' ? 'bg-slate-800 text-indigo-300 font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap">
                       Без lazy (<span v-text="siteAnalytics.missingLazyCount || 0"></span>)
                     </button>
-                    <button @click="imageFilterTab = 'svg'"
-                      :class="imageFilterTab === 'svg' ? 'bg-slate-800 text-purple-300 font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap flex items-center space-x-1.5">
+                    <button @click="setImageFilterTab('svg')"
+                      :class="imageFilterTab === 'svg' ? 'bg-purple-900/60 text-purple-200 border border-purple-500/50 font-semibold shadow-sm' : 'text-slate-400 hover:text-purple-300'"
+                      class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap flex items-center space-x-1.5">
                       <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
                       <span>SVG (<span v-text="siteAnalytics?.svgCount || 0"></span>)</span>
                     </button>
-                    <button @click="imageFilterTab = 'png'"
+                    <button @click="setImageFilterTab('png')"
                       :class="imageFilterTab === 'png' ? 'bg-slate-800 text-cyan-400 font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap">
                       PNG
                     </button>
-                    <button @click="imageFilterTab = 'jpg'"
+                    <button @click="setImageFilterTab('jpg')"
                       :class="imageFilterTab === 'jpg' ? 'bg-slate-800 text-cyan-400 font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
-                      class="px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                      class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap">
                       JPG / JPEG
                     </button>
                   </div>

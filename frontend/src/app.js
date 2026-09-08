@@ -1148,6 +1148,12 @@ export function speedMapApp() {
       return this.pageFormsList.slice(start, start + this.formPerPage);
     },
 
+    setImageFilterTab(tab) {
+      this.imageFilterTab = tab;
+      this.imagePage = 1;
+      this.updateFilteredImages();
+    },
+
     updateFilteredImages() {
       if (!this.siteAnalytics || !this.siteAnalytics.allImages) {
         this.filteredImages = [];
@@ -1163,18 +1169,29 @@ export function speedMapApp() {
       }
 
       // Filter tabs
-      if (this.imageFilterTab === 'heavy') {
+      const tab = this.imageFilterTab;
+      if (tab === 'heavy') {
         list = list.filter(img => img.isHeavy);
-      } else if (this.imageFilterTab === 'non-webp') {
-        list = list.filter(img => img.format !== 'webp' && img.format !== 'avif' && img.format !== 'svg');
-      } else if (this.imageFilterTab === 'svg') {
-        list = list.filter(img => img.format === 'svg');
-      } else if (this.imageFilterTab === 'missing-lazy') {
+      } else if (tab === 'non-webp') {
+        list = list.filter(img => {
+          const fmt = (img.format || '').toLowerCase();
+          return fmt !== 'webp' && fmt !== 'avif' && fmt !== 'svg';
+        });
+      } else if (tab === 'svg') {
+        list = list.filter(img => {
+          const fmt = (img.format || '').toLowerCase();
+          const u = (img.url || '').toLowerCase().split('?')[0];
+          return fmt === 'svg' || u.endsWith('.svg');
+        });
+      } else if (tab === 'missing-lazy') {
         list = list.filter(img => !img.isLazy && !img.isLCP);
-      } else if (this.imageFilterTab === 'png') {
-        list = list.filter(img => img.format === 'png');
-      } else if (this.imageFilterTab === 'jpg') {
-        list = list.filter(img => img.format === 'jpg' || img.format === 'jpeg');
+      } else if (tab === 'png') {
+        list = list.filter(img => (img.format || '').toLowerCase() === 'png');
+      } else if (tab === 'jpg') {
+        list = list.filter(img => {
+          const fmt = (img.format || '').toLowerCase();
+          return fmt === 'jpg' || fmt === 'jpeg';
+        });
       }
 
       // Sorting (shallow copy to prevent mutating raw analytics array)
