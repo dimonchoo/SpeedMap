@@ -134,6 +134,10 @@ export function ResolveDomain(arg1) {
   return window['go']['main']['App']['ResolveDomain'](arg1);
 }
 
+export function RevealInFinder(arg1) {
+  return window['go']['main']['App']['RevealInFinder'](arg1);
+}
+
 export function SaveGDriveCredentials(arg1, arg2) {
   return window['go']['main']['App']['SaveGDriveCredentials'](arg1, arg2);
 }

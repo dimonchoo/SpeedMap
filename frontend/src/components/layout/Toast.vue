@@ -1,14 +1,32 @@
 <template>
-<!-- Floating Live Toast Notifications (Bottom Right) -->
-    <div v-show="toast.show"
-      class="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-900 border p-4 rounded-xl shadow-2xl space-y-1"
-      :class="toast.type === 'success' ? 'border-emerald-500/50 text-emerald-300' : (toast.type === 'error' ? 'border-rose-500/50 text-rose-300' : (toast.type === 'warning' ? 'border-amber-500/50 text-amber-300' : 'border-cyan-500/50 text-cyan-300'))">
-      <div class="flex items-center justify-between font-bold text-xs">
-        <span v-text="toast.title"></span>
-        <button @click="toast.show = false" class="text-slate-400 hover:text-slate-200">✕</button>
-      </div>
-      <p class="text-xs text-slate-300 leading-relaxed font-mono break-words" v-text="toast.message"></p>
+  <!-- Floating Live Toast Notifications (Bottom Right) -->
+  <div v-show="toast.show"
+    class="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-slate-900 border p-4 rounded-xl shadow-2xl space-y-2.5 transition-all duration-200"
+    :class="toast.type === 'success' ? 'border-emerald-500/50 text-emerald-300' : (toast.type === 'error' ? 'border-rose-500/50 text-rose-300' : (toast.type === 'warning' ? 'border-amber-500/50 text-amber-300' : 'border-cyan-500/50 text-cyan-300'))">
+    
+    <div class="flex items-center justify-between font-bold text-xs">
+      <span v-text="toast.title"></span>
+      <button @click="toast.show = false" class="text-slate-400 hover:text-slate-200 p-0.5 rounded transition">✕</button>
     </div>
+    
+    <p class="text-xs text-slate-300 leading-relaxed font-mono break-words" v-text="toast.message"></p>
+
+    <!-- Direct Action Button: Open/Reveal in macOS Finder -->
+    <template v-if="toast.path">
+      <div class="pt-2 border-t border-slate-800 flex items-center justify-between">
+        <span class="text-[10px] text-slate-400 font-sans truncate max-w-[170px]" :title="toast.path">
+          📁 Збережено на диск
+        </span>
+        <button @click="revealInFinder(toast.path)"
+          class="px-2.5 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-500/40 text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm">
+          <svg class="w-3.5 h-3.5 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+          </svg>
+          <span>Відкрити папку</span>
+        </button>
+      </div>
+    </template>
+  </div>
 </template>
 
 <script>

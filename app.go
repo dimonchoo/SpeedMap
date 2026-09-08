@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goRuntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -227,6 +228,39 @@ func (a *App) OpenURL(rawURL string) {
 	fmt.Printf("[GO LOG] OpenURL called for %s\n", rawURL)
 	if a.ctx != nil {
 		runtime.BrowserOpenURL(a.ctx, rawURL)
+	}
+}
+
+// RevealInFinder opens macOS Finder (or File Explorer on Windows / Linux) with the target file or folder selected
+func (a *App) RevealInFinder(targetPath string) error {
+	targetPath = strings.TrimSpace(targetPath)
+	if targetPath == "" {
+		return fmt.Errorf("empty path")
+	}
+	targetPath = filepath.Clean(targetPath)
+	fmt.Printf("[GO LOG] RevealInFinder called for: %s\n", targetPath)
+
+	switch goRuntime.GOOS {
+	case "darwin":
+		fi, err := os.Stat(targetPath)
+		if err == nil && fi.IsDir() {
+			return exec.Command("open", targetPath).Start()
+		}
+		// If it's a file, -R reveals and selects it in Finder
+		return exec.Command("open", "-R", targetPath).Start()
+	case "windows":
+		fi, err := os.Stat(targetPath)
+		if err == nil && fi.IsDir() {
+			return exec.Command("explorer", targetPath).Start()
+		}
+		return exec.Command("explorer", "/select,", targetPath).Start()
+	default:
+		dir := targetPath
+		fi, err := os.Stat(targetPath)
+		if err == nil && !fi.IsDir() {
+			dir = filepath.Dir(targetPath)
+		}
+		return exec.Command("xdg-open", dir).Start()
 	}
 }
 

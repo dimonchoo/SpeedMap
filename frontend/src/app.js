@@ -719,13 +719,23 @@ export function speedMapApp() {
       }
     },
 
-    showToast(type, title, message) {
-      this.toast = { show: true, type, title, message };
+    showToast(type, title, message, actionPath = null) {
+      this.toast = { show: true, type, title, message, path: actionPath };
+      const duration = actionPath ? 12000 : 5000;
       setTimeout(() => {
         if (this.toast.title === title) {
           this.toast.show = false;
         }
-      }, 5000);
+      }, duration);
+    },
+
+    revealInFinder(targetPath) {
+      if (!targetPath) return;
+      if (window.go && window.go.main && window.go.main.App && window.go.main.App.RevealInFinder) {
+        window.go.main.App.RevealInFinder(targetPath);
+      } else if (window.go && window.go.main && window.go.main.App && window.go.main.App.OpenURL) {
+        window.go.main.App.OpenURL('file://' + targetPath);
+      }
     },
 
     async updateAnalytics(force = false) {
@@ -1052,7 +1062,7 @@ export function speedMapApp() {
         if (window.go?.main?.App?.DownloadOriginalImage) {
           const savedPath = await window.go.main.App.DownloadOriginalImage(targetUrl, this.config);
           this.addLog('success', `🟢 Оригінальний файл збережено: ${savedPath}`);
-          this.showToast('success', 'Файл збережено 🟢', savedPath);
+          this.showToast('success', 'Файл збережено 🟢', savedPath, savedPath);
         }
       } catch (err) {
         console.error('Failed to download original image:', err);
@@ -1453,7 +1463,7 @@ export function speedMapApp() {
         if (window.go?.main?.App?.ExportFormsCSV) {
           const filePath = await window.go.main.App.ExportFormsCSV(csv);
           if (filePath) {
-            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath);
+            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath, filePath);
             this.addLog('success', `Експортовано посторінковий CSV звіт форм: ${filePath}`);
             return;
           }
@@ -1491,7 +1501,7 @@ export function speedMapApp() {
         if (window.go?.main?.App?.ExportFormsJSON) {
           const filePath = await window.go.main.App.ExportFormsJSON(jsonStr);
           if (filePath) {
-            this.showToast('success', 'JSON звіт форм збережено 🟢', filePath);
+            this.showToast('success', 'JSON звіт форм збережено 🟢', filePath, filePath);
             this.addLog('success', `Експортовано JSON звіт форм: ${filePath}`);
             return;
           }
@@ -1575,7 +1585,7 @@ export function speedMapApp() {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.ExportFontsCSV) {
           const filePath = await window.go.main.App.ExportFontsCSV(csv);
           if (filePath) {
-            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath);
+            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath, filePath);
             this.addLog('success', `Експортовано посторінковий CSV звіт шрифтів: ${filePath}`);
             return;
           }
@@ -1605,7 +1615,7 @@ export function speedMapApp() {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.ExportFontsJSON) {
           const filePath = await window.go.main.App.ExportFontsJSON(jsonStr);
           if (filePath) {
-            this.showToast('success', 'Посторінковий JSON збережено 🟢', filePath);
+            this.showToast('success', 'Посторінковий JSON збережено 🟢', filePath, filePath);
             this.addLog('success', `Експортовано посторінковий JSON звіт шрифтів: ${filePath}`);
             return;
           }
@@ -1627,7 +1637,7 @@ export function speedMapApp() {
         if (window.go?.main?.App?.ExportDOMVirtualizationCSS) {
           const filePath = await window.go.main.App.ExportDOMVirtualizationCSS(cssContent, filename || 'speedmap-dom-virtualization.css');
           if (filePath) {
-            this.showToast('success', 'CSS збережено 🟢', filePath);
+            this.showToast('success', 'CSS збережено 🟢', filePath, filePath);
             this.addLog('success', `Експортовано CSS віртуалізації DOM: ${filePath}`);
             return;
           }
@@ -1648,7 +1658,7 @@ export function speedMapApp() {
         if (window.go?.main?.App?.ExportDOMVirtualizationPHP) {
           const filePath = await window.go.main.App.ExportDOMVirtualizationPHP(phpContent, filename || 'speedmap-dom-virtualization.php');
           if (filePath) {
-            this.showToast('success', 'PHP хук збережено 🟢', filePath);
+            this.showToast('success', 'PHP хук збережено 🟢', filePath, filePath);
             this.addLog('success', `Експортовано PHP хук (wp_head): ${filePath}`);
             return;
           }
@@ -1691,7 +1701,7 @@ export function speedMapApp() {
         if (window.go?.main?.App?.ExportIframesCSV) {
           const filePath = await window.go.main.App.ExportIframesCSV(csv);
           if (filePath) {
-            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath);
+            this.showToast('success', 'Посторінковий CSV збережено 🟢', filePath, filePath);
             this.addLog('success', `Експортовано посторінковий CSV звіт iframe: ${filePath}`);
             return;
           }
@@ -1733,7 +1743,7 @@ export function speedMapApp() {
         if (window.go?.main?.App?.ExportIframesJSON) {
           const filePath = await window.go.main.App.ExportIframesJSON(jsonStr);
           if (filePath) {
-            this.showToast('success', 'JSON звіт iframe збережено 🟢', filePath);
+            this.showToast('success', 'JSON звіт iframe збережено 🟢', filePath, filePath);
             this.addLog('success', `Експортовано JSON звіт iframe: ${filePath}`);
             return;
           }
@@ -1860,7 +1870,7 @@ export function speedMapApp() {
           const domain = this.config.sitemapUrl || this.sitemapInput || 'site';
           const savedPath = await window.go.main.App.ExportImageComparisonHTML(domain, this.config, this.scanResults);
           this.addLog('success', `🟢 Звіт успішно збережено у файл: ${savedPath}`);
-          this.showToast('success', 'Звіт збережено 🟢', `Файл порівняння зображень створено: ${savedPath}`);
+          this.showToast('success', 'Звіт збережено 🟢', `Файл порівняння зображень створено: ${savedPath}`, savedPath);
         } else {
           throw new Error('ExportImageComparisonHTML method not available');
         }
@@ -1911,7 +1921,7 @@ export function speedMapApp() {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.DownloadSingleWebPImage) {
           const savedPath = await window.go.main.App.DownloadSingleWebPImage(targetUrl, this.config);
           this.addLog('success', `🟢 Зображення збережено: ${savedPath}`);
-          this.showToast('success', 'Файл збережено 🟢', savedPath);
+          this.showToast('success', 'Файл збережено 🟢', savedPath, savedPath);
         }
       } catch (err) {
         console.error('Failed to download single image:', err);
@@ -1934,7 +1944,7 @@ export function speedMapApp() {
           const urls = heavyImages.map(img => img.url);
           const zipPath = await window.go.main.App.DownloadOptimizedWebPZIP(urls, this.config);
           this.addLog('success', `🟢 ZIP архів успішно збережено: ${zipPath}`);
-          this.showToast('success', 'ZIP Архів збережено 📦', zipPath);
+          this.showToast('success', 'ZIP Архів збережено 📦', zipPath, zipPath);
         }
       } catch (err) {
         console.error('Failed to download ZIP archive:', err);
@@ -1984,15 +1994,18 @@ export function speedMapApp() {
       this.exportProgress = { current: 0, total: 0, percent: 0, filename: 'Підготовка файлів...' };
       this.addLog('info', `WP package: convert → folder → ${wordpressPath}...`);
       try {
+        let res;
         if (window.go?.main?.App?.ExportWordPressWebPApplyPHPWithOverrides) {
           const overrides = this.imageStudio?.overrides || {};
-          const res = await window.go.main.App.ExportWordPressWebPApplyPHPWithOverrides(
+          res = await window.go.main.App.ExportWordPressWebPApplyPHPWithOverrides(
             domain, this.config, this.scanResults, wordpressPath, overrides
           );
         } else if (window.go?.main?.App?.ExportWordPressWebPApplyPHP) {
-          const res = await window.go.main.App.ExportWordPressWebPApplyPHP(
+          res = await window.go.main.App.ExportWordPressWebPApplyPHP(
             domain, this.config, this.scanResults, wordpressPath
           );
+        }
+        if (res) {
           const count = res.webpCount ?? res.WebPCount ?? 0;
           const applyPHP = res.applyPHP || res.ApplyPHP || '';
           const reviewZIP = res.reviewZIP || res.ReviewZIP || '';
@@ -2004,7 +2017,8 @@ export function speedMapApp() {
           this.addLog('info', `Rollback: ${rollbackPHP}`);
           this.addLog('info', `На Stage: розпакуй ZIP/залий папку, потім wp eval-file …/apply.php --path=/path/to/wp`);
           this.addLog('info', `PHP скопіює images/*/optimized.webp → uploads/{webpRel} і оновить attachment.`);
-          this.showToast('success', `${count} WebP package`, reviewZIP || applyPHP);
+          const targetOpen = pkg || reviewZIP || applyPHP;
+          this.showToast('success', `${count} WebP package`, targetOpen, targetOpen);
 
           // Native OS Notification with SpeedMap App Icon
           if (this.config.systemNotifications !== false && window.go?.main?.App?.SendSystemNotification) {
@@ -2844,7 +2858,7 @@ export function speedMapApp() {
         if (window.go?.main?.App?.DownloadSingleWebPTuned) {
           const savedPath = await window.go.main.App.DownloadSingleWebPTuned(img.url, tuneOpts, this.config);
           const isSvgSaved = (img.format === 'svg' && this.imageStudio.currentResult?.isSkipped);
-          this.showToast('success', isSvgSaved ? 'SVG збережено 🟢' : 'WebP збережено 🟢', savedPath);
+          this.showToast('success', isSvgSaved ? 'SVG збережено 🟢' : 'WebP збережено 🟢', savedPath, savedPath);
         }
       } catch (err) {
         console.error('Download tuned webp error:', err);
