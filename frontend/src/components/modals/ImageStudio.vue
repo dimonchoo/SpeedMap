@@ -22,9 +22,22 @@
               title="Попереднє зображення (Стрілка вліво ←)">
               ◄
             </button>
-            <span class="text-xs font-mono text-slate-400 px-1 shrink-0">
-              <strong class="text-slate-100" v-text="imageStudio.currentIndex + 1"></strong> / <span v-text="imageStudioImages.length"></span>
-            </span>
+            <div class="flex items-center bg-slate-950 border border-slate-800 hover:border-slate-700 focus-within:border-cyan-500 rounded-lg px-1.5 py-0.5 text-xs font-mono text-slate-400 transition"
+              title="Введіть номер зображення та натисніть Enter для швидкого переходу">
+              <input type="number"
+                min="1"
+                :max="imageStudioImages.length"
+                :value="imageStudio.currentIndex + 1"
+                @focus="$event.target.select()"
+                @keydown.enter="jumpToStudioImageNumber($event.target.value, $event); $event.target.blur()"
+                @change="jumpToStudioImageNumber($event.target.value, $event)"
+                class="w-9 sm:w-11 bg-transparent text-slate-100 font-bold text-center focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none cursor-text">
+              <span class="text-slate-600 px-0.5">/</span>
+              <span class="text-slate-400 cursor-pointer hover:text-cyan-300 transition px-0.5"
+                @click="studioSelectImage(imageStudioImages.length - 1)"
+                title="Перейти до останнього зображення"
+                v-text="imageStudioImages.length"></span>
+            </div>
             <button @click="studioNextImage()" :disabled="imageStudio.currentIndex >= imageStudioImages.length - 1"
               class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs text-slate-200 font-mono transition"
               title="Наступне зображення (Стрілка вправо →)">

@@ -244,6 +244,22 @@ export function createStudioModule() {
       }
     },
 
+    jumpToStudioImageNumber(val, event) {
+      const num = parseInt(val, 10);
+      const total = this.imageStudioImages.length;
+      if (isNaN(num) || total === 0) {
+        if (event && event.target) {
+          event.target.value = this.imageStudio.currentIndex + 1;
+        }
+        return;
+      }
+      const clamped = Math.max(1, Math.min(num, total));
+      if (event && event.target) {
+        event.target.value = clamped;
+      }
+      this.studioSelectImage(clamped - 1);
+    },
+
     studioSelectImage(idx) {
       if (idx >= 0 && idx < this.imageStudioImages.length) {
         this.imageStudio.currentIndex = idx;
