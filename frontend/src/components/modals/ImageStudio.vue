@@ -12,44 +12,44 @@
       role="dialog" aria-modal="true">
 
       <!-- TOPBAR: Navigation, Modes, Zoom, Close (macOS draggable with native traffic lights inset) -->
-      <div class="wails-drag h-14 border-b border-slate-800 bg-slate-900/90 pl-20 pr-4 flex items-center justify-between shrink-0 shadow-md select-none">
+      <div class="wails-drag h-14 border-b border-slate-800 bg-slate-900/90 pl-20 pr-4 flex items-center justify-between shrink-0 shadow-md select-none gap-2">
         
         <!-- Left: Image Nav & Title -->
-        <div class="flex items-center space-x-3 min-w-0">
+        <div class="flex items-center space-x-2.5 min-w-0 flex-1 mr-2">
           <div class="flex items-center space-x-1 shrink-0">
             <button @click="studioPrevImage()" :disabled="imageStudio.currentIndex === 0"
-              class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs text-slate-200 font-mono transition"
+              class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs text-slate-200 font-mono transition"
               title="Попереднє зображення (Стрілка вліво ←)">
               ◄
             </button>
-            <span class="text-xs font-mono text-slate-400 px-1">
+            <span class="text-xs font-mono text-slate-400 px-1 shrink-0">
               <strong class="text-slate-100" v-text="imageStudio.currentIndex + 1"></strong> / <span v-text="imageStudioImages.length"></span>
             </span>
             <button @click="studioNextImage()" :disabled="imageStudio.currentIndex >= imageStudioImages.length - 1"
-              class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs text-slate-200 font-mono transition"
+              class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-xs text-slate-200 font-mono transition"
               title="Наступне зображення (Стрілка вправо →)">
               ►
             </button>
           </div>
 
-          <div class="truncate flex items-center space-x-2">
+          <div class="min-w-0 flex items-center space-x-2">
             <!-- Package Mode Badge -->
             <template v-if="packageContext?.active">
-              <div class="flex items-center space-x-1.5 px-2 py-0.5 rounded-lg bg-fuchsia-950/80 border border-fuchsia-700/60 text-fuchsia-300 text-[11px] font-mono shrink-0">
+              <div class="flex items-center space-x-1 px-1.5 py-0.5 rounded-lg bg-fuchsia-950/80 border border-fuchsia-700/60 text-fuchsia-300 text-[11px] font-mono shrink-0">
                 <svg class="w-3 h-3 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
                 </svg>
                 <span class="font-bold">ПАКЕТ</span>
-                <button @click="closePackageStudioContext()" class="hover:text-white ml-1 text-slate-400" title="Вийти з режиму пакету до скану">✕</button>
+                <button @click="closePackageStudioContext()" class="hover:text-white ml-0.5 text-slate-400" title="Вийти з режиму пакету до скану">✕</button>
               </div>
 
               <!-- Search in Package -->
-              <div class="relative flex items-center">
+              <div class="relative flex items-center shrink-0">
                 <input type="text"
                   v-model="packageContext.searchQuery"
                   @input="studioSelectImage(0)"
-                  placeholder="🔍 Пошук #ID чи назви..."
-                  class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200 placeholder-slate-500 font-mono w-36 focus:w-48 transition-all outline-none focus:border-fuchsia-500">
+                  placeholder="🔍 Пошук..."
+                  class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200 placeholder-slate-500 font-mono w-24 sm:w-32 focus:w-44 transition-all outline-none focus:border-fuchsia-500">
                 <button v-if="packageContext.searchQuery" @click="packageContext.searchQuery = ''; studioSelectImage(0)" class="absolute right-1.5 text-slate-400 hover:text-white text-[10px]">✕</button>
               </div>
 
@@ -58,49 +58,51 @@
                 class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px] font-mono flex items-center space-x-1 transition shrink-0"
                 title="Відкрити compare.html у браузері">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                <span>compare.html</span>
+                <span class="hidden xl:inline">compare.html</span>
               </button>
             </template>
 
-            <span class="text-sm font-bold text-amber-400 font-mono truncate" v-text="currentStudioImage?.basename || 'image'"></span>
+            <span class="text-sm font-bold text-amber-400 font-mono truncate max-w-[120px] sm:max-w-[160px] md:max-w-[220px]"
+              :title="currentStudioImage?.basename"
+              v-text="currentStudioImage?.basename || 'image'"></span>
             
             <button type="button" @click.stop="openUrlInBrowser(currentStudioImage?.url)"
-              class="text-slate-400 hover:text-amber-400 p-1 rounded hover:bg-slate-800 transition"
+              class="text-slate-400 hover:text-amber-400 p-1 rounded hover:bg-slate-800 transition shrink-0"
               title="Відкрити це зображення у браузері">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
             </button>
             <button type="button" @click.stop="copyToClipboard(currentStudioImage?.url, 'Посилання скопійовано')"
-              class="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition"
+              class="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition shrink-0"
               title="Скопіювати повне посилання">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
 
             <template v-if="currentStudioImage?.isModified || packageContext?.modifiedIds?.includes(currentStudioImage?.id)">
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/80 text-emerald-300 border border-emerald-700 shadow-sm flex items-center space-x-1">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/80 text-emerald-300 border border-emerald-700 shadow-sm flex items-center space-x-1 shrink-0">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span>Оновлено в пакеті</span>
+                <span class="hidden sm:inline">Оновлено</span>
               </span>
             </template>
             <template v-if="currentStudioImage?.format === 'svg'">
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-950/60 text-purple-300 border border-purple-800">Векторний SVG</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-950/60 text-purple-300 border border-purple-800 shrink-0">SVG</span>
             </template>
             <template v-if="currentStudioSkip && currentStudioImage?.format !== 'svg'">
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-950/60 text-rose-300 border border-rose-800">Пропущено</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-950/60 text-rose-300 border border-rose-800 shrink-0">Пропущено</span>
             </template>
             <template v-if="!currentStudioSkip && isCurrentStudioOverridden">
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-950/60 text-purple-300 border border-purple-800">Кастомні налаштування</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-950/60 text-purple-300 border border-purple-800 shrink-0 hidden md:inline">Кастом</span>
             </template>
           </div>
         </div>
 
         <!-- Center: Comparison View Modes & Zoom -->
-        <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-2 shrink-0">
           
           <!-- View Modes -->
           <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs">
             <button @click="imageStudio.viewMode = 'split'"
               :class="imageStudio.viewMode === 'split' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-3 py-1 rounded-lg transition flex items-center space-x-1.5"
+              class="px-2.5 py-1 rounded-lg transition flex items-center space-x-1.5"
               title="Інтерактивна шторка-роздільник (Split)">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
@@ -110,17 +112,17 @@
 
             <button @click="imageStudio.viewMode = 'toggle'"
               :class="imageStudio.viewMode === 'toggle' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-3 py-1 rounded-lg transition flex items-center space-x-1.5"
+              class="px-2.5 py-1 rounded-lg transition flex items-center space-x-1.5"
               title="Швидкий перемикач: клавіша T або Space">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
-              <span>Toggle (T)</span>
+              <span>Toggle</span>
             </button>
 
             <button @click="imageStudio.viewMode = 'side'"
               :class="imageStudio.viewMode === 'side' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-3 py-1 rounded-lg transition flex items-center space-x-1.5"
+              class="px-2.5 py-1 rounded-lg transition flex items-center space-x-1.5"
               title="Два зображення поруч">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m6-16h4a2 2 0 012 2v12a2 2 0 01-2 2h-4"/>
@@ -196,23 +198,8 @@
 
         </div>
 
-        <!-- Right: Settings, Download & Close -->
+        <!-- Right: Actions & Close -->
         <div class="flex items-center space-x-2 shrink-0">
-          <button @click="toggleStudioSettingsDrawer()"
-            :class="imageStudio.showSettingsDrawer ? 'bg-cyan-600 text-white font-bold shadow ring-2 ring-cyan-400/50' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'"
-            class="px-3 py-1.5 rounded-xl text-xs transition flex items-center space-x-1.5 shadow"
-            title="Панель налаштувань (Клавіша O)">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <span>Налаштування</span>
-            <span class="text-[10px] opacity-75 font-mono hidden sm:inline">[O]</span>
-            <template v-if="isCurrentStudioOverridden">
-              <span class="w-2 h-2 rounded-full bg-purple-400"></span>
-            </template>
-          </button>
-
           <template v-if="packageContext?.active">
             <button @click="saveCurrentToPackage()" :disabled="!imageStudio.currentResult"
               class="bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow-lg ring-1 ring-fuchsia-400/50"
@@ -234,12 +221,6 @@
               <span v-text="(currentStudioImage?.format === 'svg' && imageStudio.currentResult?.isSkipped) ? 'SVG' : 'WebP'"></span>
             </button>
           </template>
-
-          <button @click="downloadOriginalImage(currentStudioImage?.url)"
-            class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs px-2.5 py-1.5 rounded-xl transition flex items-center space-x-1 border border-slate-700 shadow"
-            title="Зберегти оригінальний файл на диск">
-            <span>Оригінал</span>
-          </button>
 
           <button @click="closeImageStudio()"
             class="text-slate-400 hover:text-slate-100 p-2 rounded-xl bg-slate-800 hover:bg-slate-700 transition"
@@ -589,7 +570,8 @@
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
                   </svg>
-                  <span>Всі опції</span>
+                  <span>Налаштування</span>
+                  <span class="text-[10px] opacity-75 font-mono hidden sm:inline">[O]</span>
                   <template v-if="isCurrentStudioOverridden">
                     <span class="w-2 h-2 rounded-full bg-purple-400"></span>
                   </template>
