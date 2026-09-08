@@ -646,6 +646,9 @@ export namespace optimizer {
 	    isLossless: boolean;
 	    isSkipped: boolean;
 	    adaptiveApplied: boolean;
+	    isPaletted?: boolean;
+	    paletteColors?: number;
+	    debandApplied?: boolean;
 	    originalDataBase64: string;
 	    optimizedWebPBase64: string;
 	    error: string;
@@ -673,6 +676,9 @@ export namespace optimizer {
 	        this.isLossless = source["isLossless"];
 	        this.isSkipped = source["isSkipped"];
 	        this.adaptiveApplied = source["adaptiveApplied"];
+	        this.isPaletted = source["isPaletted"];
+	        this.paletteColors = source["paletteColors"];
+	        this.debandApplied = source["debandApplied"];
 	        this.originalDataBase64 = source["originalDataBase64"];
 	        this.optimizedWebPBase64 = source["optimizedWebPBase64"];
 	        this.error = source["error"];
@@ -685,6 +691,7 @@ export namespace optimizer {
 	    maxW: number;
 	    maxH: number;
 	    dither: boolean;
+	    deband: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ImageTuneOptions(source);
@@ -698,6 +705,7 @@ export namespace optimizer {
 	        this.maxW = source["maxW"];
 	        this.maxH = source["maxH"];
 	        this.dither = source["dither"];
+	        this.deband = source["deband"];
 	    }
 	}
 
