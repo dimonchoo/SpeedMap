@@ -1,0 +1,234 @@
+<template>
+<!-- IFRAMES HUB -->
+        <template v-if="activeTab === 'iframes'">
+          <div class="flex-1 overflow-y-auto p-4 xl:p-6 space-y-6">
+            <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+              <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div class="space-y-0.5">
+                  <h2 class="text-sm font-semibold text-slate-100 flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    <span>Інспектор iframe</span>
+                  </h2>
+                  <p class="text-xs text-slate-400">Аналіз завантажених та пропущених (lazy / below-fold) iframe</p>
+                </div>
+
+                <!-- View Mode Toggle & Export Actions -->
+                <div class="flex flex-wrap items-center gap-2.5">
+                  <!-- View Mode Toggle: By-Page vs By-Src -->
+                  <div class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs shrink-0">
+                    <button @click="iframeViewMode = 'by-page'"
+                      :class="iframeViewMode === 'by-page' ? 'bg-slate-800 text-rose-300 font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-2.5 py-1.5 rounded-lg transition flex items-center space-x-1.5">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                      </svg>
+                      <span>За сторінками</span>
+                    </button>
+                    <button @click="iframeViewMode = 'by-src'"
+                      :class="iframeViewMode === 'by-src' ? 'bg-slate-800 text-rose-300 font-semibold shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+                      class="px-2.5 py-1.5 rounded-lg transition flex items-center space-x-1.5">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                      </svg>
+                      <span>За src</span>
+                    </button>
+                  </div>
+
+                  <!-- Standard Export Action Buttons -->
+                  <div class="flex items-center space-x-1.5 shrink-0">
+                    <button @click="exportIframesCSV()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0"
+                      class="px-2.5 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700/80 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                      </svg>
+                      <span>CSV</span>
+                    </button>
+                    <button @click="exportIframesJSON()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0"
+                      class="px-2.5 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700/80 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                      </svg>
+                      <span>JSON</span>
+                    </button>
+                    <button @click="uploadIframesToGDrive()" :disabled="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0 || isUploadingGDrive"
+                      class="px-2.5 py-1.5 rounded-lg border text-xs font-medium transition flex items-center space-x-1.5 bg-slate-900 border-slate-700/80 hover:bg-slate-800 text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
+                      <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/>
+                      </svg>
+                      <span v-show="!isUploadingGDrive">Drive</span>
+                      <span v-show="isUploadingGDrive" class="flex items-center space-x-1">
+                        <svg class="animate-spin h-3 w-3 text-cyan-400" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Вивантаження...</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                  <div class="text-slate-400 uppercase tracking-wider text-[10px] font-medium">Унікальних</div>
+                  <div class="text-xl font-bold text-slate-100 font-mono mt-0.5" v-text="siteAnalytics?.totalIframeCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                  <div class="text-emerald-400 uppercase tracking-wider text-[10px] font-medium">Завантажено</div>
+                  <div class="text-xl font-bold text-emerald-300 font-mono mt-0.5" v-text="siteAnalytics?.loadedIframeCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                  <div class="text-rose-400 uppercase tracking-wider text-[10px] font-medium">Пропущено</div>
+                  <div class="text-xl font-bold text-rose-300 font-mono mt-0.5" v-text="siteAnalytics?.missedIframeCount || 0"></div>
+                </div>
+                <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
+                  <div class="text-slate-400 uppercase tracking-wider text-[10px] font-medium">Сторінок з iframe</div>
+                  <div class="text-xl font-bold text-slate-100 font-mono mt-0.5" v-text="pageIframesList.filter(p => p.iframeCount > 0).length"></div>
+                </div>
+              </div>
+
+              <div class="relative flex items-center max-w-md">
+                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                </div>
+                <input type="text" v-model="iframeSearchQuery" @keydown.escape="iframeSearchQuery = ''" placeholder="Пошук за src / title / URL сторінки..."
+                  class="w-full bg-slate-900 border border-slate-700/80 hover:border-slate-600 focus:border-cyan-500 rounded-lg pl-8 pr-7 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none font-mono transition shadow-inner">
+                <template v-if="iframeSearchQuery">
+                  <button @click="iframeSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2 flex items-center text-slate-400 hover:text-slate-200 text-xs font-bold" title="Очистити">✕</button>
+                </template>
+              </div>
+            </div>
+
+            <template v-if="!siteAnalytics || !siteAnalytics.iframes || siteAnalytics.iframes.length === 0">
+              <div class="p-12 text-center bg-slate-950/40 rounded-2xl border border-slate-800/80 space-y-3">
+                <span class="text-4xl block">⧉</span>
+                <h3 class="text-sm font-bold text-slate-300">iframe не виявлено</h3>
+                <p class="text-xs text-slate-500 max-w-md mx-auto">Після сканування тут з’явиться список iframe по сторінках і скільки не встигли завантажитись під час load.</p>
+              </div>
+            </template>
+
+            <template v-if="iframeViewMode === 'by-page'">
+              <div class="space-y-4">
+                <template v-for="item in paginatedIframePages" :key="item.id">
+                  <div class="bg-slate-950/90 rounded-2xl border border-slate-800/90 p-4 space-y-3 shadow-xl">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                      <button @click.stop="openUrlInBrowser(item.url)" class="font-mono font-bold text-xs text-slate-100 hover:text-emerald-400 underline truncate text-left" :title="item.url" v-text="item.url"></button>
+                      <div class="flex items-center gap-2 shrink-0 text-[10px] font-mono">
+                        <span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30" v-text="item.iframeCount + ' iframe'"></span>
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25" v-text="item.loadedCount + ' loaded'"></span>
+                        <span class="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25" v-show="item.missedCount > 0" v-text="item.missedCount + ' missed'"></span>
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <template v-for="f in item.iframes" :key="f.src + f.title">
+                        <div class="bg-slate-900/90 p-3 rounded-xl border text-xs space-y-2"
+                          :class="f.loadedDuringScan ? 'border-slate-800' : 'border-amber-500/40'">
+                          <div class="flex items-start justify-between gap-2">
+                            <div class="truncate font-mono text-slate-200" :title="f.src" v-text="f.src || '(empty src)'"></div>
+                            <span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase"
+                              :class="f.loadedDuringScan ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'"
+                              v-text="f.loadedDuringScan ? 'loaded' : 'missed'"></span>
+                          </div>
+                          <div class="flex flex-wrap gap-2 text-[10px] text-slate-400 font-mono">
+                            <span v-show="f.title" v-text="'title: ' + f.title"></span>
+                            <span v-text="(f.width || 0) + '×' + (f.height || 0)"></span>
+                            <span v-show="f.isLazy">lazy</span>
+                            <span v-show="f.inViewport">viewport</span>
+                            <span v-show="f.sandbox">sandbox</span>
+                            <span v-show="f.loadedDuringScan" v-text="(f.duration || 0) + ' ms'"></span>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+
+                <!-- Standard Reusable Pagination Bar -->
+                <template v-if="pageIframesList.length > 0">
+                  <div class="px-6 py-3 bg-slate-950 border-t border-slate-800 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300 font-mono shadow-lg">
+                    <div>
+                      Показано <span class="font-bold text-cyan-400" v-text="pageIframesList.length > 0 ? ((iframePage - 1) * iframePerPage + 1) : 0"></span> - 
+                      <span class="font-bold text-cyan-400" v-text="Math.min(iframePage * iframePerPage, pageIframesList.length)"></span> з 
+                      <span class="font-bold text-slate-100" v-text="pageIframesList.length"></span> сторінок
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                      <button @click="iframePage = Math.max(1, iframePage - 1)" :disabled="iframePage === 1"
+                        class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                        ◄ Попередня
+                      </button>
+
+                      <span class="px-2 font-bold text-slate-200">
+                        Стор. <span v-text="iframePage"></span> / <span v-text="totalIframePagesCount"></span>
+                      </span>
+
+                      <button @click="iframePage = Math.min(totalIframePagesCount, iframePage + 1)" :disabled="iframePage >= totalIframePagesCount"
+                        class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition font-sans">
+                        Наступна ►
+                      </button>
+
+                      <select x-model.number="iframePerPage" @change="iframePage = 1" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-sans">
+                        <option value="25">25 / стор.</option>
+                        <option value="50">50 / стор.</option>
+                        <option value="100">100 / стор.</option>
+                        <option value="250">250 / стор.</option>
+                      </select>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <template v-if="iframeViewMode === 'by-src'">
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <template v-for="frame in filteredIframes" :key="frame.src">
+                  <div class="bg-slate-950/90 rounded-2xl border border-slate-800 p-4 space-y-3 text-xs">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="space-y-1 min-w-0">
+                        <div class="font-mono text-slate-100 truncate" :title="frame.src" v-text="frame.src"></div>
+                        <div class="text-slate-500" v-show="frame.title" v-text="frame.title"></div>
+                      </div>
+                      <span class="shrink-0 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono"
+                        v-text="frame.pageCount + ' pg'"></span>
+                    </div>
+                    <div class="flex flex-wrap gap-2 font-mono text-[10px]">
+                      <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300" v-text="'loaded ' + (frame.loadedCount || 0)"></span>
+                      <span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300" v-text="'missed ' + (frame.missedCount || 0)"></span>
+                      <span class="text-slate-400" v-text="(frame.width || 0) + '×' + (frame.height || 0)"></span>
+                      <span class="text-slate-400" v-show="frame.isLazy">lazy</span>
+                      <span class="text-slate-400" v-text="(frame.avgDurationMs || 0) + ' ms avg'"></span>
+                    </div>
+                    <template v-if="frame.pages && frame.pages.length > 0">
+                      <div x-data="{ open: false }" class="pt-2 border-t border-slate-800/60 space-y-1">
+                        <button @click="open = !open" class="text-[11px] text-slate-400 hover:text-rose-300 font-semibold">
+                          <span v-text="open ? '▲ Сховати сторінки' : '▼ Сторінки (' + frame.pages.length + ')'"></span>
+                        </button>
+                        <div v-show="open" class="max-h-28 overflow-y-auto space-y-1 bg-slate-900/90 p-2 rounded-xl border border-slate-800 font-mono text-[10px]">
+                          <template v-for="pageUrl in frame.pages" :key="pageUrl">
+                            <button @click.stop="openUrlInBrowser(pageUrl)" class="block text-slate-300 hover:text-emerald-400 truncate underline text-left w-full" :title="pageUrl" v-text="pageUrl"></button>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
+</template>
+
+<script>
+import { useApp } from '@/store/app';
+
+export default {
+  name: 'IframesTab',
+  setup() {
+    return useApp();
+  }
+};
+</script>

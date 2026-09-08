@@ -13,8 +13,8 @@ APP_NAME="SpeedMap.app"
 BUILD_OUTPUT="$SCRIPT_DIR/build/bin/$APP_NAME"
 TARGET_APP="/Applications/$APP_NAME"
 
-echo "🧩 [1/5] Компіляція та валідація модульного HTML інтерфейсу..."
-node "$SCRIPT_DIR/scripts/build-html.js"
+echo "🧩 [1/5] Компіляція Vue 3 + Tailwind CSS через Vite..."
+cd "$SCRIPT_DIR/frontend" && npm run build && cd "$SCRIPT_DIR"
 
 echo "⚡ [2/5] Збирання додатку SpeedMap..."
 wails build

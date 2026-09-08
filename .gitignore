@@ -10,3 +10,5 @@ build/windows/installer/tmp/
 
 # The black hole that is...
 node_modules
+frontend/package.json.md5
+

@@ -1,33 +1,28 @@
-// Get input + focus
-let nameElement = document.getElementById("name");
-nameElement.focus();
-import './main.css';
+import { createApp } from 'vue';
+import App from './App.vue';
+import './style.css';
 
-// Setup the greet function
-window.greet = function () {
-    // Get name
-    let name = nameElement.value;
+const app = createApp(App);
 
-    // Check if the input is empty
-    if (name === "") return;
-
-    // Call App.Greet(name)
-    try {
-        window.go.main.App.Greet(name)
-            .then((result) => {
-                // Update result with data back from App.Greet()
-                document.getElementById("result").innerText = result;
-            })
-            .catch((err) => {
-                console.error(err);
-            });
-    } catch (err) {
-        console.error(err);
+// Click outside directive for dropdowns & modals
+app.directive('click-outside', {
+  mounted(el, binding) {
+    el._clickOutsideHandler = (event) => {
+      if (!(el === event.target || el.contains(event.target))) {
+        if (typeof binding.value === 'function') {
+          binding.value(event);
+        }
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('click', el._clickOutsideHandler);
+    }, 0);
+  },
+  unmounted(el) {
+    if (el._clickOutsideHandler) {
+      document.removeEventListener('click', el._clickOutsideHandler);
     }
-};
+  }
+});
 
-nameElement.onkeydown = function (e) {
-    if (e.keyCode == 13) {
-        window.greet();
-    }
-};
+app.mount('#app');

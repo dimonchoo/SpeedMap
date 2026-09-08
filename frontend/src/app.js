@@ -1,4 +1,4 @@
-function speedMapApp() {
+export function speedMapApp() {
   return {
     // Config state - DEFAULT TO MOBILE MODE 📱
     config: {

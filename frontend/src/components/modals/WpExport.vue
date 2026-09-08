@@ -1,0 +1,85 @@
+<template>
+<!-- WordPress Path Selection Modal Dialog -->
+    <div v-show="showWPPathModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+      <div @click.away="showWPPathModal = false"
+        class="bg-slate-900 border border-slate-700/80 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-5 text-slate-100">
+        
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <h3 class="text-base font-bold">Куди зберегти пакет</h3>
+          </div>
+          <button @click="showWPPathModal = false" class="text-slate-400 hover:text-slate-200 text-lg">✕</button>
+        </div>
+
+        <div class="space-y-3 text-xs">
+          <p class="text-slate-300 leading-relaxed">
+            SpeedMap збереже папку пакета: <code class="text-emerald-400">images/</code> +
+            <code class="text-emerald-400">apply.php</code> + rollback + compare.
+            У <code class="text-slate-400">uploads</code> нічого не пише — копію робить PHP на Stage.
+            <code class="block mt-1 bg-slate-950 p-2 rounded text-emerald-400 font-mono">wp eval-file …/apply.php --path=/path/to/wp</code>
+          </p>
+          <p class="text-slate-400" v-show="siteAnalytics?.heavyImagesCount">
+            Heavy images у скані:
+            <span class="text-emerald-300 font-mono" v-text="siteAnalytics?.heavyImagesCount"></span>
+          </p>
+
+          <!-- Input + Native Browse Button -->
+          <div class="space-y-1.5 pt-2">
+            <label class="block font-semibold text-slate-300">Папка для пакета (локально):</label>
+            <div class="flex items-center space-x-2">
+              <input type="text" v-model="wpPathInput" placeholder="/Users/…/Desktop або /tmp"
+                class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono focus:outline-none focus:border-emerald-500">
+              
+              <button @click="pickWPFolderOnLocal()" type="button"
+                class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl font-semibold flex items-center space-x-1 shrink-0 transition">
+                <span>Оглянути</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Fast Presets -->
+          <div class="pt-2 space-y-1.5">
+            <span class="text-slate-400 text-[11px]">Швидкі шаблони шляхів:</span>
+            <div class="flex flex-wrap gap-1.5 font-mono text-[11px]">
+              <button @click="wpPathInput = '/var/www/site'" type="button" class="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-slate-300">/var/www/site</button>
+              <button @click="wpPathInput = '/var/www/html'" type="button" class="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-slate-300">/var/www/html</button>
+              <button @click="wpPathInput = '/public_html'" type="button" class="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded text-slate-300">/public_html</button>
+            </div>
+          </div>
+
+          <label class="flex items-start space-x-2 pt-2 cursor-pointer">
+            <input type="checkbox" v-model="wpApplyConfirmed"
+              class="mt-0.5 rounded border-slate-600 bg-slate-950 text-emerald-500 focus:ring-emerald-500">
+            <span class="text-slate-300 leading-relaxed">
+              Підтверджую: зібрати пакет (images + apply/rollback PHP + ZIP) у цей шлях.
+              На Stage apply запустя окремо — він скопіює webp у uploads і оновить БД.
+            </span>
+          </label>
+        </div>
+
+        <div class="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
+          <button @click="showWPPathModal = false" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium text-xs transition">
+            Скасувати
+          </button>
+          <button @click="confirmExportWPApply()" :disabled="!wpApplyConfirmed || isExportingWPApply"
+            :class="(!wpApplyConfirmed || isExportingWPApply) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-emerald-500'"
+            class="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-lg transition">
+            Згенерувати
+          </button>
+        </div>
+
+      </div>
+    </div>
+</template>
+
+<script>
+import { useApp } from '@/store/app';
+
+export default {
+  name: 'WpExport',
+  setup() {
+    return useApp();
+  }
+};
+</script>

@@ -1,0 +1,518 @@
+<template>
+<!-- DETAIL SLIDE-OVER PANEL -->
+    <div v-show="selectedDetail" class="fixed inset-0 z-[60] overflow-hidden">
+      <!-- Backdrop must stay under the panel or it eats clicks on rescan/W3C buttons -->
+      <div class="absolute inset-0 z-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" @click="selectedDetail = null"></div>
+
+      <div class="relative z-10 ml-auto h-full w-screen max-w-xl flex pointer-events-auto">
+        <div class="w-full bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col h-full">
+          
+          <!-- Header with URL Link & Rescan Button -->
+          <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
+            <div class="flex-1 pr-4 truncate">
+              <h3 class="text-sm font-semibold text-slate-100">Детальний аналіз Web Vitals</h3>
+              <button type="button" @click.stop="openUrlInBrowser(selectedDetail?.url)" class="text-xs text-cyan-400 hover:underline font-mono truncate block mt-0.5" title="Відкрити сторінку у браузері">
+                <span v-text="selectedDetail?.url"></span> ↗
+              </button>
+            </div>
+            
+            <div class="flex items-center space-x-2 shrink-0">
+              <!-- Rescan Button inside Slide-over -->
+              <button type="button" @click.stop.prevent="rescanSingle(selectedDetail)" :disabled="!!rescanLoadingMap[selectedDetail?.id]"
+                class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 px-2.5 py-1.5 rounded-lg text-xs font-medium transition disabled:opacity-50">
+                <span v-show="!rescanLoadingMap[selectedDetail?.id]" class="flex items-center space-x-1.5 pointer-events-none">
+                  <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                  <span>Пересканувати</span>
+                </span>
+                <span v-show="!!rescanLoadingMap[selectedDetail?.id]" class="flex items-center space-x-1 text-cyan-400 pointer-events-none">
+                  <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Оновлення...</span>
+                </span>
+              </button>
+
+              <button type="button" @click.stop="selectedDetail = null" class="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition">
+                <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-5 space-y-5">
+
+            <!-- Error Banner (Shown when scan failed) -->
+            <template v-if="selectedDetail?.error">
+              <div class="bg-rose-950/40 border border-rose-800/80 p-3.5 rounded-xl space-y-1">
+                <div class="flex items-center space-x-2 text-rose-400 font-semibold text-xs">
+                  <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  </svg>
+                  <span>Причина помилки (Scan Failure)</span>
+                </div>
+                <p class="text-xs text-rose-300 font-mono break-words leading-relaxed" v-text="selectedDetail?.error"></p>
+              </div>
+            </template>
+            
+            <!-- Overall Status Badge -->
+            <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <div class="text-[11px] text-slate-400 uppercase tracking-wider font-medium">Загальна оцінка</div>
+                <div class="text-base font-bold capitalize mt-0.5"
+                  :class="selectedDetail?.overallStatus === 'good' ? 'text-emerald-400' : (selectedDetail?.overallStatus === 'needs-improvement' ? 'text-amber-400' : 'text-rose-400')"
+                  v-text="selectedDetail?.overallStatus"></div>
+              </div>
+              <div class="text-right">
+                <div class="text-[11px] text-slate-400 uppercase tracking-wider font-medium">HTTP Status</div>
+                <div class="text-sm font-mono font-bold text-slate-200 mt-0.5" v-text="selectedDetail?.statusCode || 'ERR'"></div>
+              </div>
+            </div>
+
+            <!-- Cache Status Card (Plugin / Redis & Cloudflare) -->
+            <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+              <div class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                <div class="flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                  <span>Стан кешування</span>
+                </div>
+                <span class="text-[10px] text-slate-500 font-mono">HTTP Headers</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2.5 text-xs">
+                <!-- Plugin / Redis Cache -->
+                <div class="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800/80 space-y-1">
+                  <div class="text-[11px] text-slate-400 font-medium">Plugin / Redis Cache</div>
+                  <div class="font-mono font-bold text-xs">
+                    <template v-if="selectedDetail?.pluginCacheStatus && selectedDetail?.pluginCacheStatus !== 'NONE'">
+                      <span :class="selectedDetail?.pluginCacheStatus === 'HIT' ? 'text-emerald-400' : (selectedDetail?.pluginCacheStatus === 'MISS' ? 'text-amber-400' : 'text-slate-300')"
+                        v-text="selectedDetail?.pluginCacheStatus"></span>
+                    </template>
+                    <template v-if="!selectedDetail?.pluginCacheStatus || selectedDetail?.pluginCacheStatus === 'NONE'">
+                      <span class="text-slate-500 font-normal text-xs">Не виявлено</span>
+                    </template>
+                  </div>
+                </div>
+
+                <!-- Cloudflare Cache & Datacenter -->
+                <div class="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800/80 space-y-1">
+                  <div class="text-[11px] text-slate-400 font-medium flex items-center justify-between">
+                    <div class="flex items-center space-x-1">
+                      <svg class="w-3 h-3 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+                      <span>Cloudflare</span>
+                    </div>
+                    <template v-if="selectedDetail?.cloudflarePop">
+                      <span class="text-[9px] font-mono bg-sky-950/80 text-sky-300 px-1 py-0.2 rounded border border-sky-800/60" :title="'CF-Ray: ' + (selectedDetail?.cloudflareRay || '')" v-text="'PoP: ' + selectedDetail?.cloudflarePop"></span>
+                    </template>
+                  </div>
+                  <div class="font-mono font-bold text-xs">
+                    <template v-if="selectedDetail?.cloudflareCacheStatus && selectedDetail?.cloudflareCacheStatus !== 'NONE'">
+                      <div class="flex items-center space-x-1.5">
+                        <span :class="selectedDetail?.cloudflareCacheStatus === 'HIT' ? 'text-sky-400' : (selectedDetail?.cloudflareCacheStatus === 'MISS' ? 'text-amber-400' : 'text-indigo-300')"
+                          v-text="selectedDetail?.cloudflareCacheStatus"></span>
+                        <template v-if="selectedDetail?.cloudflarePop">
+                          <span class="text-xs font-normal text-slate-400" v-text="'(' + selectedDetail?.cloudflarePop + ')'"></span>
+                        </template>
+                      </div>
+                    </template>
+                    <template v-if="!selectedDetail?.cloudflareCacheStatus || selectedDetail?.cloudflareCacheStatus === 'NONE'">
+                      <span class="text-slate-500 font-normal text-xs">Не виявлено</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Official W3C HTML5 Validation Section -->
+            <div class="space-y-2.5 pt-1">
+              <div class="flex items-center justify-between">
+                <h4 class="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <span>W3C HTML5 Валідація</span>
+                </h4>
+
+                <button type="button" @click.stop.prevent="validateW3C(selectedDetail)" :disabled="!!w3cLoadingMap[selectedDetail?.id]"
+                  class="flex items-center space-x-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 px-2.5 py-1 rounded-md text-xs font-medium transition disabled:opacity-50">
+                  <span v-show="!w3cLoadingMap[selectedDetail?.id]" class="flex items-center space-x-1.5 pointer-events-none">
+                    <svg class="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Перевірити W3C</span>
+                  </span>
+                  <span v-show="!!w3cLoadingMap[selectedDetail?.id]" class="flex items-center space-x-1 text-indigo-400 pointer-events-none">
+                    <svg class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>W3C запит...</span>
+                  </span>
+                </button>
+              </div>
+
+              <!-- When W3C Report Exists -->
+              <template v-if="selectedDetail?.diagnostics?.w3c">
+                <div class="space-y-2.5">
+                  <!-- W3C Status Summary Banner -->
+                  <div class="p-3 rounded-lg border flex items-center justify-between text-xs"
+                    :class="selectedDetail.diagnostics.w3c.isValid ? 'bg-emerald-950/30 border-emerald-500/30' : (selectedDetail.diagnostics.w3c.errorCount > 0 ? 'bg-rose-950/30 border-rose-500/30' : 'bg-amber-950/30 border-amber-500/30')">
+                    <div class="flex items-center space-x-2">
+                      <span class="w-2 h-2 rounded-full shrink-0" :class="selectedDetail.diagnostics.w3c.isValid ? 'bg-emerald-400' : (selectedDetail.diagnostics.w3c.errorCount > 0 ? 'bg-rose-400' : 'bg-amber-400')"></span>
+                      <span class="font-medium text-slate-200" v-text="selectedDetail.diagnostics.w3c.isValid ? 'W3C Валідацію пройдено без помилок' : 'Знайдено зауваження W3C'"></span>
+                    </div>
+                    <div class="flex space-x-2 font-mono text-[11px] font-medium">
+                      <span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300" v-text="selectedDetail.diagnostics.w3c.errorCount + ' помилок'"></span>
+                      <span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300" v-text="selectedDetail.diagnostics.w3c.warningCount + ' зауважень'"></span>
+                    </div>
+                  </div>
+
+                  <!-- W3C Error/Warning Messages List -->
+                  <template v-if="selectedDetail.diagnostics.w3c.messages && selectedDetail.diagnostics.w3c.messages.length > 0">
+                    <div class="bg-slate-950/60 rounded-xl border border-slate-800 p-2.5 space-y-2 max-h-72 overflow-y-auto">
+                      <template v-for="(msg, idx) in selectedDetail.diagnostics.w3c.messages" :key="idx">
+                        <div class="bg-slate-900/80 p-2.5 rounded-lg border space-y-1 text-xs"
+                          :class="msg.type === 'error' ? 'border-rose-500/30' : 'border-amber-500/20'">
+                          
+                          <div class="flex items-center justify-between font-mono text-[10px]">
+                            <span class="font-medium uppercase px-1.5 py-0.2 rounded"
+                              :class="msg.type === 'error' ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300'"
+                              v-text="msg.type + (msg.subType ? ' (' + msg.subType + ')' : '')"></span>
+                            <span class="text-slate-500" v-text="'Line ' + (msg.lastLine || '?') + ', Col ' + (msg.lastColumn || '?')"></span>
+                          </div>
+
+                          <p class="text-slate-200 leading-relaxed text-[11px]" v-text="msg.message"></p>
+
+                          <template v-if="msg.extract">
+                            <div class="bg-slate-950 p-2 rounded text-[10px] font-mono text-emerald-300 border border-slate-800 overflow-x-auto" v-text="msg.extract"></div>
+                          </template>
+
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+
+                </div>
+              </template>
+
+              <!-- When W3C Report Not Fetched Yet -->
+              <template v-if="!selectedDetail?.diagnostics?.w3c">
+                <div class="bg-slate-950/40 p-3.5 rounded-lg border border-slate-800/80 text-center text-xs text-slate-400">
+                  <p>Натисніть кнопку вище для запуску офіційного аналізу розмітки через W3C Nu API.</p>
+                </div>
+              </template>
+
+            </div>
+
+            <!-- Granular LCP Element Diagnostic Card -->
+            <template v-if="selectedDetail?.diagnostics?.lcpElement">
+              <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <div class="flex items-center space-x-1.5 font-semibold text-cyan-400">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="5" stroke-width="2"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>
+                    <span>LCP Element</span>
+                  </div>
+                  <span class="font-mono text-slate-400 text-xs" v-text="selectedDetail?.grades?.lcp?.formatted"></span>
+                </div>
+                <div class="bg-slate-900/80 p-2.5 rounded-lg font-mono text-xs text-emerald-300 border border-slate-800 break-all" v-text="selectedDetail?.diagnostics?.lcpElement"></div>
+                <template v-if="selectedDetail?.diagnostics?.lcpUrl">
+                  <div class="text-xs text-slate-400 truncate">
+                    Ресурс: <button @click.stop="openUrlInBrowser(selectedDetail?.diagnostics?.lcpUrl)" class="text-cyan-400 underline font-mono text-left hover:text-cyan-300" :title="selectedDetail?.diagnostics?.lcpUrl" v-text="selectedDetail?.diagnostics?.lcpUrl"></button>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <!-- DOM Virtualization (content-visibility) Section -->
+            <template v-if="selectedDetail?.diagnostics?.domVirtualization">
+              <div class="bg-gradient-to-br from-indigo-950/40 via-slate-950/70 to-slate-900/80 p-4 rounded-xl border border-indigo-500/30 space-y-3 shadow-lg">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2 font-semibold text-indigo-300 text-xs">
+                    <svg class="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <span>DOM Virtualization (content-visibility)</span>
+                  </div>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border"
+                    :class="selectedDetail.diagnostics.domVirtualization.unoptimizedCount > 0 ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'"
+                    v-text="selectedDetail.diagnostics.domVirtualization.unoptimizedCount > 0 ? (selectedDetail.diagnostics.domVirtualization.unoptimizedCount + ' блоків потребують оптимізації') : 'Повністю оптимізовано 🟢'">
+                  </span>
+                </div>
+
+                <!-- Stats Badges -->
+                <div class="grid grid-cols-3 gap-2 text-center text-[11px] font-mono">
+                  <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                    <div class="text-slate-400 text-[10px]">Всього DOM</div>
+                    <div class="font-bold text-slate-100" v-text="selectedDetail.diagnostics.domVirtualization.totalDomNodes"></div>
+                  </div>
+                  <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                    <div class="text-slate-400 text-[10px]">Відкладений DOM</div>
+                    <div class="font-bold text-indigo-400" v-text="selectedDetail.diagnostics.domVirtualization.potentialDeferredNodes + ' (' + selectedDetail.diagnostics.domVirtualization.deferredPercentage + '%)'"></div>
+                  </div>
+                  <div class="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                    <div class="text-slate-400 text-[10px]">Ефект на LCP</div>
+                    <div class="font-bold text-emerald-400">~1.0 - 1.5s ⚡</div>
+                  </div>
+                </div>
+
+                <!-- Candidates List -->
+                <template v-if="selectedDetail.diagnostics.domVirtualization.candidates && selectedDetail.diagnostics.domVirtualization.candidates.length > 0">
+                  <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    <template v-for="(cand, idx) in selectedDetail.diagnostics.domVirtualization.candidates" :key="idx">
+                      <div class="bg-slate-900/90 p-2 rounded-lg border text-[11px] font-mono flex items-center justify-between gap-2"
+                        :class="cand.isOptimized ? 'border-emerald-500/40 bg-emerald-950/10' : 'border-slate-800'">
+                        <div class="min-w-0 flex items-center space-x-1.5 truncate">
+                          <span class="text-indigo-300 font-semibold truncate" :title="cand.selector" v-text="cand.selector"></span>
+                          <span class="text-[10px] text-slate-500 shrink-0" v-text="'(~' + cand.estimatedHeight + 'px)'"></span>
+                        </div>
+                        <div class="flex items-center space-x-2 shrink-0 text-[10px]">
+                          <span class="text-slate-400" v-text="cand.domNodes + ' вузлів'"></span>
+                          <span v-show="cand.imagesCount > 0" class="text-amber-400" v-text="cand.imagesCount + ' img'"></span>
+                          <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase"
+                            :class="cand.isOptimized ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'"
+                            v-text="cand.isOptimized ? 'ОК' : 'Відкласти'"></span>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+
+                <!-- Action Buttons: Copy CSS, Copy PHP (wp_head), Export File -->
+                <template v-if="selectedDetail.diagnostics.domVirtualization.unoptimizedCount > 0">
+                  <div class="pt-2 border-t border-indigo-500/20 flex flex-wrap items-center gap-2">
+                    <button @click="copyToClipboard(selectedDetail.diagnostics.domVirtualization.generatedCss, 'CSS віртуалізації скопійовано! 📋')"
+                      class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                      <span>Копіювати CSS</span>
+                    </button>
+
+                    <button @click="copyToClipboard(selectedDetail.diagnostics.domVirtualization.generatedPhp, 'PHP wp_head хук скопійовано! 📋')"
+                      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition">
+                      <span>PHP (wp_head)</span>
+                    </button>
+
+                    <button @click="exportDOMVirtualizationCSS(selectedDetail.diagnostics.domVirtualization.generatedCss, 'page-dom-virtualization.css')"
+                      class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition ml-auto">
+                      <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                      <span>Зберегти .css</span>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <!-- Iframes on this page -->
+            <template v-if="selectedDetail?.diagnostics?.iframes && selectedDetail.diagnostics.iframes.length > 0">
+              <div class="bg-slate-950/60 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+                <div class="flex items-center justify-between text-xs">
+                  <div class="flex items-center space-x-1.5 font-semibold text-rose-400">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 9h16"/></svg>
+                    <span>iframe на сторінці</span>
+                  </div>
+                  <span class="font-mono text-slate-400 text-xs"
+                    v-text="selectedDetail.diagnostics.iframes.length + ' · missed ' + selectedDetail.diagnostics.iframes.filter(f => !f.loadedDuringScan).length"></span>
+                </div>
+                <div class="space-y-1.5 max-h-56 overflow-y-auto">
+                  <template v-for="(f, idx) in selectedDetail.diagnostics.iframes" :key="idx">
+                    <div class="bg-slate-900/80 p-2 rounded-lg border text-[11px] font-mono space-y-1"
+                      :class="f.loadedDuringScan ? 'border-slate-800' : 'border-amber-500/40'">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="truncate text-slate-200" :title="f.src" v-text="f.src || '(empty)'"></span>
+                        <span class="shrink-0 uppercase text-[9px] font-medium"
+                          :class="f.loadedDuringScan ? 'text-emerald-400' : 'text-amber-400'"
+                          v-text="f.loadedDuringScan ? 'loaded' : 'missed'"></span>
+                      </div>
+                      <div class="text-slate-500 flex flex-wrap gap-2 text-[10px]">
+                        <span v-show="f.title" v-text="f.title"></span>
+                        <span v-text="(f.width||0)+'×'+(f.height||0)"></span>
+                        <span v-show="f.isLazy">lazy</span>
+                        <span v-show="f.inViewport">viewport</span>
+                        <span v-show="f.loadedDuringScan" v-text="(f.duration||0)+' ms'"></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Categorized Core Web Vitals Audit (All 5 Categories) -->
+            <template v-if="selectedDetail?.diagnostics?.categories">
+              <div class="space-y-2.5">
+                <h4 class="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                  <span>Аудит продуктивності за категоріями</span>
+                </h4>
+                <div class="space-y-2.5">
+                  <template v-for="(cat, key) in selectedDetail.diagnostics.categories" :key="key">
+                    <div class="bg-slate-950/60 p-3.5 rounded-xl border space-y-2"
+                      :class="cat.status === 'good' ? 'border-emerald-500/20' : (cat.status === 'needs-improvement' ? 'border-amber-500/30' : 'border-rose-500/40')">
+                      
+                      <!-- Category Title & Status -->
+                      <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                          <span class="w-2 h-2 rounded-full shrink-0" :class="cat.status === 'good' ? 'bg-emerald-400' : (cat.status === 'needs-improvement' ? 'bg-amber-400' : 'bg-rose-400')"></span>
+                          <span class="font-semibold text-xs text-slate-200" v-text="cat.title"></span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-medium uppercase" :class="badgeClass(cat.status)" v-text="cat.status"></span>
+                      </div>
+
+                      <!-- Summary -->
+                      <p class="text-xs text-slate-300 font-medium" v-text="cat.summary"></p>
+
+                      <!-- Details Breakdown -->
+                      <template v-if="cat.details && cat.details.length > 0">
+                        <div class="bg-slate-900/80 p-2.5 rounded-lg text-[11px] font-mono space-y-1 border border-slate-800 text-slate-300">
+                          <div class="text-slate-400 font-sans font-semibold text-[10px] uppercase">Фактори впливу:</div>
+                          <template v-for="d in cat.details" :key="d">
+                            <div class="flex items-start space-x-1.5">
+                              <span class="text-slate-500">•</span>
+                              <span v-text="d"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+
+                      <!-- Actionable Step-by-Step Fixes -->
+                      <template v-if="cat.fixes && cat.fixes.length > 0 && cat.status !== 'good'">
+                        <div class="space-y-1.5 pt-1">
+                          <div class="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">Як виправити:</div>
+                          <template v-for="fix in cat.fixes" :key="fix">
+                            <div class="text-xs text-slate-300 leading-relaxed flex items-start space-x-2 bg-amber-500/5 p-2 rounded border border-amber-500/10">
+                              <span class="text-amber-400 font-bold shrink-0">✓</span>
+                              <span v-text="fix"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Slowest Resources Diagnostic Section -->
+            <template v-if="selectedDetail?.diagnostics?.slowestResources && selectedDetail?.diagnostics?.slowestResources.length > 0">
+              <div class="space-y-2.5">
+                <h4 class="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <span>Найповільніші ресурси сторінки</span>
+                </h4>
+                <div class="bg-slate-950/60 rounded-xl border border-slate-800 overflow-hidden">
+                  <table class="w-full text-xs text-left font-mono">
+                    <thead class="bg-slate-900/80 text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th class="p-2.5">Ресурс</th>
+                        <th class="p-2.5">Тип</th>
+                        <th class="p-2.5 text-right">Час (ms)</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                      <template v-for="r in selectedDetail?.diagnostics?.slowestResources" :key="r.name">
+                        <tr>
+                          <td class="p-2.5 truncate max-w-[200px] text-slate-200" v-text="r.name"></td>
+                          <td class="p-2.5 text-slate-400 text-[11px]" v-text="r.type"></td>
+                          <td class="p-2.5 text-right font-bold" :class="r.duration > 500 ? 'text-rose-400' : 'text-amber-400'" v-text="r.duration + 'ms'"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+
+            <!-- Page Largest Images Section -->
+            <template v-if="selectedDetail?.diagnostics?.largestImages && selectedDetail?.diagnostics?.largestImages.length > 0">
+              <div class="space-y-2.5">
+                <h4 class="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  <span>Найбільші зображення сторінки</span>
+                </h4>
+                <div class="bg-slate-950/60 rounded-xl border border-slate-800 overflow-hidden">
+                  <table class="w-full text-xs text-left font-mono">
+                    <thead class="bg-slate-900/80 text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th class="p-2.5">Зображення</th>
+                        <th class="p-2.5 text-center">Розмірність</th>
+                        <th class="p-2.5 text-right">Обсяг</th>
+                        <th class="p-2.5 text-right">Час</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                      <template v-for="img in selectedDetail?.diagnostics?.largestImages" :key="img.url">
+                        <tr>
+                          <td class="p-2.5 truncate max-w-[180px] text-slate-200">
+                            <button @click.stop="openUrlInBrowser(img.url)" class="hover:text-emerald-400 underline text-left truncate block w-full" :title="img.url" v-text="img.url"></button>
+                          </td>
+                          <td class="p-2.5 text-center text-slate-400 text-[11px] font-sans" v-text="(img.width && img.height) ? (img.width + 'x' + img.height) : '-'"></td>
+                          <td class="p-2.5 text-right font-bold text-amber-400" v-text="img.formattedSize || '0 B'"></td>
+                          <td class="p-2.5 text-right text-slate-300" v-text="img.duration + 'ms'"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+
+            <!-- Page Fonts Section (Upgraded Cards) -->
+            <template v-if="selectedDetail?.diagnostics?.fonts && selectedDetail?.diagnostics?.fonts.length > 0">
+              <div class="space-y-2.5">
+                <h4 class="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
+                  <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 5v14m6-7h6m-3-7v14"/></svg>
+                  <span>Шрифти сторінки</span>
+                  <span class="text-slate-400 font-mono text-[11px]" v-text="'(' + selectedDetail.diagnostics.fonts.length + ')'"></span>
+                </h4>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                  <template v-for="f in selectedDetail?.diagnostics?.fonts" :key="f.family">
+                    <div class="bg-slate-950/60 rounded-xl border border-slate-800/80 overflow-hidden flex flex-col justify-between space-y-2 p-3">
+                      <!-- Top part: Icon, Family Name & Format -->
+                      <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center space-x-2 truncate">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+                            <span class="font-sans font-semibold text-slate-100 truncate" :title="f.family" v-text="f.family"></span>
+                          </div>
+                          <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0" v-text="f.type || 'font'"></span>
+                        </div>
+
+                        <!-- Live Font Preview -->
+                        <div class="p-2 bg-slate-900/80 rounded-lg border border-slate-800/80 font-sans">
+                          <div class="text-slate-200 text-xs truncate" :style="'font-family: ' + f.family + ', sans-serif'">
+                            Aa Bb Cc 123 • Typo Preview
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Bottom part: Duration & URL -->
+                      <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                        <span>Час: <strong class="text-slate-200" v-text="f.duration ? (f.duration + 'ms') : '0ms'"></strong></span>
+                        <template v-if="f.url">
+                          <button @click="copyFontUrl(f.url)" class="text-amber-400 hover:text-amber-300 font-medium text-[10px] flex items-center space-x-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                            <span>Копіювати URL</span>
+                          </button>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+          </div>
+
+        </div>
+      </div>
+    </div>
+</template>
+
+<script>
+import { useApp } from '@/store/app';
+
+export default {
+  name: 'PageDetail',
+  setup() {
+    return useApp();
+  }
+};
+</script>

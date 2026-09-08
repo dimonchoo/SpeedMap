@@ -2,7 +2,10 @@
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "SpeedMap",
   "outputfilename": "SpeedMap",
-  "frontend:build": "node ../scripts/build-html.js",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
   "wailsjsdir": "./frontend",
   "author": {
     "name": "Dmytro Buhaiov",

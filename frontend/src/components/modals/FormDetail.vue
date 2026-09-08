@@ -1,0 +1,122 @@
+<template>
+<!-- FORM DETAIL INSPECTION MODAL -->
+    <div v-show="showFormModal" class="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+      <div class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm" @click="showFormModal = false"></div>
+
+      <div class="relative bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-5 shadow-2xl space-y-4 my-8">
+        <template v-if="selectedFormDetail">
+          <div class="space-y-4">
+            <div class="flex items-start justify-between border-b border-slate-800/80 pb-3">
+              <div>
+                <div class="flex items-center space-x-2">
+                  <h3 class="text-base font-semibold text-slate-100" v-text="selectedFormDetail.title || 'Деталі форми'"></h3>
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-medium uppercase"
+                    :class="selectedFormDetail.engine === 'contact-form-7' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : (selectedFormDetail.engine === 'greenhouse' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : (selectedFormDetail.engine === 'pardot' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-slate-800 text-slate-300'))"
+                    v-text="selectedFormDetail.engine"></span>
+                </div>
+                <div class="text-[11px] text-slate-400 font-mono mt-0.5" v-text="`ID: ${selectedFormDetail.id} | Метод: ${selectedFormDetail.method}`"></div>
+              </div>
+              <button @click="showFormModal = false" class="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            <!-- Metadata Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+              <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                <div class="text-[10px] text-slate-500 uppercase font-medium">Анти-спам / Капча</div>
+                <div class="font-medium text-[11px] mt-0.5 flex items-center space-x-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full" :class="selectedFormDetail.captcha?.isActive ? 'bg-emerald-400' : 'bg-amber-400'"></span>
+                  <span :class="selectedFormDetail.captcha?.isActive ? 'text-emerald-400' : 'text-amber-400'"
+                    v-text="selectedFormDetail.captcha?.isActive ? `${selectedFormDetail.captcha.type}` : 'Не виявлено'"></span>
+                </div>
+                <template v-if="selectedFormDetail.captcha?.siteKey">
+                  <div class="text-[10px] text-slate-400 font-mono truncate mt-0.5" v-text="`Key: ${selectedFormDetail.captcha.siteKey}`"></div>
+                </template>
+              </div>
+
+              <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                <div class="text-[10px] text-slate-500 uppercase font-medium">Файлові завантаження</div>
+                <div class="font-medium text-[11px] text-slate-200 mt-0.5 flex items-center space-x-1.5">
+                  <svg class="w-3 h-3 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                  <span v-text="selectedFormDetail.hasFileUpload ? 'Дозволено' : 'Вимкнено'"></span>
+                </div>
+                <template v-if="selectedFormDetail.allowedFileTypes">
+                  <div class="text-[10px] text-indigo-300 font-mono truncate mt-0.5" v-text="selectedFormDetail.allowedFileTypes"></div>
+                </template>
+              </div>
+
+              <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                <div class="text-[10px] text-slate-500 uppercase font-medium">Submit Action / Endpoint</div>
+                <div class="font-mono text-slate-300 text-[11px] truncate mt-0.5" v-text="selectedFormDetail.action || '(AJAX / Same page)'"></div>
+              </div>
+            </div>
+
+            <!-- Fields Detailed Table -->
+            <div class="space-y-1.5">
+              <div class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Список полів форми (<span v-text="selectedFormDetail.fields?.length || 0"></span>)</div>
+              <div class="max-h-60 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/60">
+                <table class="w-full text-left text-xs font-mono">
+                  <thead class="bg-slate-900/90 text-slate-400 text-[10px] uppercase border-b border-slate-800 sticky top-0">
+                    <tr>
+                      <th class="py-2 px-3">Ім'я поля</th>
+                      <th class="py-2 px-3">Лейбл / Підказка</th>
+                      <th class="py-2 px-3">Тип</th>
+                      <th class="py-2 px-3 text-center">Обов'язкове</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60">
+                    <template v-for="(fld, fIdx) in selectedFormDetail.fields" :key="fIdx">
+                      <tr class="hover:bg-slate-900/40 transition">
+                        <td class="py-2 px-3 font-semibold text-slate-200" v-text="fld.name"></td>
+                        <td class="py-2 px-3 text-slate-400 truncate max-w-[180px]" v-text="fld.label"></td>
+                        <td class="py-2 px-3">
+                          <span class="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-blue-300" v-text="fld.type"></span>
+                        </td>
+                        <td class="py-2 px-3 text-center">
+                          <span v-show="fld.isRequired" class="text-rose-400 font-bold">*</span>
+                          <span v-show="!fld.isRequired" class="text-slate-600">—</span>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Hidden UTM / Tracking Tokens -->
+            <template v-if="selectedFormDetail.hiddenTokens && Object.keys(selectedFormDetail.hiddenTokens).length > 0">
+              <div class="space-y-1.5 pt-2 border-t border-slate-800/80">
+                <div class="text-xs font-semibold text-slate-300 uppercase tracking-wider">Приховані токени та UTM параметри</div>
+                <div class="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                  <template v-for="[key, val] in Object.entries(selectedFormDetail.hiddenTokens)" :key="key">
+                    <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800 text-[11px] font-mono">
+                      <span class="text-slate-400" v-text="key + ':'"></span>
+                      <span class="text-emerald-400 font-medium" v-text="val || '(динамічний)'"></span>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <div class="flex justify-end pt-2 border-t border-slate-800">
+          <button @click="showFormModal = false" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition">
+            Закрити
+          </button>
+        </div>
+      </div>
+    </div>
+</template>
+
+<script>
+import { useApp } from '@/store/app';
+
+export default {
+  name: 'FormDetail',
+  setup() {
+    return useApp();
+  }
+};
+</script>
