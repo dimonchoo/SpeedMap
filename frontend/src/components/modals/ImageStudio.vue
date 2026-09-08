@@ -302,6 +302,7 @@
                     <div class="absolute inset-0 overflow-hidden pointer-events-none"
                       :style="'clip-path: inset(0 ' + (100 - imageStudio.splitPos) + '% 0 0);'">
                       <img :src="imageStudio.currentResult.originalDataBase64 || currentStudioImage?.url"
+                        @error="onOriginalImgError($event)"
                         class="w-full h-full object-contain block"
                         alt="Original">
                     </div>
@@ -342,6 +343,7 @@
                     <!-- Original Image -->
                     <img v-show="imageStudio.toggleShowOriginal"
                       :src="imageStudio.currentResult.originalDataBase64 || currentStudioImage?.url"
+                      @error="onOriginalImgError($event)"
                       class="w-full h-full object-contain block select-none pointer-events-none" alt="Original">
 
                     <!-- Floating Pill Indicator -->
@@ -384,6 +386,7 @@
                         </template>
                         <template v-if="currentStudioImage?.format !== 'svg' || (imageStudio.currentResult.originalWidth && imageStudio.currentResult.originalWidth > 0)">
                           <img :src="imageStudio.currentResult.originalDataBase64 || currentStudioImage?.url"
+                            @error="onOriginalImgError($event)"
                             :style="studioSideImageStyle"
                             class="rounded-lg select-none block m-auto" alt="Original">
                         </template>

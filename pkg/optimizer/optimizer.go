@@ -169,8 +169,8 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 			if savingsBytes <= 0 && skipIfNoSavings {
 				isSkipped = true
 			}
-			origBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(origBytes))
-			optBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(optBytes))
+			origBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(EnsureSVGXMLNS(origBytes)))
+			optBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(EnsureSVGXMLNS(optBytes)))
 			filename := ExtractOriginalFilename(rawURL)
 			return &ConversionResult{
 				URL:                 rawURL,
@@ -378,8 +378,14 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 	}
 
 	mimeType := "image/jpeg"
+	var origSourceBytes []byte = origBytes
 	if isTrojan {
-		mimeType = "image/svg+xml"
+		formatLower := strings.ToLower(formatName)
+		if formatLower == "jpg" {
+			formatLower = "jpeg"
+		}
+		mimeType = "image/" + formatLower
+		origSourceBytes = decodeBytes
 	} else {
 		switch strings.ToLower(formatName) {
 		case "png":
@@ -395,7 +401,7 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 
 	filename := ExtractFilenameFromURL(rawURL)
 
-	origBase64 := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(origBytes))
+	origBase64 := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(origSourceBytes))
 	webpBase64 := fmt.Sprintf("data:image/webp;base64,%s", base64.StdEncoding.EncodeToString(webpData))
 
 	return &ConversionResult{
@@ -443,8 +449,8 @@ func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptio
 			if savingsBytes <= 0 {
 				isSkipped = true
 			}
-			origBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(origBytes))
-			optBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(optBytes))
+			origBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(EnsureSVGXMLNS(origBytes)))
+			optBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(EnsureSVGXMLNS(optBytes)))
 			filename := ExtractOriginalFilename(rawURL)
 			return &ConversionResult{
 				URL:                 rawURL,
@@ -527,8 +533,14 @@ func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptio
 	filename := ExtractFilenameFromURL(rawURL)
 
 	mimeType := "image/jpeg"
+	var origSourceBytes []byte = origBytes
 	if isTrojan {
-		mimeType = "image/svg+xml"
+		formatLower := strings.ToLower(formatName)
+		if formatLower == "jpg" {
+			formatLower = "jpeg"
+		}
+		mimeType = "image/" + formatLower
+		origSourceBytes = decodeBytes
 	} else {
 		switch strings.ToLower(formatName) {
 		case "png":
@@ -542,7 +554,7 @@ func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptio
 		}
 	}
 
-	origBase64 := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(origBytes))
+	origBase64 := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(origSourceBytes))
 	webpBase64 := fmt.Sprintf("data:image/webp;base64,%s", base64.StdEncoding.EncodeToString(webpData))
 
 	return &ConversionResult{

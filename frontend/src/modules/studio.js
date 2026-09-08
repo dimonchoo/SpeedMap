@@ -514,6 +514,13 @@ export function createStudioModule() {
       if (e.key === 't' || e.key === 'T' || e.code === 'Space') {
         this.imageStudio.toggleShowOriginal = false;
       }
+    },
+
+    onOriginalImgError(e) {
+      if (this.currentStudioImage?.url && e?.target && e.target.src !== this.currentStudioImage.url) {
+        e.target.src = this.currentStudioImage.url;
+      }
     }
   };
 }
+

@@ -178,3 +178,17 @@ func ComputeSVGSavings(originalBytes, optimizedBytes int64) (savingsBytes int64,
 	savingsPercent = math.Round((float64(savingsBytes)/float64(originalBytes)*100)*10) / 10
 	return savingsBytes, savingsPercent
 }
+
+// EnsureSVGXMLNS guarantees that the SVG contains the standard xmlns attribute required for <img> rendering.
+func EnsureSVGXMLNS(svg []byte) []byte {
+	s := string(svg)
+	if !strings.Contains(s, "xmlns") {
+		idx := strings.Index(strings.ToLower(s), "<svg")
+		if idx != -1 {
+			insertPos := idx + 4
+			return []byte(s[:insertPos] + " xmlns=\"http://www.w3.org/2000/svg\"" + s[insertPos:])
+		}
+	}
+	return svg
+}
+
