@@ -98,18 +98,23 @@
           <div class="hidden sm:flex bg-slate-950 p-1 rounded-xl border border-slate-800 items-center text-xs">
             <button @click="imageStudio.zoomMode = 'fit'"
               :class="imageStudio.zoomMode === 'fit' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-2.5 py-1 rounded-lg transition">
+              class="px-2.5 py-1 rounded-lg transition" title="Вписати в екран">
               Fit
             </button>
             <button @click="imageStudio.zoomMode = '100'"
               :class="imageStudio.zoomMode === '100' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-2.5 py-1 rounded-lg transition">
+              class="px-2.5 py-1 rounded-lg transition" title="100% (1:1 масштаб)">
               100%
             </button>
             <button @click="imageStudio.zoomMode = '200'"
               :class="imageStudio.zoomMode === '200' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-2.5 py-1 rounded-lg transition">
-              150%
+              class="px-2.5 py-1 rounded-lg transition" title="200% (2x збільшення)">
+              200%
+            </button>
+            <button @click="imageStudio.zoomMode = '400'"
+              :class="imageStudio.zoomMode === '400' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
+              class="px-2.5 py-1 rounded-lg transition" title="400% (4x збільшення)">
+              400%
             </button>
           </div>
 
@@ -277,7 +282,7 @@
 
             <!-- Active Visualizer (Each mode is in its own isolated wrapper div to prevent style collisions) -->
             <template v-if="imageStudio.currentResult && !imageStudio.error">
-              <div class="w-full h-full relative flex items-center justify-center">
+              <div class="min-w-full min-h-full relative flex items-center justify-center p-4">
 
                 <!-- 1. SPLIT SLIDER VIEW -->
                 <div v-show="imageStudio.viewMode === 'split'"
@@ -285,7 +290,7 @@
                   <div id="studio-split-container"
                     @mousedown="startSplitDrag($event)"
                     @touchstart="startSplitDrag($event)"
-                    class="relative overflow-hidden rounded-2xl border border-slate-700/60 shadow-2xl select-none cursor-ew-resize flex items-center justify-center"
+                    class="relative overflow-hidden rounded-2xl border border-slate-700/60 shadow-2xl select-none cursor-ew-resize flex items-center justify-center m-auto transition-all duration-150"
                     :style="studioContainerStyle">
                     
                     <!-- Base Layer: Optimized WebP -->
@@ -325,7 +330,7 @@
                 <div v-show="imageStudio.viewMode === 'toggle'"
                   class="w-full h-full flex items-center justify-center">
                   <div @click="imageStudio.toggleShowOriginal = !imageStudio.toggleShowOriginal"
-                    class="relative overflow-hidden rounded-2xl border border-slate-800 shadow-2xl flex items-center justify-center cursor-pointer select-none group"
+                    class="relative overflow-hidden rounded-2xl border border-slate-800 shadow-2xl flex items-center justify-center cursor-pointer select-none group m-auto transition-all duration-150"
                     :style="studioContainerStyle"
                     title="Клікніть для перемикання між WebP та Оригіналом (або затисніть T / Пробіл)">
                     
@@ -355,18 +360,19 @@
 
                 <!-- 3. SIDE BY SIDE VIEW -->
                 <div v-show="imageStudio.viewMode === 'side'"
-                  class="w-full h-full flex items-center justify-center">
+                  class="w-full h-full flex items-center justify-center p-2">
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full max-h-[calc(100vh-200px)]">
                     <!-- Left: Original -->
                     <div class="flex flex-col bg-slate-900/70 rounded-2xl border border-slate-800 p-3 overflow-hidden">
-                      <div class="flex items-center justify-between text-xs font-mono text-rose-400 font-bold mb-2 px-1">
+                      <div class="flex items-center justify-between text-xs font-mono text-rose-400 font-bold mb-2 px-1 shrink-0">
                         <span class="flex items-center space-x-1.5">
                           <span class="w-2 h-2 rounded-full bg-rose-400"></span>
                           <span>ОРИГІНАЛ</span>
                         </span>
                         <span class="text-slate-400 text-[11px]" v-text="imageStudio.currentResult.originalFormatted"></span>
                       </div>
-                      <div class="flex-1 flex items-center justify-center overflow-hidden">
+                      <div class="flex-1 flex items-center justify-center overflow-auto rounded-xl p-2"
+                        :style="studioCanvasBgStyle">
                         <template v-if="currentStudioImage?.format === 'svg' && (!imageStudio.currentResult.originalWidth || imageStudio.currentResult.originalWidth === 0)">
                           <div class="flex flex-col items-center justify-center p-6 text-center space-y-2">
                             <div class="w-12 h-12 rounded-xl bg-purple-950/80 border border-purple-700/60 flex items-center justify-center text-purple-400 mb-1">
@@ -378,20 +384,22 @@
                         </template>
                         <template v-if="currentStudioImage?.format !== 'svg' || (imageStudio.currentResult.originalWidth && imageStudio.currentResult.originalWidth > 0)">
                           <img :src="imageStudio.currentResult.originalDataBase64 || currentStudioImage?.url"
-                            class="max-h-full max-w-full object-contain rounded-lg" alt="Original">
+                            :style="studioSideImageStyle"
+                            class="rounded-lg select-none block m-auto" alt="Original">
                         </template>
                       </div>
                     </div>
                     <!-- Right: WebP / SVG -->
                     <div class="flex flex-col bg-slate-900/70 rounded-2xl border border-emerald-900/50 p-3 overflow-hidden">
-                      <div class="flex items-center justify-between text-xs font-mono text-emerald-400 font-bold mb-2 px-1">
+                      <div class="flex items-center justify-between text-xs font-mono text-emerald-400 font-bold mb-2 px-1 shrink-0">
                         <span class="flex items-center space-x-1.5">
                           <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
                           <span v-text="currentStudioImage?.format === 'svg' ? 'ОПТИМІЗОВАНИЙ SVG' : 'ОПТИМІЗОВАНЕ WEBP'"></span>
                         </span>
                         <span class="text-emerald-400 text-[11px]" v-text="imageStudio.currentResult.optimizedFormatted"></span>
                       </div>
-                      <div class="flex-1 flex items-center justify-center overflow-hidden">
+                      <div class="flex-1 flex items-center justify-center overflow-auto rounded-xl p-2"
+                        :style="studioCanvasBgStyle">
                         <template v-if="currentStudioImage?.format === 'svg' && (!imageStudio.currentResult.optimizedWidth || imageStudio.currentResult.optimizedWidth === 0)">
                           <div class="flex flex-col items-center justify-center p-6 text-center space-y-2">
                             <div class="w-12 h-12 rounded-xl bg-emerald-950/80 border border-emerald-700/60 flex items-center justify-center text-emerald-400 mb-1">
@@ -403,7 +411,8 @@
                         </template>
                         <template v-if="currentStudioImage?.format !== 'svg' || (imageStudio.currentResult.optimizedWidth && imageStudio.currentResult.optimizedWidth > 0)">
                           <img :src="imageStudio.currentResult.optimizedWebPBase64"
-                            class="max-h-full max-w-full object-contain rounded-lg" alt="Optimized">
+                            :style="studioSideImageStyle"
+                            class="rounded-lg select-none block m-auto" alt="Optimized">
                         </template>
                       </div>
                     </div>

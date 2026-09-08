@@ -107,11 +107,10 @@ func RunSVGO(svgBytes []byte) ([]byte, error) {
 	if p, err := exec.LookPath("svgo"); err == nil {
 		cmdPath = p
 		cmdArgs = []string{"--config", cfgPath, "-i", "-", "-o", "-"}
-	} else if p, err := exec.LookPath("npx"); err == nil {
-		cmdPath = p
-		cmdArgs = []string{"-y", "svgo", "--config", cfgPath, "-i", "-", "-o", "-"}
 	} else {
-		return nil, fmt.Errorf("neither svgo nor npx found on PATH")
+		// Do not spawn `npx -y svgo` dynamically: npx initializes node/npm, taking 1000ms+ and 100%+ CPU.
+		// Fallback directly to native pure-Go MinifySVGNative which executes in 0.05ms with 0 CPU overhead.
+		return nil, fmt.Errorf("svgo binary not found on PATH, falling back to native minifier")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)

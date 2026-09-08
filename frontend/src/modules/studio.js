@@ -13,7 +13,7 @@ export function createStudioModule() {
       splitPos: 50,
       isDraggingSplit: false,
       toggleShowOriginal: false,
-      zoomMode: 'fit',
+      zoomMode: 'fit', // 'fit', '100', '200', '400'
       canvasBgMode: 'dark',
       canvasCustomColor: '#ffffff',
       isConverting: false,
@@ -21,9 +21,22 @@ export function createStudioModule() {
       error: null,
       _debounceTimer: null,
       _inFlight: false,
+      _pendingReq: false,
+      _cache: {},
       overrides: {}
     },
 
+    getStudioCacheKey(url) {
+      if (!url) return '';
+      const q = this.currentStudioQuality;
+      const l = !!this.currentStudioLossless;
+      const d = !!this.currentStudioDither;
+      const r = !!this.currentStudioRetina;
+      const o = this.currentStudioOverride;
+      const maxW = r ? (o.maxW || 0) : 0;
+      const maxH = r ? (o.maxH || 0) : 0;
+      return `${url}|q:${q}|l:${l}|d:${d}|r:${r}|w:${maxW}|h:${maxH}`;
+    },
 
     get imageStudioImages() {
       if (this.filteredImages && this.filteredImages.length > 0) {
@@ -100,9 +113,28 @@ export function createStudioModule() {
       if (zoom === '100') {
         return `width: ${origW}px; height: ${origH}px; max-width: none; max-height: none;`;
       } else if (zoom === '200') {
-        return `width: ${Math.round(origW * 1.5)}px; height: ${Math.round(origH * 1.5)}px; max-width: none; max-height: none;`;
+        return `width: ${origW * 2}px; height: ${origH * 2}px; max-width: none; max-height: none;`;
+      } else if (zoom === '400') {
+        return `width: ${origW * 4}px; height: ${origH * 4}px; max-width: none; max-height: none;`;
       }
-      return `aspect-ratio: ${ratio}; width: 100%; max-width: 100%; max-height: calc(100vh - 200px); height: auto;`;
+      // Fit mode: fit proportionally within screen while centering
+      return `aspect-ratio: ${ratio}; max-width: calc(100vw - 160px); max-height: calc(100vh - 220px); width: min(100%, ${Math.max(origW, 360)}px); height: auto;`;
+    },
+
+    get studioSideImageStyle() {
+      const zoom = this.imageStudio.zoomMode || 'fit';
+      const res = this.imageStudio.currentResult;
+      const origW = res?.originalWidth || 800;
+      const origH = res?.originalHeight || 600;
+
+      if (zoom === '100') {
+        return `width: ${origW}px; height: ${origH}px; max-width: none; max-height: none; object-fit: contain;`;
+      } else if (zoom === '200') {
+        return `width: ${origW * 2}px; height: ${origH * 2}px; max-width: none; max-height: none; object-fit: contain;`;
+      } else if (zoom === '400') {
+        return `width: ${origW * 4}px; height: ${origH * 4}px; max-width: none; max-height: none; object-fit: contain;`;
+      }
+      return `max-height: 100%; max-width: 100%; width: auto; height: auto; object-fit: contain;`;
     },
 
     get studioCanvasBgStyle() {
@@ -137,7 +169,6 @@ export function createStudioModule() {
       return Object.values(this.imageStudio.overrides || {}).filter(o => o.skip).length;
     },
 
-
     openImageStudio(targetImg) {
       const list = this.imageStudioImages;
       if (!list || list.length === 0) {
@@ -145,24 +176,18 @@ export function createStudioModule() {
         return;
       }
 
+      let targetIdx = 0;
       if (targetImg) {
         const url = typeof targetImg === 'string' ? targetImg : targetImg.url;
         const foundIdx = list.findIndex(img => img.url === url);
-        this.imageStudio.currentIndex = foundIdx >= 0 ? foundIdx : 0;
-      } else {
-        this.imageStudio.currentIndex = 0;
+        targetIdx = foundIdx >= 0 ? foundIdx : 0;
       }
 
       this.imageStudio.isOpen = true;
       this.imageStudio.toggleShowOriginal = false;
       this.imageStudio.zoomMode = 'fit';
 
-      const curImg = this.currentStudioImage;
-      if (curImg && curImg.format === 'svg') {
-        this.imageStudio.viewMode = 'side';
-      }
-
-      this.loadStudioCurrent();
+      this.studioSelectImage(targetIdx);
     },
 
     closeImageStudio() {
@@ -178,23 +203,13 @@ export function createStudioModule() {
 
     studioPrevImage() {
       if (this.imageStudio.currentIndex > 0) {
-        this.imageStudio.currentIndex--;
-        const cur = this.currentStudioImage;
-        if (cur && cur.format === 'svg' && this.imageStudio.viewMode === 'split') {
-          this.imageStudio.viewMode = 'side';
-        }
-        this.loadStudioCurrent();
+        this.studioSelectImage(this.imageStudio.currentIndex - 1);
       }
     },
 
     studioNextImage() {
       if (this.imageStudio.currentIndex < this.imageStudioImages.length - 1) {
-        this.imageStudio.currentIndex++;
-        const cur = this.currentStudioImage;
-        if (cur && cur.format === 'svg' && this.imageStudio.viewMode === 'split') {
-          this.imageStudio.viewMode = 'side';
-        }
-        this.loadStudioCurrent();
+        this.studioSelectImage(this.imageStudio.currentIndex + 1);
       }
     },
 
@@ -202,8 +217,19 @@ export function createStudioModule() {
       if (idx >= 0 && idx < this.imageStudioImages.length) {
         this.imageStudio.currentIndex = idx;
         const cur = this.currentStudioImage;
-        if (cur && cur.format === 'svg' && this.imageStudio.viewMode === 'split') {
-          this.imageStudio.viewMode = 'side';
+        if (!cur) return;
+
+        // Instant preview if previously cached
+        const key = this.getStudioCacheKey(cur.url);
+        if (this.imageStudio._cache && this.imageStudio._cache[key]) {
+          this.imageStudio.currentResult = this.imageStudio._cache[key];
+          this.imageStudio.error = null;
+          this.imageStudio.isConverting = false;
+        } else {
+          // Immediately reset currentResult so old image preview is not displayed on new image!
+          this.imageStudio.currentResult = null;
+          this.imageStudio.error = null;
+          this.imageStudio.isConverting = true;
         }
         this.loadStudioCurrent();
       }
@@ -220,7 +246,7 @@ export function createStudioModule() {
       this.imageStudio.isConverting = true;
       this.imageStudio._debounceTimer = setTimeout(() => {
         this.executeStudioConvert();
-      }, 80);
+      }, 40);
     },
 
     async executeStudioConvert() {
@@ -230,7 +256,21 @@ export function createStudioModule() {
         return;
       }
 
-      if (this.imageStudio._inFlight) return;
+      // If already in flight, mark pending so it immediately re-runs when current completes
+      if (this.imageStudio._inFlight) {
+        this.imageStudio._pendingReq = true;
+        return;
+      }
+
+      // Cache hit check
+      const cacheKey = this.getStudioCacheKey(img.url);
+      if (this.imageStudio._cache && this.imageStudio._cache[cacheKey]) {
+        this.imageStudio.currentResult = this.imageStudio._cache[cacheKey];
+        this.imageStudio.error = null;
+        this.imageStudio.isConverting = false;
+        return;
+      }
+
       this.imageStudio._inFlight = true;
 
       const quality = this.currentStudioQuality;
@@ -257,6 +297,10 @@ export function createStudioModule() {
       try {
         if (window.go?.main?.App?.TuneImagePreview) {
           const res = await window.go.main.App.TuneImagePreview(img.url, tuneOpts, this.config);
+          if (!this.imageStudio._cache) this.imageStudio._cache = {};
+          this.imageStudio._cache[cacheKey] = res;
+
+          // Only update UI if user is still viewing this image
           if (this.currentStudioImage?.url === img.url) {
             this.imageStudio.currentResult = res;
             this.imageStudio.error = null;
@@ -272,6 +316,12 @@ export function createStudioModule() {
       } finally {
         this.imageStudio._inFlight = false;
         this.imageStudio.isConverting = false;
+
+        // If another request arrived while this was in flight, immediately run it!
+        if (this.imageStudio._pendingReq) {
+          this.imageStudio._pendingReq = false;
+          this.executeStudioConvert();
+        }
       }
     },
 

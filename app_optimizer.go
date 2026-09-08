@@ -25,15 +25,20 @@ var (
 // Original bytes are cached in memory so subsequent slider movements respond in 10-30ms.
 func (a *App) TuneImagePreview(rawURL string, opts optimizer.ImageTuneOptions, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {
 	start := time.Now()
-	isSVG := strings.Contains(strings.ToLower(rawURL), ".svg")
+	cacheKey := fmt.Sprintf("%s|q:%.1f|l:%v|e:%v|w:%d|h:%d|d:%v", rawURL, opts.Quality, opts.Lossless, opts.Exact, opts.MaxW, opts.MaxH, opts.Dither)
 
 	previewCacheMutex.RLock()
-	if isSVG {
-		if cachedRes, ok := previewResultCache[rawURL]; ok && cachedRes != nil {
-			previewCacheMutex.RUnlock()
-			fmt.Printf("[GO LOG] TuneImagePreview (SVG CACHE HIT) for %s in 0ms\n", rawURL)
-			return cachedRes, nil
-		}
+	// Check exact options cache hit first
+	if cachedRes, ok := previewResultCache[cacheKey]; ok && cachedRes != nil {
+		previewCacheMutex.RUnlock()
+		fmt.Printf("[GO LOG] TuneImagePreview (CACHE HIT) for %s in 0ms\n", rawURL)
+		return cachedRes, nil
+	}
+	// Check if this URL is already known as a pure vector SVG (where raster options do not apply)
+	if cachedRes, ok := previewResultCache[rawURL]; ok && cachedRes != nil {
+		previewCacheMutex.RUnlock()
+		fmt.Printf("[GO LOG] TuneImagePreview (VECTOR SVG CACHE HIT) for %s in 0ms\n", rawURL)
+		return cachedRes, nil
 	}
 	cachedBytes, found := previewBytesCache[rawURL]
 	previewCacheMutex.RUnlock()
@@ -56,9 +61,13 @@ func (a *App) TuneImagePreview(rawURL string, opts optimizer.ImageTuneOptions, c
 		return nil, err
 	}
 
-	if isSVG && res != nil {
+	if res != nil {
 		previewCacheMutex.Lock()
-		previewResultCache[rawURL] = res
+		previewResultCache[cacheKey] = res
+		// If it is pure vector SVG (output remains data:image/svg+xml, not WebP), cache by URL so options don't re-run
+		if strings.HasPrefix(res.OptimizedWebPBase64, "data:image/svg+xml") {
+			previewResultCache[rawURL] = res
+		}
 		previewCacheMutex.Unlock()
 	}
 
