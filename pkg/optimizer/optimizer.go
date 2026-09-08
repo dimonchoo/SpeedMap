@@ -3,6 +3,7 @@ package optimizer
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"image"
@@ -14,7 +15,10 @@ import (
 	"math"
 	"net/http"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "golang.org/x/image/bmp"
@@ -24,13 +28,161 @@ import (
 	"github.com/chai2010/webp"
 )
 
+var (
+	defaultUserAgentMu      sync.RWMutex
+	currentDefaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SpeedMap/1.0"
+)
+
+// SetDefaultUserAgent sets the default User-Agent used by FetchImageBytes when none is provided.
+func SetDefaultUserAgent(ua string) {
+	if strings.TrimSpace(ua) == "" {
+		return
+	}
+	defaultUserAgentMu.Lock()
+	defer defaultUserAgentMu.Unlock()
+	currentDefaultUserAgent = strings.TrimSpace(ua)
+}
+
+// GetDefaultUserAgent returns the current default User-Agent for image downloading.
+func GetDefaultUserAgent() string {
+	defaultUserAgentMu.RLock()
+	defer defaultUserAgentMu.RUnlock()
+	return currentDefaultUserAgent
+}
+
 var sharedClient = &http.Client{
 	Timeout: 10 * time.Second,
 	Transport: &http.Transport{
 		MaxIdleConns:        200,
 		MaxIdleConnsPerHost: 50,
 		IdleConnTimeout:     90 * time.Second,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
 	},
+}
+
+var (
+	trojanDataURIRegex = regexp.MustCompile(`(?i)data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=\r\n\s]+)`)
+	svgWidthRegex      = regexp.MustCompile(`(?i)\bwidth=["']([0-9.]+)(?:px|pt)?["']`)
+	svgHeightRegex     = regexp.MustCompile(`(?i)\bheight=["']([0-9.]+)(?:px|pt)?["']`)
+	svgViewBoxRegex    = regexp.MustCompile(`(?i)\bviewBox=["'](?:[0-9.-]+\s+){2}([0-9.]+)\s+([0-9.]+)["']`)
+)
+
+func parseSVGDimensions(data []byte) (int, int) {
+	limit := len(data)
+	if limit > 2048 {
+		limit = 2048
+	}
+	head := data[:limit]
+
+	var w, h int
+	wMatch := svgWidthRegex.FindSubmatch(head)
+	hMatch := svgHeightRegex.FindSubmatch(head)
+	if len(wMatch) >= 2 && len(hMatch) >= 2 {
+		if wf, err := strconv.ParseFloat(string(wMatch[1]), 64); err == nil {
+			w = int(math.Round(wf))
+		}
+		if hf, err := strconv.ParseFloat(string(hMatch[1]), 64); err == nil {
+			h = int(math.Round(hf))
+		}
+	}
+	if w > 0 && h > 0 {
+		return w, h
+	}
+
+	vbMatch := svgViewBoxRegex.FindSubmatch(head)
+	if len(vbMatch) >= 3 {
+		if wf, err := strconv.ParseFloat(string(vbMatch[1]), 64); err == nil {
+			w = int(math.Round(wf))
+		}
+		if hf, err := strconv.ParseFloat(string(vbMatch[2]), 64); err == nil {
+			h = int(math.Round(hf))
+		}
+	}
+	return w, h
+}
+
+// TrojanSVGInfo represents details of a heavy raster image embedded inside an SVG wrapper.
+type TrojanSVGInfo struct {
+	Format        string  `json:"format"`
+	RasterBytes   []byte  `json:"-"`
+	NaturalWidth  int     `json:"naturalWidth"`
+	NaturalHeight int     `json:"naturalHeight"`
+	TotalSVGSize  int64   `json:"totalSvgSize"`
+	Base64Size    int64   `json:"base64Size"`
+	Base64Ratio   float64 `json:"base64Ratio"`
+}
+
+// IsSVGContent checks whether the URL or data buffer represents SVG XML.
+func IsSVGContent(rawURL string, data []byte) bool {
+	cleanURL := strings.ToLower(strings.Split(rawURL, "?")[0])
+	if strings.HasSuffix(cleanURL, ".svg") {
+		return true
+	}
+	if len(data) > 0 {
+		limit := len(data)
+		if limit > 512 {
+			limit = 512
+		}
+		head := strings.ToLower(string(data[:limit]))
+		if strings.Contains(head, "<svg") || strings.Contains(head, "<?xml") {
+			return true
+		}
+	}
+	return false
+}
+
+// DetectTrojanSVG inspects SVG data for embedded Base64 raster images.
+// Returns TrojanSVGInfo and true if the SVG is primarily an embedded raster image.
+func DetectTrojanSVG(svgBytes []byte) (*TrojanSVGInfo, bool) {
+	if len(svgBytes) == 0 {
+		return nil, false
+	}
+	matches := trojanDataURIRegex.FindSubmatch(svgBytes)
+	if len(matches) < 3 {
+		return nil, false
+	}
+	formatStr := strings.ToLower(string(matches[1]))
+	if formatStr == "jpg" {
+		formatStr = "jpeg"
+	}
+	b64Bytes := matches[2]
+	cleanB64 := bytes.Map(func(r rune) rune {
+		if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
+			return -1
+		}
+		return r
+	}, b64Bytes)
+
+	rawRaster, err := base64.StdEncoding.DecodeString(string(cleanB64))
+	if err != nil || len(rawRaster) == 0 {
+		return nil, false
+	}
+
+	totalSize := int64(len(svgBytes))
+	b64Size := int64(len(cleanB64))
+	ratio := float64(b64Size) / float64(totalSize)
+
+	// Trojan threshold: embedded bitmap >= 15KB or base64 constitutes >= 35% of total SVG file
+	if len(rawRaster) < 15*1024 && ratio < 0.35 {
+		return nil, false
+	}
+
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(rawRaster))
+	var w, h int
+	if err == nil {
+		w = cfg.Width
+		h = cfg.Height
+	}
+
+	return &TrojanSVGInfo{
+		Format:        formatStr,
+		RasterBytes:   rawRaster,
+		NaturalWidth:  w,
+		NaturalHeight: h,
+		TotalSVGSize:  totalSize,
+		Base64Size:    b64Size,
+		Base64Ratio:   ratio,
+	}, true
 }
 
 type ConversionResult struct {
@@ -331,14 +483,18 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResize(rawURL string, quality float3
 	return ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL, quality, 80.0, true, thresholdBytes, adaptive, maxW, maxH, user, pass)
 }
 
-// FetchImageBytes downloads the raw image bytes at rawURL with optional HTTP Basic Auth.
-func FetchImageBytes(rawURL, user, pass string) ([]byte, error) {
+// FetchImageBytes downloads the raw image bytes at rawURL with optional HTTP Basic Auth and User-Agent.
+func FetchImageBytes(rawURL, user, pass string, userAgent ...string) ([]byte, error) {
 	client := sharedClient
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "SpeedMap-Optimizer/1.0")
+	ua := GetDefaultUserAgent()
+	if len(userAgent) > 0 && strings.TrimSpace(userAgent[0]) != "" {
+		ua = strings.TrimSpace(userAgent[0])
+	}
+	req.Header.Set("User-Agent", ua)
 	if user != "" {
 		req.SetBasicAuth(user, pass)
 	}
@@ -382,7 +538,51 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 		return nil, err
 	}
 
-	img, formatName, err := image.Decode(bytes.NewReader(origBytes))
+	decodeBytes := origBytes
+	isTrojan := false
+	if IsSVGContent(rawURL, origBytes) {
+		if trojan, ok := DetectTrojanSVG(origBytes); ok {
+			decodeBytes = trojan.RasterBytes
+			isTrojan = true
+		} else {
+			// Pure vector SVG: preserve as clean vector graphic and optimize vector XML
+			origSize := int64(len(origBytes))
+			svgW, svgH := parseSVGDimensions(origBytes)
+			optBytes, _ := OptimizeSVG(origBytes)
+			optSize := int64(len(optBytes))
+			savingsBytes, savingsPercent := ComputeSVGSavings(origSize, optSize)
+			isSkipped := false
+			if savingsBytes <= 0 && skipIfNoSavings {
+				isSkipped = true
+			}
+			origBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(origBytes))
+			optBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(optBytes))
+			filename := ExtractOriginalFilename(rawURL)
+			return &ConversionResult{
+				URL:                 rawURL,
+				Filename:            filename,
+				OriginalWidth:       svgW,
+				OriginalHeight:      svgH,
+				OptimizedWidth:      svgW,
+				OptimizedHeight:     svgH,
+				OriginalBytes:       origSize,
+				OriginalFormatted:   FormatBytes(origSize),
+				OptimizedBytes:      optSize,
+				OptimizedFormatted:  FormatBytes(optSize),
+				SavingsBytes:        savingsBytes,
+				SavingsFormatted:    FormatBytes(savingsBytes),
+				SavingsPercent:      savingsPercent,
+				QualityUsed:         100,
+				IsLossless:          true,
+				IsSkipped:           isSkipped,
+				AdaptiveApplied:     false,
+				OriginalDataBase64:  origBase64,
+				OptimizedWebPBase64: optBase64,
+			}, nil
+		}
+	}
+
+	img, formatName, err := image.Decode(bytes.NewReader(decodeBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode image (format %s): %w", formatName, err)
 	}
@@ -564,15 +764,19 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 	}
 
 	mimeType := "image/jpeg"
-	switch strings.ToLower(formatName) {
-	case "png":
-		mimeType = "image/png"
-	case "gif":
-		mimeType = "image/gif"
-	case "webp":
-		mimeType = "image/webp"
-	case "bmp":
-		mimeType = "image/bmp"
+	if isTrojan {
+		mimeType = "image/svg+xml"
+	} else {
+		switch strings.ToLower(formatName) {
+		case "png":
+			mimeType = "image/png"
+		case "gif":
+			mimeType = "image/gif"
+		case "webp":
+			mimeType = "image/webp"
+		case "bmp":
+			mimeType = "image/bmp"
+		}
 	}
 
 	filename := ExtractFilenameFromURL(rawURL)
@@ -616,6 +820,17 @@ func ExtractFilenameFromURL(rawURL string) string {
 		nameWithoutExt = "image"
 	}
 	return nameWithoutExt + ".webp"
+}
+
+// ExtractOriginalFilename preserves the original file extension (e.g. .svg, .png, .jpg)
+func ExtractOriginalFilename(rawURL string) string {
+	parts := strings.Split(rawURL, "?")
+	cleanPath := parts[0]
+	base := filepath.Base(cleanPath)
+	if base == "" || base == "." || base == "/" {
+		base = "image"
+	}
+	return base
 }
 
 // CreateZIPArchive compresses multiple WebP conversion results into a single .zip archive byte slice
@@ -679,7 +894,51 @@ func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptio
 		return nil, fmt.Errorf("empty image bytes provided")
 	}
 
-	img, formatName, err := image.Decode(bytes.NewReader(origBytes))
+	decodeBytes := origBytes
+	isTrojan := false
+	if IsSVGContent(rawURL, origBytes) {
+		if trojan, ok := DetectTrojanSVG(origBytes); ok {
+			decodeBytes = trojan.RasterBytes
+			isTrojan = true
+		} else {
+			// Pure vector SVG: preserve as clean vector graphic and optimize vector XML
+			origSize := int64(len(origBytes))
+			svgW, svgH := parseSVGDimensions(origBytes)
+			optBytes, _ := OptimizeSVG(origBytes)
+			optSize := int64(len(optBytes))
+			savingsBytes, savingsPercent := ComputeSVGSavings(origSize, optSize)
+			isSkipped := false
+			if savingsBytes <= 0 {
+				isSkipped = true
+			}
+			origBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(origBytes))
+			optBase64 := fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(optBytes))
+			filename := ExtractOriginalFilename(rawURL)
+			return &ConversionResult{
+				URL:                 rawURL,
+				Filename:            filename,
+				OriginalWidth:       svgW,
+				OriginalHeight:      svgH,
+				OptimizedWidth:      svgW,
+				OptimizedHeight:     svgH,
+				OriginalBytes:       origSize,
+				OriginalFormatted:   FormatBytes(origSize),
+				OptimizedBytes:      optSize,
+				OptimizedFormatted:  FormatBytes(optSize),
+				SavingsBytes:        savingsBytes,
+				SavingsFormatted:    FormatBytes(savingsBytes),
+				SavingsPercent:      savingsPercent,
+				QualityUsed:         100,
+				IsLossless:          true,
+				IsSkipped:           isSkipped,
+				AdaptiveApplied:     false,
+				OriginalDataBase64:  origBase64,
+				OptimizedWebPBase64: optBase64,
+			}, nil
+		}
+	}
+
+	img, formatName, err := image.Decode(bytes.NewReader(decodeBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode image (format %s): %w", formatName, err)
 	}
@@ -736,15 +995,19 @@ func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptio
 	filename := ExtractFilenameFromURL(rawURL)
 
 	mimeType := "image/jpeg"
-	switch strings.ToLower(formatName) {
-	case "png":
-		mimeType = "image/png"
-	case "gif":
-		mimeType = "image/gif"
-	case "webp":
-		mimeType = "image/webp"
-	case "bmp":
-		mimeType = "image/bmp"
+	if isTrojan {
+		mimeType = "image/svg+xml"
+	} else {
+		switch strings.ToLower(formatName) {
+		case "png":
+			mimeType = "image/png"
+		case "gif":
+			mimeType = "image/gif"
+		case "webp":
+			mimeType = "image/webp"
+		case "bmp":
+			mimeType = "image/bmp"
+		}
 	}
 
 	origBase64 := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(origBytes))

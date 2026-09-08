@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -152,6 +153,49 @@ func (a *App) ComputeSiteAnalytics(domain string, cfg config.ScanConfig, results
 	}
 
 	cmp := history.CompareRuns(currentRun, prevRun)
+	// Persist DOM Virtualization Report for AI models / MCP tools
+	go func() {
+		type DomReport struct {
+			Domain               string                                          `json:"domain"`
+			TotalPages           int                                             `json:"totalPages"`
+			HeavyDOMPages        int                                             `json:"heavyDomPages"`
+			TotalDOMNodes        int                                             `json:"totalDomNodes"`
+			AverageDOMNodes      int                                             `json:"averageDomNodes"`
+			GlobalSelectors      []string                                        `json:"globalSelectors"`
+			GlobalCSS            string                                          `json:"globalCss"`
+			GlobalPHP            string                                          `json:"globalPhp"`
+			Pages                map[string]*scanner.DOMVirtualizationDiagnostic `json:"pages"`
+			GeneratedAt          string                                          `json:"generatedAt"`
+		}
+		rep := DomReport{
+			Domain:          domain,
+			TotalPages:      len(results),
+			HeavyDOMPages:   siteAnalytics.HeavyDOMPagesCount,
+			TotalDOMNodes:   siteAnalytics.TotalDOMNodesAcrossPages,
+			AverageDOMNodes: siteAnalytics.AverageDOMNodesPerPage,
+			GlobalSelectors: siteAnalytics.GlobalCandidateSelectors,
+			GlobalCSS:       siteAnalytics.GlobalVirtualizationCSS,
+			GlobalPHP:       siteAnalytics.GlobalVirtualizationPHP,
+			Pages:           make(map[string]*scanner.DOMVirtualizationDiagnostic),
+			GeneratedAt:     time.Now().Format(time.RFC3339),
+		}
+		for _, r := range results {
+			if r.Diagnostics.DOMVirtualization != nil {
+				rep.Pages[r.URL] = r.Diagnostics.DOMVirtualization
+			}
+		}
+		data, err := json.MarshalIndent(rep, "", "  ")
+		if err == nil {
+			_ = os.WriteFile("/tmp/speedmap_dom_virtualization.json", data, 0644)
+			home, _ := os.UserHomeDir()
+			if home != "" {
+				speedmapDir := filepath.Join(home, ".speedmap")
+				_ = os.MkdirAll(speedmapDir, 0755)
+				_ = os.WriteFile(filepath.Join(speedmapDir, "dom_virtualization.json"), data, 0644)
+			}
+		}
+	}()
+
 	return AnalyticsResult{
 		Analytics:  siteAnalytics,
 		Comparison: cmp,
@@ -176,6 +220,10 @@ func (a *App) ValidateW3C(rawURL string) (*w3c.W3CReport, error) {
 
 // OpenURL opens the target URL in the user's default web browser
 func (a *App) OpenURL(rawURL string) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return
+	}
 	fmt.Printf("[GO LOG] OpenURL called for %s\n", rawURL)
 	if a.ctx != nil {
 		runtime.BrowserOpenURL(a.ctx, rawURL)
@@ -275,21 +323,33 @@ func (a *App) ExportImageComparisonHTML(domain string, cfg config.ScanConfig, re
 }
 
 var (
-	previewBytesCache = make(map[string][]byte)
-	previewCacheMutex sync.RWMutex
+	previewBytesCache  = make(map[string][]byte)
+	previewResultCache = make(map[string]*optimizer.ConversionResult)
+	previewCacheMutex  sync.RWMutex
 )
 
 // TuneImagePreview converts an image with exact tuned parameters for Image Studio live preview.
 // Original bytes are cached in memory so subsequent slider movements respond in 10-30ms.
 func (a *App) TuneImagePreview(rawURL string, opts optimizer.ImageTuneOptions, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {
+	start := time.Now()
+	isSVG := strings.Contains(strings.ToLower(rawURL), ".svg")
+
 	previewCacheMutex.RLock()
+	if isSVG {
+		if cachedRes, ok := previewResultCache[rawURL]; ok && cachedRes != nil {
+			previewCacheMutex.RUnlock()
+			fmt.Printf("[GO LOG] TuneImagePreview (SVG CACHE HIT) for %s in 0ms\n", rawURL)
+			return cachedRes, nil
+		}
+	}
 	cachedBytes, found := previewBytesCache[rawURL]
 	previewCacheMutex.RUnlock()
 
 	if !found || len(cachedBytes) == 0 {
 		var err error
-		cachedBytes, err = optimizer.FetchImageBytes(rawURL, cfg.AuthUser, cfg.AuthPass)
+		cachedBytes, err = optimizer.FetchImageBytes(rawURL, cfg.AuthUser, cfg.AuthPass, cfg.GetUserAgent())
 		if err != nil {
+			fmt.Printf("[GO LOG] TuneImagePreview fetch error for %s: %v\n", rawURL, err)
 			return nil, fmt.Errorf("failed to fetch image: %w", err)
 		}
 		previewCacheMutex.Lock()
@@ -297,7 +357,20 @@ func (a *App) TuneImagePreview(rawURL string, opts optimizer.ImageTuneOptions, c
 		previewCacheMutex.Unlock()
 	}
 
-	return optimizer.ConvertImageBytesTuned(rawURL, cachedBytes, opts)
+	res, err := optimizer.ConvertImageBytesTuned(rawURL, cachedBytes, opts)
+	if err != nil {
+		fmt.Printf("[GO LOG] TuneImagePreview convert error for %s: %v\n", rawURL, err)
+		return nil, err
+	}
+
+	if isSVG && res != nil {
+		previewCacheMutex.Lock()
+		previewResultCache[rawURL] = res
+		previewCacheMutex.Unlock()
+	}
+
+	fmt.Printf("[GO LOG] TuneImagePreview completed for %s in %v\n", rawURL, time.Since(start))
+	return res, nil
 }
 
 // DownloadSingleWebPTuned converts and saves a single image using exact tuned options from Image Studio
@@ -316,14 +389,23 @@ func (a *App) DownloadSingleWebPTuned(rawURL string, opts optimizer.ImageTuneOpt
 		return "", fmt.Errorf("failed to decode base64: %w", err)
 	}
 
+	saveTitle := "Зберегти налаштоване WebP зображення"
+	filters := []runtime.FileFilter{
+		{DisplayName: "WebP Зображення (*.webp)", Pattern: "*.webp"},
+	}
+	if strings.HasPrefix(res.OptimizedWebPBase64, "data:image/svg+xml") {
+		saveTitle = "Зберегти оптимізоване SVG зображення"
+		filters = []runtime.FileFilter{
+			{DisplayName: "SVG Векторне Зображення (*.svg)", Pattern: "*.svg"},
+		}
+	}
+
 	var savePath string
 	if a.ctx != nil {
 		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-			Title:           "Зберегти налаштоване WebP зображення",
+			Title:           saveTitle,
 			DefaultFilename: res.Filename,
-			Filters: []runtime.FileFilter{
-				{DisplayName: "WebP Зображення (*.webp)", Pattern: "*.webp"},
-			},
+			Filters:         filters,
 		})
 	}
 	if savePath == "" || err != nil {
@@ -339,6 +421,7 @@ func (a *App) DownloadSingleWebPTuned(rawURL string, opts optimizer.ImageTuneOpt
 
 // ConvertImageToWebP encodes a single image to WebP with the configured quality setting
 func (a *App) ConvertImageToWebP(rawURL string, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {
+	optimizer.SetDefaultUserAgent(cfg.GetUserAgent())
 	fmt.Printf("[GO LOG] ConvertImageToWebP called for %s (quality=%.0f, threshold=%d KB, adaptive=%v)\n", rawURL, cfg.NormalizedWebPQuality(), cfg.HeavyImageThresholdKB, cfg.IsAdaptiveQualityEnabled())
 	res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL, cfg.NormalizedWebPQuality(), cfg.NormalizedHeavyThresholdBytes(), cfg.IsAdaptiveQualityEnabled(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
@@ -349,8 +432,9 @@ func (a *App) ConvertImageToWebP(rawURL string, cfg config.ScanConfig) (*optimiz
 	return res, nil
 }
 
-// DownloadSingleWebPImage converts a single image to WebP and saves it via SaveFileDialog
+// DownloadSingleWebPImage converts a single image to WebP (or saves clean SVG) and prompts via SaveFileDialog
 func (a *App) DownloadSingleWebPImage(rawURL string, cfg config.ScanConfig) (string, error) {
+	optimizer.SetDefaultUserAgent(cfg.GetUserAgent())
 	fmt.Printf("[GO LOG] DownloadSingleWebPImage called for %s\n", rawURL)
 	res, err := optimizer.ConvertImageURLToWebPAdaptiveBudgetAuth(rawURL, cfg.NormalizedWebPQuality(), cfg.NormalizedHeavyThresholdBytes(), cfg.IsAdaptiveQualityEnabled(), cfg.AuthUser, cfg.AuthPass)
 	if err != nil {
@@ -366,14 +450,23 @@ func (a *App) DownloadSingleWebPImage(rawURL string, cfg config.ScanConfig) (str
 		return "", fmt.Errorf("failed to decode base64: %w", err)
 	}
 
+	saveTitle := "Зберегти WebP зображення"
+	filters := []runtime.FileFilter{
+		{DisplayName: "WebP Зображення (*.webp)", Pattern: "*.webp"},
+	}
+	if strings.HasPrefix(res.OptimizedWebPBase64, "data:image/svg+xml") {
+		saveTitle = "Зберегти оптимізоване SVG зображення"
+		filters = []runtime.FileFilter{
+			{DisplayName: "SVG Векторне Зображення (*.svg)", Pattern: "*.svg"},
+		}
+	}
+
 	var savePath string
 	if a.ctx != nil {
 		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-			Title:           "Зберегти WebP зображення",
+			Title:           saveTitle,
 			DefaultFilename: res.Filename,
-			Filters: []runtime.FileFilter{
-				{DisplayName: "WebP Зображення (*.webp)", Pattern: "*.webp"},
-			},
+			Filters:         filters,
 		})
 	}
 	if savePath == "" || err != nil {
@@ -384,7 +477,46 @@ func (a *App) DownloadSingleWebPImage(rawURL string, cfg config.ScanConfig) (str
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 
-	fmt.Printf("[GO LOG] WebP image saved to %s\n", savePath)
+	fmt.Printf("[GO LOG] DownloadSingleWebPImage saved to %s\n", savePath)
+	return savePath, nil
+}
+
+// DownloadOriginalImage downloads the raw original image (e.g. SVG, PNG, JPG) and prompts the user to save it
+func (a *App) DownloadOriginalImage(rawURL string, cfg config.ScanConfig) (string, error) {
+	optimizer.SetDefaultUserAgent(cfg.GetUserAgent())
+	fmt.Printf("[GO LOG] DownloadOriginalImage called for %s\n", rawURL)
+	data, err := optimizer.FetchImageBytes(rawURL, cfg.AuthUser, cfg.AuthPass, cfg.GetUserAgent())
+	if err != nil {
+		return "", fmt.Errorf("failed to download image: %w", err)
+	}
+
+	origName := optimizer.ExtractOriginalFilename(rawURL)
+	ext := filepath.Ext(origName)
+	pattern := "*" + ext
+	if ext == "" {
+		pattern = "*.*"
+	}
+
+	var savePath string
+	if a.ctx != nil {
+		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Зберегти оригінальне зображення",
+			DefaultFilename: origName,
+			Filters: []runtime.FileFilter{
+				{DisplayName: fmt.Sprintf("Зображення (%s)", pattern), Pattern: pattern},
+				{DisplayName: "Всі файли (*.*)", Pattern: "*.*"},
+			},
+		})
+	}
+	if savePath == "" || err != nil {
+		savePath = origName
+	}
+
+	if err := os.WriteFile(savePath, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+
+	fmt.Printf("[GO LOG] Original image saved to %s\n", savePath)
 	return savePath, nil
 }
 
@@ -407,6 +539,7 @@ func (a *App) DownloadOptimizedWebPZIP(urls []string, cfg config.ScanConfig) (st
 	threshold := cfg.NormalizedHeavyThresholdBytes()
 	adaptive := cfg.IsAdaptiveQualityEnabled()
 	authUser, authPass := cfg.AuthUser, cfg.AuthPass
+	optimizer.SetDefaultUserAgent(cfg.GetUserAgent())
 	for _, rawURL := range urls {
 		wg.Add(1)
 		go func(u string) {
@@ -721,6 +854,70 @@ func (a *App) ExportFormsJSON(jsonContent string) (string, error) {
 		return "", err
 	}
 	return filename, nil
+}
+
+// ExportDOMVirtualizationCSS opens a native macOS Save Dialog and saves the CSS snippet
+func (a *App) ExportDOMVirtualizationCSS(cssContent string, defaultFilename string) (string, error) {
+	if defaultFilename == "" {
+		defaultFilename = "speedmap-dom-virtualization.css"
+	}
+	var savePath string
+	var err error
+	if a.ctx != nil {
+		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Зберегти CSS віртуалізації DOM",
+			DefaultFilename: defaultFilename,
+			Filters: []runtime.FileFilter{
+				{DisplayName: "CSS Files (*.css)", Pattern: "*.css"},
+			},
+		})
+		if err != nil {
+			return "", err
+		}
+		if savePath == "" {
+			return "", nil
+		}
+	} else {
+		savePath = filepath.Join(os.TempDir(), defaultFilename)
+	}
+
+	err = os.WriteFile(savePath, []byte(cssContent), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to save CSS: %w", err)
+	}
+	return savePath, nil
+}
+
+// ExportDOMVirtualizationPHP opens a native macOS Save Dialog and saves the PHP hook snippet
+func (a *App) ExportDOMVirtualizationPHP(phpContent string, defaultFilename string) (string, error) {
+	if defaultFilename == "" {
+		defaultFilename = "speedmap-dom-virtualization.php"
+	}
+	var savePath string
+	var err error
+	if a.ctx != nil {
+		savePath, err = runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+			Title:           "Зберегти PHP хук (wp_head) для functions.php",
+			DefaultFilename: defaultFilename,
+			Filters: []runtime.FileFilter{
+				{DisplayName: "PHP Files (*.php)", Pattern: "*.php"},
+			},
+		})
+		if err != nil {
+			return "", err
+		}
+		if savePath == "" {
+			return "", nil
+		}
+	} else {
+		savePath = filepath.Join(os.TempDir(), defaultFilename)
+	}
+
+	err = os.WriteFile(savePath, []byte(phpContent), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to save PHP: %w", err)
+	}
+	return savePath, nil
 }
 
 // SelectDirectory opens native macOS directory picker dialog

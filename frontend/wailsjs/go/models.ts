@@ -120,6 +120,7 @@ export namespace analytics {
 	}
 	export class AggregatedImage {
 	    url: string;
+	    basename: string;
 	    maxTransferSize: number;
 	    formattedSize: string;
 	    avgDurationMs: number;
@@ -151,6 +152,7 @@ export namespace analytics {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.url = source["url"];
+	        this.basename = source["basename"];
 	        this.maxTransferSize = source["maxTransferSize"];
 	        this.formattedSize = source["formattedSize"];
 	        this.avgDurationMs = source["avgDurationMs"];
@@ -214,6 +216,7 @@ export namespace analytics {
 	    heavyImagesCount: number;
 	    oversizedImagesCount: number;
 	    nonWebPCount: number;
+	    svgCount: number;
 	    missingLazyCount: number;
 	    totalWebPSavingsBytes: number;
 	    totalWebPSavingsFormatted: string;
@@ -227,6 +230,12 @@ export namespace analytics {
 	    unprotectedFormsCount: number;
 	    fileUploadFormsCount: number;
 	    formEngineBreakdown: Record<string, number>;
+	    totalDomNodesAcrossPages: number;
+	    averageDomNodesPerPage: number;
+	    heavyDomPagesCount: number;
+	    globalCandidateSelectors: string[];
+	    globalVirtualizationCss: string;
+	    globalVirtualizationPhp: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SiteAnalytics(source);
@@ -251,6 +260,7 @@ export namespace analytics {
 	        this.heavyImagesCount = source["heavyImagesCount"];
 	        this.oversizedImagesCount = source["oversizedImagesCount"];
 	        this.nonWebPCount = source["nonWebPCount"];
+	        this.svgCount = source["svgCount"];
 	        this.missingLazyCount = source["missingLazyCount"];
 	        this.totalWebPSavingsBytes = source["totalWebPSavingsBytes"];
 	        this.totalWebPSavingsFormatted = source["totalWebPSavingsFormatted"];
@@ -264,6 +274,12 @@ export namespace analytics {
 	        this.unprotectedFormsCount = source["unprotectedFormsCount"];
 	        this.fileUploadFormsCount = source["fileUploadFormsCount"];
 	        this.formEngineBreakdown = source["formEngineBreakdown"];
+	        this.totalDomNodesAcrossPages = source["totalDomNodesAcrossPages"];
+	        this.averageDomNodesPerPage = source["averageDomNodesPerPage"];
+	        this.heavyDomPagesCount = source["heavyDomPagesCount"];
+	        this.globalCandidateSelectors = source["globalCandidateSelectors"];
+	        this.globalVirtualizationCss = source["globalVirtualizationCss"];
+	        this.globalVirtualizationPhp = source["globalVirtualizationPhp"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -336,6 +352,7 @@ export namespace config {
 	    gifWebPRatio: number;
 	    authUser: string;
 	    authPass: string;
+	    userAgent: string;
 	    headers: CustomHeader[];
 	    isMobile: boolean;
 	    autoScroll: boolean;
@@ -368,6 +385,7 @@ export namespace config {
 	        this.gifWebPRatio = source["gifWebPRatio"];
 	        this.authUser = source["authUser"];
 	        this.authPass = source["authPass"];
+	        this.userAgent = source["userAgent"];
 	        this.headers = this.convertValues(source["headers"], CustomHeader);
 	        this.isMobile = source["isMobile"];
 	        this.autoScroll = source["autoScroll"];
@@ -777,6 +795,72 @@ export namespace scanner {
 	        this.fixes = source["fixes"];
 	    }
 	}
+	export class VirtualizationCandidate {
+	    selector: string;
+	    tagName: string;
+	    domNodes: number;
+	    estimatedHeight: number;
+	    topOffset: number;
+	    isOptimized: boolean;
+	    imagesCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new VirtualizationCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.selector = source["selector"];
+	        this.tagName = source["tagName"];
+	        this.domNodes = source["domNodes"];
+	        this.estimatedHeight = source["estimatedHeight"];
+	        this.topOffset = source["topOffset"];
+	        this.isOptimized = source["isOptimized"];
+	        this.imagesCount = source["imagesCount"];
+	    }
+	}
+	export class DOMVirtualizationDiagnostic {
+	    totalDomNodes: number;
+	    candidates: VirtualizationCandidate[];
+	    unoptimizedCount: number;
+	    potentialDeferredNodes: number;
+	    deferredPercentage: number;
+	    generatedCss: string;
+	    generatedPhp: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DOMVirtualizationDiagnostic(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalDomNodes = source["totalDomNodes"];
+	        this.candidates = this.convertValues(source["candidates"], VirtualizationCandidate);
+	        this.unoptimizedCount = source["unoptimizedCount"];
+	        this.potentialDeferredNodes = source["potentialDeferredNodes"];
+	        this.deferredPercentage = source["deferredPercentage"];
+	        this.generatedCss = source["generatedCss"];
+	        this.generatedPhp = source["generatedPhp"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class MetricGrade {
 	    value: number;
 	    formatted: string;
@@ -1059,6 +1143,7 @@ export namespace scanner {
 	    forms: FormDetail[];
 	    categories: Record<string, CategoryDiagnostic>;
 	    w3c?: any;
+	    domVirtualization?: DOMVirtualizationDiagnostic;
 	
 	    static createFrom(source: any = {}) {
 	        return new PageDiagnostics(source);
@@ -1085,6 +1170,7 @@ export namespace scanner {
 	        this.forms = this.convertValues(source["forms"], FormDetail);
 	        this.categories = this.convertValues(source["categories"], CategoryDiagnostic, true);
 	        this.w3c = source["w3c"];
+	        this.domVirtualization = this.convertValues(source["domVirtualization"], DOMVirtualizationDiagnostic);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1181,6 +1267,7 @@ export namespace scanner {
 		    return a;
 		}
 	}
+	
 	
 
 }

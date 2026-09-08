@@ -102,8 +102,31 @@ type PageDiagnostics struct {
 	Fonts               []FontDetail                   `json:"fonts"`
 	Iframes             []IframeDetail                 `json:"iframes"`
 	Forms               []FormDetail                   `json:"forms"`
-	Categories          map[string]CategoryDiagnostic `json:"categories"`
-	W3C                 interface{}                    `json:"w3c,omitempty"`
+	Categories          map[string]CategoryDiagnostic      `json:"categories"`
+	W3C                 interface{}                         `json:"w3c,omitempty"`
+	DOMVirtualization   *DOMVirtualizationDiagnostic        `json:"domVirtualization,omitempty"`
+}
+
+// VirtualizationCandidate describes a heavy below-the-fold DOM subtree candidate for content-visibility
+type VirtualizationCandidate struct {
+	Selector        string `json:"selector"`
+	TagName         string `json:"tagName"`
+	DOMNodes        int    `json:"domNodes"`
+	EstimatedHeight int    `json:"estimatedHeight"`
+	TopOffset       int    `json:"topOffset"`
+	IsOptimized     bool   `json:"isOptimized"`
+	ImagesCount     int    `json:"imagesCount"`
+}
+
+// DOMVirtualizationDiagnostic provides complete page-level DOM analysis and generated optimization code
+type DOMVirtualizationDiagnostic struct {
+	TotalDOMNodes          int                       `json:"totalDomNodes"`
+	Candidates             []VirtualizationCandidate `json:"candidates"`
+	UnoptimizedCount       int                       `json:"unoptimizedCount"`
+	PotentialDeferredNodes int                       `json:"potentialDeferredNodes"`
+	DeferredPercentage     float64                   `json:"deferredPercentage"`
+	GeneratedCSS           string                    `json:"generatedCss"`
+	GeneratedPHP           string                    `json:"generatedPhp"`
 }
 
 // FormFieldDetail describes a single input/field inside a form

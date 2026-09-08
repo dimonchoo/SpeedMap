@@ -3,6 +3,7 @@ package analytics
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -20,6 +21,7 @@ type ResourceImpact struct {
 
 type AggregatedImage struct {
 	URL                       string   `json:"url"`
+	Basename                  string   `json:"basename"`        // e.g. "sas-logo.svg"
 	MaxTransferSize           int64    `json:"maxTransferSize"` // bytes
 	FormattedSize             string   `json:"formattedSize"`   // e.g. "1.2 MB"
 	AvgDurationMs             float64  `json:"avgDurationMs"`   // ms
@@ -115,6 +117,7 @@ type SiteAnalytics struct {
 	HeavyImagesCount           int            `json:"heavyImagesCount"`
 	OversizedImagesCount       int            `json:"oversizedImagesCount"`
 	NonWebPCount               int            `json:"nonWebPCount"`
+	SVGCount                   int            `json:"svgCount"`
 	MissingLazyCount           int            `json:"missingLazyCount"`
 	TotalWebPSavingsBytes      int64          `json:"totalWebPSavingsBytes"`
 	TotalWebPSavingsFormatted  string         `json:"totalWebPSavingsFormatted"`
@@ -132,6 +135,14 @@ type SiteAnalytics struct {
 	UnprotectedFormsCount int            `json:"unprotectedFormsCount"`
 	FileUploadFormsCount  int            `json:"fileUploadFormsCount"`
 	FormEngineBreakdown   map[string]int `json:"formEngineBreakdown"`
+
+	// DOM Virtualization Global Audit
+	TotalDOMNodesAcrossPages int      `json:"totalDomNodesAcrossPages"`
+	AverageDOMNodesPerPage   int      `json:"averageDomNodesPerPage"`
+	HeavyDOMPagesCount       int      `json:"heavyDomPagesCount"`
+	GlobalCandidateSelectors []string `json:"globalCandidateSelectors"`
+	GlobalVirtualizationCSS  string   `json:"globalVirtualizationCss"`
+	GlobalVirtualizationPHP  string   `json:"globalVirtualizationPhp"`
 }
 
 type scannedCount = int
@@ -159,6 +170,8 @@ func EstimateWebPSize(format string, originalBytes int64, cfg ...config.ScanConf
 		return int64(float64(originalBytes) * jpgRatio)
 	case "gif":
 		return int64(float64(originalBytes) * gifRatio)
+	case "svg":
+		return int64(float64(originalBytes) * 0.15)
 	default:
 		return originalBytes
 	}
@@ -307,8 +320,14 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 					if fmtStr == "" {
 						fmtStr = detectFormatFromURL(img.URL)
 					}
+					u := strings.Split(img.URL, "?")[0]
+					baseName := filepath.Base(u)
+					if baseName == "" || baseName == "." || baseName == "/" {
+						baseName = "image"
+					}
 					agg := &AggregatedImage{
 						URL:               img.URL,
+						Basename:          baseName,
 						MaxTransferSize:   img.TransferSize,
 						FormattedSize:     img.FormattedSize,
 						AvgDurationMs:     img.Duration,
@@ -484,6 +503,14 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		if img.Format == "" {
 			img.Format = detectFormatFromURL(img.URL)
 		}
+		if img.Basename == "" {
+			u := strings.Split(img.URL, "?")[0]
+			base := filepath.Base(u)
+			if base == "" || base == "." || base == "/" {
+				base = "image"
+			}
+			img.Basename = base
+		}
 
 		// Calculate Recommended Retina Dimensions (MaxRenderedWidth * 2, strictly capped at Natural dimensions)
 		if img.MaxRenderedWidth > 0 {
@@ -518,7 +545,7 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 			heavyCount++
 		}
 
-		if img.Format != "webp" && img.Format != "avif" && img.Format != "svg" {
+		if img.Format != "webp" && img.Format != "avif" && (img.Format != "svg" || img.IsHeavy) {
 			nonWebPCount++
 		}
 
@@ -699,6 +726,83 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		fixes = append(fixes, fmt.Sprintf("Виявлено %d форм без анти-спам захисту (відсутня reCAPTCHA/Turnstile). Перевірте вкладку «Форми».", unprotectedFormsCount))
 	}
 
+	// Aggregate DOM Virtualization across all pages
+	totalDomNodes := 0
+	heavyDomPages := 0
+	selectorFrequency := make(map[string]int)
+	selectorNodes := make(map[string]int)
+
+	for _, p := range results {
+		if p.Diagnostics.DOMVirtualization != nil {
+			totalDomNodes += p.Diagnostics.DOMVirtualization.TotalDOMNodes
+			if p.Diagnostics.DOMVirtualization.TotalDOMNodes > 800 {
+				heavyDomPages++
+			}
+			for _, c := range p.Diagnostics.DOMVirtualization.Candidates {
+				if !c.IsOptimized && c.Selector != "" {
+					selectorFrequency[c.Selector]++
+					selectorNodes[c.Selector] += c.DOMNodes
+				}
+			}
+		}
+	}
+
+	type selScore struct {
+		selector string
+		freq     int
+		nodes    int
+	}
+	var scoredSelectors []selScore
+	for sel, freq := range selectorFrequency {
+		scoredSelectors = append(scoredSelectors, selScore{
+			selector: sel,
+			freq:     freq,
+			nodes:    selectorNodes[sel],
+		})
+	}
+	sort.Slice(scoredSelectors, func(i, j int) bool {
+		if scoredSelectors[i].freq != scoredSelectors[j].freq {
+			return scoredSelectors[i].freq > scoredSelectors[j].freq
+		}
+		return scoredSelectors[i].nodes > scoredSelectors[j].nodes
+	})
+
+	var globalCandidateSelectors []string
+	for _, s := range scoredSelectors {
+		globalCandidateSelectors = append(globalCandidateSelectors, s.selector)
+	}
+
+	globalCSS := ""
+	globalPHP := ""
+	if len(globalCandidateSelectors) > 0 {
+		joined := strings.Join(globalCandidateSelectors, ",\n")
+		globalCSS = "/* SpeedMap: Global DOM Virtualization (Auto-Generated) */\n" +
+			joined + " {\n" +
+			"    content-visibility: auto;\n" +
+			"    contain-intrinsic-size: auto 600px;\n" +
+			"}"
+
+		globalPHP = "add_action('wp_head', function() {\n" +
+			"    ?>\n" +
+			"    <style id=\"speedmap-dom-virtualization\">\n" +
+			"    " + strings.ReplaceAll(joined, "\n", "\n    ") + " {\n" +
+			"        content-visibility: auto;\n" +
+			"        contain-intrinsic-size: auto 600px;\n" +
+			"    }\n" +
+			"    </style>\n" +
+			"    <?php\n" +
+			"}, 1);"
+	}
+
+	avgDomNodes := 0
+	if total > 0 {
+		avgDomNodes = totalDomNodes / total
+	}
+
+	if heavyDomPages > 0 {
+		fixes = append(fixes, fmt.Sprintf("Виявлено %d сторінок із важким DOM (>800 елементів). Використайте «DOM Virtualization» (content-visibility) для суттєвого прискорення FCP/LCP.", heavyDomPages))
+	}
+
 	return SiteAnalytics{
 		TotalPages:                 total,
 		HealthScore:                healthScore,
@@ -717,6 +821,7 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		HeavyImagesCount:           heavyCount,
 		OversizedImagesCount:       oversizedCount,
 		NonWebPCount:               nonWebPCount,
+		SVGCount:                   formatBreakdown["svg"],
 		MissingLazyCount:           missingLazyCount,
 		TotalWebPSavingsBytes:      totalSavingsBytes,
 		TotalWebPSavingsFormatted:  formatBytes(totalSavingsBytes),
@@ -730,6 +835,12 @@ func ComputeSiteAnalytics(results []scanner.PageResult, cfg ...interface{}) Site
 		UnprotectedFormsCount:      unprotectedFormsCount,
 		FileUploadFormsCount:       fileUploadFormsCount,
 		FormEngineBreakdown:        formEngineBreakdown,
+		TotalDOMNodesAcrossPages:   totalDomNodes,
+		AverageDOMNodesPerPage:     avgDomNodes,
+		HeavyDOMPagesCount:         heavyDomPages,
+		GlobalCandidateSelectors:   globalCandidateSelectors,
+		GlobalVirtualizationCSS:    globalCSS,
+		GlobalVirtualizationPHP:    globalPHP,
 	}
 }
 

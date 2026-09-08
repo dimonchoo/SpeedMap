@@ -121,10 +121,10 @@ func CollectHeavyImages(images []analytics.AggregatedImage) []ManifestImage {
 		if format == "" {
 			format = guessFormat(img.URL)
 		}
-		if format == "svg" || format == "avif" || format == "webp" {
+		if format == "avif" || format == "webp" {
 			continue
 		}
-		if !rasterFormats[format] {
+		if !rasterFormats[format] && format != "svg" {
 			continue
 		}
 
@@ -386,7 +386,10 @@ func ConvertHeavyImagesWithProgressAndOverrides(images []ManifestImage, quality 
 					img.IsOverridden = (override != nil)
 
 					rel := img.WebpRel
-					if rel == "" {
+					isVectorSVG := strings.HasPrefix(res.OptimizedWebPBase64, "data:image/svg+xml")
+					if isVectorSVG {
+						rel = targetRelFromHint(img.PathHint, img.Basename, "svg")
+					} else if rel == "" {
 						rel = webpRelFromHint(img.PathHint, img.Basename)
 					}
 					rel = filepath.ToSlash(rel)
@@ -447,7 +450,11 @@ func ConvertHeavyImagesWithProgressAndOverrides(images []ManifestImage, quality 
 		if item != nil {
 			id := fmt.Sprintf("%03d", len(ok)+1)
 			item.ID = id
-			item.PackageWebP = fmt.Sprintf("images/%s/optimized.webp", id)
+			if strings.ToLower(item.Format) == "svg" && !bytes.HasPrefix(item.WebPData, []byte("RIFF")) {
+				item.PackageWebP = fmt.Sprintf("images/%s/optimized.svg", id)
+			} else {
+				item.PackageWebP = fmt.Sprintf("images/%s/optimized.webp", id)
+			}
 			ok = append(ok, *item)
 		}
 	}
@@ -493,7 +500,11 @@ func WriteDeployPackage(packageDir, domain string, cfg config.ScanConfig, writte
 		if err := os.MkdirAll(imgDir, 0755); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(filepath.Join(imgDir, "optimized.webp"), im.WebPData, 0644); err != nil {
+		optFile := "optimized.webp"
+		if strings.ToLower(im.Format) == "svg" && !bytes.HasPrefix(im.WebPData, []byte("RIFF")) {
+			optFile = "optimized.svg"
+		}
+		if err := os.WriteFile(filepath.Join(imgDir, optFile), im.WebPData, 0644); err != nil {
 			return nil, err
 		}
 	}
@@ -539,26 +550,19 @@ func WriteDeployPackage(packageDir, domain string, cfg config.ScanConfig, writte
 		}
 	}
 
-	zipPath := pkg + ".zip"
-	if err := os.WriteFile(zipPath, zipBytes, 0644); err != nil {
-		// Non-fatal for folder use; still return package.
-		zipPath = ""
-	} else {
-		// Prefer a full package zip that includes apply.php — rebuild with apply inside.
-		fullZip, zerr := buildPackageZIP(pkg)
-		if zerr == nil {
-			_ = os.WriteFile(zipPath, fullZip, 0644)
-		}
+	reviewZipPath := filepath.Join(pkg, "review.zip")
+	if err := os.WriteFile(reviewZipPath, zipBytes, 0644); err != nil {
+		return nil, err
 	}
 
-	var totalOrig, totalWebP int64
+	var totalOrig, totalOpt int64
 	for _, im := range written {
 		totalOrig += im.OriginalBytes
-		totalWebP += im.OptimizedBytes
+		totalOpt += im.OptimizedBytes
 	}
 	savPct := 0.0
 	if totalOrig > 0 {
-		savPct = float64(totalOrig-totalWebP) / float64(totalOrig) * 100
+		savPct = float64(totalOrig-totalOpt) / float64(totalOrig) * 100
 	}
 
 	_ = RecordExport(ExportRecord{
@@ -568,14 +572,14 @@ func WriteDeployPackage(packageDir, domain string, cfg config.ScanConfig, writte
 		FormattedTime:  time.Now().Format("02.01.2006 15:04:05"),
 		PackageDir:     pkg,
 		ManifestPath:   filepath.Join(pkg, "manifest.json"),
-		ReviewZIP:      zipPath,
+		ReviewZIP:      reviewZipPath,
 		ApplyPHP:       applyPath,
 		RollbackPHP:    rollbackPath,
 		CompareHTML:    filepath.Join(pkg, "compare.html"),
 		RenderReport:   filepath.Join(pkg, "render-report.html"),
 		ImageCount:     len(written),
 		OriginalBytes:  totalOrig,
-		OptimizedBytes: totalWebP,
+		OptimizedBytes: totalOpt,
 		SavingsPercent: savPct,
 		ExistsOnDisk:   true,
 	})
@@ -583,7 +587,7 @@ func WriteDeployPackage(packageDir, domain string, cfg config.ScanConfig, writte
 	return &ExportResult{
 		ApplyPHP:      applyPath,
 		RollbackPHP:   rollbackPath,
-		ReviewZIP:     zipPath,
+		ReviewZIP:     reviewZipPath,
 		PackageDir:    pkg,
 		WebPCount:     len(written),
 		WordPressPath: pkg,
@@ -602,6 +606,7 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		PathHint                string   `json:"pathHint"`
 		WebpRel                 string   `json:"webpRel"`
 		Basename                string   `json:"basename"`
+		Format                  string   `json:"format,omitempty"`
 		Pages                   []string `json:"pages"`
 		NaturalWidth            int      `json:"naturalWidth,omitempty"`
 		NaturalHeight           int      `json:"naturalHeight,omitempty"`
@@ -629,9 +634,13 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 		if id == "" {
 			id = fmt.Sprintf("%03d", i+1)
 		}
-		webpPath := fmt.Sprintf("images/%s/optimized.webp", id)
+		optName := "optimized.webp"
+		if strings.ToLower(im.Format) == "svg" && !bytes.HasPrefix(im.WebPData, []byte("RIFF")) {
+			optName = "optimized.svg"
+		}
+		optPath := fmt.Sprintf("images/%s/%s", id, optName)
 
-		if err := writeZipFile(zw, webpPath, im.WebPData); err != nil {
+		if err := writeZipFile(zw, optPath, im.WebPData); err != nil {
 			_ = zw.Close()
 			return nil, err
 		}
@@ -647,6 +656,7 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			PathHint:                im.PathHint,
 			WebpRel:                 im.WebpRel,
 			Basename:                im.Basename,
+			Format:                  im.Format,
 			Pages:                   im.Pages,
 			NaturalWidth:            im.NaturalWidth,
 			NaturalHeight:           im.NaturalHeight,
@@ -662,7 +672,7 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 			OriginalFormatted:       im.OriginalFormatted,
 			OptimizedFormatted:      im.OptimizedFormatted,
 			OriginalPath:            origPreviewURL,
-			OptimizedPath:           webpPath,
+			OptimizedPath:           optPath,
 		})
 	}
 
@@ -849,13 +859,17 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	htmlBuf.WriteString("</div>")
 
 	for idx, e := range entries {
+		afterFmt := "WebP"
+		if strings.ToLower(e.Format) == "svg" {
+			afterFmt = "SVG"
+		}
 		htmlBuf.WriteString("<section class=\"pair\">")
 		htmlBuf.WriteString("<h2>")
 		htmlBuf.WriteString(esc(e.Basename))
 		htmlBuf.WriteString("</h2>")
 		writeReviewContextHTML(&htmlBuf, e.SourceURL, e.Pages)
 		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"original\" loading=\"lazy\" onerror=\"this.onerror=null;this.style.opacity='0.4';\" onclick=\"openGallery(%d, 'orig')\"><figcaption>Before · %s · %s</figcaption></figure>", esc(e.OriginalPath), idx, esc(e.Basename), esc(e.OriginalFormatted)))
-		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"webp\" loading=\"lazy\" onclick=\"openGallery(%d, 'webp')\"><figcaption>After · WebP · %s · <span class=\"sav\">−%.1f%%</span></figcaption></figure>", esc(e.OptimizedPath), idx, esc(e.OptimizedFormatted), e.SavingsPercent))
+		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"optimized\" loading=\"lazy\" onclick=\"openGallery(%d, 'after')\"><figcaption>After · %s · %s · <span class=\"sav\">−%.1f%%</span></figcaption></figure>", esc(e.OptimizedPath), idx, afterFmt, esc(e.OptimizedFormatted), e.SavingsPercent))
 		htmlBuf.WriteString("</section>")
 	}
 
@@ -865,7 +879,7 @@ func BuildReviewZIP(domain string, images []WrittenImage) ([]byte, error) {
 	htmlBuf.WriteString("<div class=\"lb-title-wrap\"><span id=\"lb-count\" style=\"color:#38bdf8;font-weight:bold;font-family:monospace;\"></span><span id=\"lb-title\" class=\"lb-title\"></span><span id=\"lb-mode-badge\" class=\"badge-webp\"></span></div>")
 	htmlBuf.WriteString("<div class=\"lb-mode-toggle\">")
 	htmlBuf.WriteString("<button id=\"btn-before\" class=\"lb-tab\" onclick=\"toggleMode('orig')\">🔴 Before (Original)</button>")
-	htmlBuf.WriteString("<button id=\"btn-after\" class=\"lb-tab lb-tab-active-webp\" onclick=\"toggleMode('webp')\">🟢 After (WebP)</button>")
+	htmlBuf.WriteString("<button id=\"btn-after\" class=\"lb-tab lb-tab-active-webp\" onclick=\"toggleMode('after')\">🟢 After (Optimized)</button>")
 	htmlBuf.WriteString("</div>")
 	htmlBuf.WriteString("<button class=\"lb-close-btn\" onclick=\"closeLb()\">✕ Закрити (Esc)</button>")
 	htmlBuf.WriteString("</div>")
@@ -909,7 +923,9 @@ function renderGallery() {
 	document.getElementById('lb-count').textContent = (currentIndex + 1) + ' / ' + items.length;
 	
 	const badgeEl = document.getElementById('lb-mode-badge');
-	badgeEl.textContent = isOrig ? '🔴 Before (Original)' : '🟢 After (WebP)';
+	const isSvg = item.format === 'svg';
+	const afterLabel = isSvg ? 'SVG' : 'WebP';
+	badgeEl.textContent = isOrig ? '🔴 Before (Original)' : ('🟢 After (' + afterLabel + ')');
 	badgeEl.className = isOrig ? 'badge-orig' : 'badge-webp';
 	
 	document.getElementById('btn-before').className = isOrig ? 'lb-tab lb-tab-active-orig' : 'lb-tab';
@@ -1175,8 +1191,29 @@ func basenameAndHint(rawURL string) (basename, pathHint string) {
 	if idx := strings.Index(u.Path, marker); idx >= 0 {
 		rel := stripSizeSuffix(u.Path[idx+len(marker):])
 		pathHint = strings.TrimPrefix(rel, "/")
+	} else if idx := strings.Index(u.Path, "/wp-content/"); idx >= 0 {
+		rel := stripSizeSuffix(u.Path[idx+1:])
+		pathHint = strings.TrimPrefix(rel, "/")
 	}
 	return base, pathHint
+}
+
+func targetRelFromHint(pathHint, basename, format string) string {
+	base := basename
+	if base == "" && pathHint != "" {
+		base = path.Base(pathHint)
+	}
+	ext := strings.ToLower(path.Ext(base))
+	if strings.ToLower(format) == "svg" || ext == ".svg" {
+		if pathHint != "" {
+			return pathHint
+		}
+		if ext == ".svg" {
+			return base
+		}
+		return base + ".svg"
+	}
+	return webpRelFromHint(pathHint, basename)
 }
 
 func stripSizeSuffix(name string) string {

@@ -122,7 +122,7 @@ func discoverFromRobotsTxt(baseURL string, cfg config.ScanConfig) []string {
 			req.Header.Set(h.Key, h.Value)
 		}
 	}
-	req.Header.Set("User-Agent", "SpeedMap-SitemapParser/1.0")
+	req.Header.Set("User-Agent", cfg.GetUserAgent())
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -191,9 +191,7 @@ func fetchRecursive(rawURL string, cfg config.ScanConfig, visited *sync.Map, dep
 			}
 		}
 
-		if req.Header.Get("User-Agent") == "" {
-			req.Header.Set("User-Agent", "SpeedMap-SitemapParser/1.0")
-		}
+		req.Header.Set("User-Agent", cfg.GetUserAgent())
 
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{

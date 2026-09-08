@@ -84,14 +84,32 @@ function speedmap_path_hint_from_url( $url ) {
 	return ltrim( $rel, '/' );
 }
 
+function speedmap_guess_mime( $filename ) {
+	$ext = strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) );
+	switch ( $ext ) {
+		case 'webp': return 'image/webp';
+		case 'png':  return 'image/png';
+		case 'jpg':
+		case 'jpeg': return 'image/jpeg';
+		case 'gif':  return 'image/gif';
+		case 'svg':  return 'image/svg+xml';
+		default:     return 'image/' . $ext;
+	}
+}
+
 function speedmap_find_attachment_id( $basename, $path_hint ) {
 	global $wpdb;
-	$basename = speedmap_strip_size_suffix( basename( $basename ) );
-	$like     = '%' . $wpdb->esc_like( $basename );
-	$rows     = $wpdb->get_col(
+	$basename  = speedmap_strip_size_suffix( basename( $basename ) );
+	$stem      = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $basename );
+	$like_orig = '%' . $wpdb->esc_like( $basename );
+	$like_webp = '%' . $wpdb->esc_like( $stem . '.webp' );
+
+	// Match either the original raster filename (first apply) or already-converted .webp (re-apply)
+	$rows = $wpdb->get_col(
 		$wpdb->prepare(
-			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value LIKE %s",
-			$like
+			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND (meta_value LIKE %s OR meta_value LIKE %s)",
+			$like_orig,
+			$like_webp
 		)
 	);
 	if ( count( $rows ) == 1 ) {
@@ -99,13 +117,13 @@ function speedmap_find_attachment_id( $basename, $path_hint ) {
 	}
 	if ( $path_hint ) {
 		$hint_base = speedmap_strip_size_suffix( $path_hint );
+		$hint_stem = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $hint_base );
 		foreach ( $rows as $pid ) {
 			$file = get_post_meta( (int) $pid, '_wp_attached_file', true );
 			if ( $file && speedmap_strip_size_suffix( $file ) === $hint_base ) {
 				return (int) $pid;
 			}
 		}
-		$hint_stem = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $hint_base );
 		foreach ( $rows as $pid ) {
 			$file = get_post_meta( (int) $pid, '_wp_attached_file', true );
 			if ( ! $file ) {
@@ -120,11 +138,12 @@ function speedmap_find_attachment_id( $basename, $path_hint ) {
 	if ( count( $rows ) > 1 ) {
 		return 0;
 	}
-	$guid_like = '%' . $wpdb->esc_like( $basename );
-	$guid_ids  = $wpdb->get_col(
+
+	$guid_ids = $wpdb->get_col(
 		$wpdb->prepare(
-			"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND guid LIKE %s LIMIT 3",
-			$guid_like
+			"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND (guid LIKE %s OR guid LIKE %s) LIMIT 3",
+			$like_orig,
+			$like_webp
 		)
 	);
 	if ( count( $guid_ids ) == 1 ) {
@@ -151,7 +170,17 @@ function speedmap_replace_urls( $old_url, $new_url ) {
 function speedmap_copy_package_webp( $package_dir, $item, $dest_abs ) {
 	$rel = isset( $item['packageWebp'] ) ? ltrim( str_replace( '\\', '/', $item['packageWebp'] ), '/' ) : '';
 	if ( $rel === '' && ! empty( $item['id'] ) ) {
-		$rel = 'images/' . $item['id'] . '/optimized.webp';
+		$format = isset( $item['format'] ) ? strtolower( $item['format'] ) : '';
+		$opt_file = ( $format === 'svg' ) ? 'optimized.svg' : 'optimized.webp';
+		$rel = 'images/' . $item['id'] . '/' . $opt_file;
+		$full_src = trailingslashit( $package_dir ) . str_replace( '/', DIRECTORY_SEPARATOR, $rel );
+		if ( ! file_exists( $full_src ) ) {
+			$alt_file = ( $format === 'svg' ) ? 'optimized.webp' : 'optimized.svg';
+			$alt_rel  = 'images/' . $item['id'] . '/' . $alt_file;
+			if ( file_exists( trailingslashit( $package_dir ) . str_replace( '/', DIRECTORY_SEPARATOR, $alt_rel ) ) ) {
+				$rel = $alt_rel;
+			}
+		}
 	}
 	if ( $rel === '' ) {
 		return new WP_Error( 'speedmap_no_package', 'packageWebp missing in manifest' );
@@ -163,6 +192,13 @@ function speedmap_copy_package_webp( $package_dir, $item, $dest_abs ) {
 	$dir = dirname( $dest_abs );
 	if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
 		return new WP_Error( 'speedmap_mkdir', 'cannot create ' . $dir );
+	}
+	// For SVGs: backup existing file to .speedmap-orig if not already backed up
+	if ( file_exists( $dest_abs ) && preg_match( '/\.svg$/i', $dest_abs ) ) {
+		$orig_backup = $dest_abs . '.speedmap-orig';
+		if ( ! file_exists( $orig_backup ) ) {
+			@copy( $dest_abs, $orig_backup );
+		}
 	}
 	if ( ! copy( $src, $dest_abs ) ) {
 		return new WP_Error( 'speedmap_copy', 'copy failed: ' . $rel . ' → ' . $dest_abs );
@@ -182,6 +218,7 @@ function speedmap_resolve_item( $item, $uploads, $package_dir ) {
 		'webpRel'      => '',
 		'pathHint'     => '',
 		'basename'     => '',
+		'format'       => '',
 		'packageWebp'  => '',
 		'destAbs'      => '',
 		'copied'       => false,
@@ -196,33 +233,50 @@ function speedmap_resolve_item( $item, $uploads, $package_dir ) {
 	$path_hint = isset( $item['pathHint'] ) ? $item['pathHint'] : speedmap_path_hint_from_url( $source );
 	$basename  = isset( $item['basename'] ) ? $item['basename'] : basename( parse_url( $source, PHP_URL_PATH ) );
 	$basename  = speedmap_strip_size_suffix( $basename );
+	$format    = isset( $item['format'] ) ? strtolower( $item['format'] ) : '';
+	if ( ! $format ) {
+		$guessed = speedmap_guess_mime( $basename );
+		$format  = ( $guessed === 'image/svg+xml' ) ? 'svg' : str_replace( 'image/', '', $guessed );
+	}
 	$row['pathHint'] = $path_hint;
 	$row['basename'] = $basename;
+	$row['format']   = $format;
 
 	$webp_rel = isset( $item['webpRel'] ) ? ltrim( str_replace( '\\', '/', $item['webpRel'] ), '/' ) : '';
 	if ( $webp_rel === '' ) {
-		$name_no_ext = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $basename );
-		$rel_dir     = $path_hint ? trailingslashit( dirname( $path_hint ) ) : '';
-		if ( $rel_dir === './' || $rel_dir === '/' ) {
-			$rel_dir = '';
+		if ( $format === 'svg' ) {
+			$webp_rel = $path_hint ? $path_hint : $basename;
+		} else {
+			$name_no_ext = preg_replace( '/\.[a-zA-Z0-9]+$/', '', $basename );
+			$rel_dir     = $path_hint ? trailingslashit( dirname( $path_hint ) ) : '';
+			if ( $rel_dir === './' || $rel_dir === '/' ) {
+				$rel_dir = '';
+			}
+			$webp_rel = $rel_dir . $name_no_ext . '.webp';
 		}
-		$webp_rel = $rel_dir . $name_no_ext . '.webp';
 	}
 
-	$dest_abs = trailingslashit( $uploads['basedir'] ) . $webp_rel;
+	if ( strpos( $webp_rel, 'wp-content/' ) === 0 ) {
+		$wp_root  = dirname( $uploads['basedir'], 2 );
+		$dest_abs = trailingslashit( $wp_root ) . $webp_rel;
+		$new_url  = trailingslashit( dirname( $uploads['baseurl'], 2 ) ) . $webp_rel;
+	} else {
+		$dest_abs = trailingslashit( $uploads['basedir'] ) . $webp_rel;
+		$new_url  = trailingslashit( $uploads['baseurl'] ) . $webp_rel;
+	}
 	$row['webpRel'] = $webp_rel;
 	$row['destAbs'] = $dest_abs;
-	$row['newUrl']  = trailingslashit( $uploads['baseurl'] ) . $webp_rel;
+	$row['newUrl']  = $new_url;
 	$row['oldUrl']  = $source;
 
 	$copy = speedmap_copy_package_webp( $package_dir, $item, $dest_abs );
 	if ( is_wp_error( $copy ) ) {
-		// Allow re-run if webp already sits in uploads from a prior apply.
+		// Allow re-run if webp/svg already sits in destination from a prior apply.
 		if ( ! file_exists( $dest_abs ) ) {
 			$row['reason'] = $copy->get_error_message();
 			return $row;
 		}
-		$row['reason'] = 'package copy skipped; existing uploads webp kept';
+		$row['reason'] = 'package copy skipped; existing destination file kept';
 	} else {
 		$row['packageWebp'] = $copy;
 		$row['copied']      = true;
@@ -260,12 +314,29 @@ foreach ( $SPEEDMAP_MANIFEST['images'] as $item ) {
 	if ( $row['status'] !== 'pending' || ! $row['attachmentId'] ) {
 		continue;
 	}
-	$att_id            = $row['attachmentId'];
+	$att_id                = $row['attachmentId'];
+	$current_attached_file = get_post_meta( $att_id, '_wp_attached_file', true );
+	$current_mime          = get_post_mime_type( $att_id );
+
+	// Determine true original raster to preserve in backup (so rollback always restores the original raster)
+	$orig_attached_file = $current_attached_file;
+	$orig_mime          = $current_mime;
+	$orig_url           = $row['oldUrl'];
+
+	if ( preg_match( '/\.webp$/i', $current_attached_file ) ) {
+		// Target is already WebP (re-apply scenario). Check if original raster exists on disk
+		if ( ! empty( $row['pathHint'] ) && file_exists( trailingslashit( $uploads['basedir'] ) . $row['pathHint'] ) ) {
+			$orig_attached_file = $row['pathHint'];
+			$orig_mime          = speedmap_guess_mime( $row['pathHint'] );
+			$orig_url           = trailingslashit( $uploads['baseurl'] ) . $row['pathHint'];
+		}
+	}
+
 	$backup['items'][] = array(
 		'attachmentId'      => $att_id,
-		'oldAttachedFile'   => get_post_meta( $att_id, '_wp_attached_file', true ),
-		'oldMime'           => get_post_mime_type( $att_id ),
-		'oldUrl'            => $row['oldUrl'],
+		'oldAttachedFile'   => $orig_attached_file,
+		'oldMime'           => $orig_mime,
+		'oldUrl'            => $orig_url,
 		'newUrl'            => $row['newUrl'],
 		'webpRel'           => $row['webpRel'],
 		'title'             => get_the_title( $att_id ),
@@ -296,10 +367,11 @@ foreach ( $resolved as $row ) {
 
 	if ( $att_id ) {
 		update_post_meta( $att_id, '_wp_attached_file', $webp_rel );
+		$mime_type = ( isset( $row['format'] ) && $row['format'] === 'svg' ) ? 'image/svg+xml' : 'image/webp';
 		wp_update_post(
 			array(
 				'ID'             => $att_id,
-				'post_mime_type' => 'image/webp',
+				'post_mime_type' => $mime_type,
 			)
 		);
 
@@ -309,9 +381,21 @@ foreach ( $resolved as $row ) {
 			wp_update_attachment_metadata( $att_id, $meta );
 		}
 
-		if ( ! empty( $row['oldUrl'] ) ) {
+		// 1) Replace manifest source URL if different (e.g. production domain URL)
+		if ( ! empty( $row['sourceUrl'] ) && $row['sourceUrl'] !== $new_url ) {
+			speedmap_replace_urls( $row['sourceUrl'], $new_url );
+		}
+		// 2) Replace oldUrl if different
+		if ( ! empty( $row['oldUrl'] ) && $row['oldUrl'] !== $new_url ) {
 			speedmap_replace_urls( $row['oldUrl'], $new_url );
-			$old_path = wp_parse_url( $row['oldUrl'], PHP_URL_PATH );
+		}
+		// 3) Replace local uploads path (seamlessly handles staging and relative domains)
+		if ( ! empty( $row['pathHint'] ) ) {
+			$local_old_url = trailingslashit( $uploads['baseurl'] ) . $row['pathHint'];
+			if ( $local_old_url !== $new_url ) {
+				speedmap_replace_urls( $local_old_url, $new_url );
+			}
+			$old_path = wp_parse_url( $local_old_url, PHP_URL_PATH );
 			$new_path = wp_parse_url( $new_url, PHP_URL_PATH );
 			if ( $old_path && $new_path && $old_path !== $new_path ) {
 				speedmap_replace_urls( $old_path, $new_path );

@@ -2,6 +2,8 @@ package optimizer
 
 import (
 	"bytes"
+	"encoding/base64"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -9,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -596,6 +599,86 @@ func TestConvertImageBytesTuned(t *testing.T) {
 		t.Errorf("expected 50x50, got %dx%d", resResize.OptimizedWidth, resResize.OptimizedHeight)
 	}
 }
+
+func TestDetectAndConvertTrojanSVG(t *testing.T) {
+	// 1. Create a 200x200 dummy PNG to embed
+	img := image.NewRGBA(image.Rect(0, 0, 200, 200))
+	for x := 0; x < 200; x++ {
+		for y := 0; y < 200; y++ {
+			img.Set(x, y, color.RGBA{R: uint8(x % 256), G: uint8(y % 256), B: 120, A: 255})
+		}
+	}
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, img); err != nil {
+		t.Fatalf("failed to encode png: %v", err)
+	}
+	pngB64 := base64.StdEncoding.EncodeToString(pngBuf.Bytes())
+
+	// 2. Wrap into Trojan SVG
+	trojanSVG := fmt.Sprintf(`<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+		<image width="200" height="200" xlink:href="data:image/png;base64,%s" />
+	</svg>`, pngB64)
+	svgBytes := []byte(trojanSVG)
+
+	// 3. Test DetectTrojanSVG
+	info, isTrojan := DetectTrojanSVG(svgBytes)
+	if !isTrojan || info == nil {
+		t.Fatalf("expected DetectTrojanSVG to detect trojan SVG, got isTrojan=%v", isTrojan)
+	}
+	if info.Format != "png" {
+		t.Errorf("expected format png, got %s", info.Format)
+	}
+	if info.NaturalWidth != 200 || info.NaturalHeight != 200 {
+		t.Errorf("expected 200x200, got %dx%d", info.NaturalWidth, info.NaturalHeight)
+	}
+
+	// 4. Test pure vector SVG (not a Trojan)
+	pureVector := `<svg width="100" height="100"><circle cx="50" cy="50" r="40" fill="red" /></svg>`
+	_, isPureTrojan := DetectTrojanSVG([]byte(pureVector))
+	if isPureTrojan {
+		t.Errorf("pure vector SVG should not be detected as Trojan")
+	}
+
+	pureRes, err := ConvertImageBytesTuned("https://example.com/vector.svg", []byte(pureVector), ImageTuneOptions{Quality: 80})
+	if err != nil {
+		t.Fatalf("expected ConvertImageBytesTuned to succeed on pure vector SVG, got err: %v", err)
+	}
+	if !strings.HasPrefix(pureRes.OptimizedWebPBase64, "data:image/svg+xml") {
+		t.Errorf("expected pure vector SVG to retain svg data url, got %s", pureRes.OptimizedWebPBase64[:30])
+	}
+	if pureRes.OptimizedBytes > pureRes.OriginalBytes {
+		t.Errorf("expected optimized bytes (%d) <= original bytes (%d)", pureRes.OptimizedBytes, pureRes.OriginalBytes)
+	}
+	if pureRes.Filename != "vector.svg" {
+		t.Errorf("expected vector.svg filename, got %s", pureRes.Filename)
+	}
+	if pureRes.OriginalWidth != 100 || pureRes.OriginalHeight != 100 {
+		t.Errorf("expected 100x100 dimensions, got %dx%d", pureRes.OriginalWidth, pureRes.OriginalHeight)
+	}
+
+	// 5. Test ConvertImageBytesTuned on Trojan SVG
+	res, err := ConvertImageBytesTuned("https://example.com/icon.svg", svgBytes, ImageTuneOptions{
+		Quality: 80,
+		MaxW:    100,
+		MaxH:    100,
+	})
+	if err != nil {
+		t.Fatalf("ConvertImageBytesTuned failed on Trojan SVG: %v", err)
+	}
+	if res.Filename != "icon.webp" {
+		t.Errorf("expected filename icon.webp, got %s", res.Filename)
+	}
+	if res.OptimizedWidth != 100 || res.OptimizedHeight != 100 {
+		t.Errorf("expected downscaled 100x100, got %dx%d", res.OptimizedWidth, res.OptimizedHeight)
+	}
+	if res.OriginalBytes != int64(len(svgBytes)) {
+		t.Errorf("expected OriginalBytes=%d, got %d", len(svgBytes), res.OriginalBytes)
+	}
+	if res.OptimizedBytes >= res.OriginalBytes {
+		t.Errorf("expected OptimizedBytes (%d) < OriginalBytes (%d)", res.OptimizedBytes, res.OriginalBytes)
+	}
+}
+
 
 
 

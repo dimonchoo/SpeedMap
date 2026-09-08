@@ -80,9 +80,15 @@ func TestBuildApplyPHP(t *testing.T) {
 	if strings.Contains(php, "download_url") || strings.Contains(php, "speedmap_convert_to_webp") {
 		t.Fatalf("PHP must be DB-only (no download/convert)")
 	}
+	if !strings.Contains(php, "like_webp") || !strings.Contains(php, "speedmap_guess_mime") {
+		t.Fatalf("expected idempotent stem and mime detection in apply PHP")
+	}
 	rb := BuildRollbackPHP("/var/www/site")
 	if !strings.Contains(rb, "speedmap-webp-backup") || !strings.Contains(rb, "--path=/var/www/site") {
 		t.Fatalf("rollback template incomplete")
+	}
+	if !strings.Contains(rb, "manifest.json") || !strings.Contains(rb, "speedmap_rollback_replace_urls") {
+		t.Fatalf("expected manifest fallback and url replace in rollback PHP")
 	}
 }
 
@@ -119,6 +125,20 @@ func TestPreferOriginalURL(t *testing.T) {
 	want := "https://ex.com/wp-content/uploads/2026/07/hero-8.png"
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestCollectHeavyImagesTrojanSVG(t *testing.T) {
+	images := []analytics.AggregatedImage{
+		{URL: "https://example.com/wp-content/uploads/icon.svg", Format: "svg", IsHeavy: true, MaxTransferSize: 5000000},
+		{URL: "https://example.com/wp-content/uploads/small.svg", Format: "svg", IsHeavy: false, MaxTransferSize: 5000},
+	}
+	collected := CollectHeavyImages(images)
+	if len(collected) != 1 {
+		t.Fatalf("expected 1 heavy SVG candidate, got %d", len(collected))
+	}
+	if collected[0].Basename != "icon.svg" || collected[0].WebpRel != "icon.webp" {
+		t.Errorf("unexpected collected manifest image: %+v", collected[0])
 	}
 }
 
@@ -485,6 +505,75 @@ func TestConvertHeavyImagesWithOverrides(t *testing.T) {
 	}
 	if !foundTuned {
 		t.Errorf("tuned image not found in results")
+	}
+}
+
+func TestPureVectorSVGExportPackage(t *testing.T) {
+	svgContent := `<?xml version="1.0" encoding="utf-8"?>
+<!-- Sample Adobe Illustrator Comment -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <symbol id="logo" viewBox="0 0 50 50">
+    <path d="M10.12345 10.78901 L40.55555 40.66666" />
+  </symbol>
+</svg>`
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		_, _ = w.Write([]byte(svgContent))
+	}))
+	defer ts.Close()
+
+	images := []ManifestImage{
+		{
+			ID:        "001",
+			SourceURL: ts.URL + "/assets/icon.svg",
+			PathHint:  "wp-content/themes/theme/assets/icon.svg",
+			Basename:  "icon.svg",
+			Format:    "svg",
+			IsHeavy:   true,
+			Bytes:     int64(len(svgContent)),
+		},
+	}
+
+	written, err := ConvertHeavyImagesWithProgressAndOverrides(
+		images,
+		80, 70, false, 0, false, false,
+		"", "",
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("conversion failed: %v", err)
+	}
+	if len(written) != 1 {
+		t.Fatalf("expected 1 written image, got %d", len(written))
+	}
+	wImg := written[0]
+	if !strings.HasSuffix(wImg.WebpRel, ".svg") {
+		t.Errorf("expected WebpRel to end with .svg, got %s", wImg.WebpRel)
+	}
+
+	tmpDir := t.TempDir()
+	pkgDir := filepath.Join(tmpDir, "speedmap-test-pkg")
+	res, err := WriteDeployPackage(pkgDir, "example.com", config.ScanConfig{}, written)
+	if err != nil {
+		t.Fatalf("WriteDeployPackage failed: %v", err)
+	}
+	if res == nil {
+		t.Fatalf("expected non-nil ExportResult")
+	}
+
+	// Verify images/001/optimized.svg exists
+	optSVGPath := filepath.Join(pkgDir, "images", "001", "optimized.svg")
+	data, err := os.ReadFile(optSVGPath)
+	if err != nil {
+		t.Fatalf("expected optimized.svg to exist: %v", err)
+	}
+	if !strings.Contains(string(data), "logo") {
+		t.Errorf("expected symbol 'logo' preserved in optimized.svg")
+	}
+	if strings.Contains(string(data), "Adobe Illustrator") {
+		t.Errorf("expected comments stripped in optimized.svg")
 	}
 }
 

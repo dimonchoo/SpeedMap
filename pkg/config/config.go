@@ -1,9 +1,16 @@
 package config
 
+import "strings"
+
 type CustomHeader struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
+
+const (
+	DefaultDesktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SpeedMap/1.0"
+	DefaultMobileUserAgent  = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 SpeedMap/1.0"
+)
 
 type ScanConfig struct {
 	SitemapURL            string         `json:"sitemapUrl"`
@@ -15,6 +22,7 @@ type ScanConfig struct {
 	GifWebPRatio          int            `json:"gifWebPRatio"`          // % of original, default 50 (50% savings)
 	AuthUser              string         `json:"authUser"`
 	AuthPass              string         `json:"authPass"`
+	UserAgent             string         `json:"userAgent"`             // Global User-Agent for all modules (scanner, sitemap, optimizer, validator)
 	Headers               []CustomHeader `json:"headers"`
 	IsMobile              bool           `json:"isMobile"`
 	AutoScroll            bool           `json:"autoScroll"` // Disabled by default
@@ -178,4 +186,23 @@ func (c *ScanConfig) GetExcludedImagePatterns() []string {
 		"stats.wp.com",
 		"/pagead/",
 	}
+}
+
+// GetUserAgent returns the configured User-Agent string.
+// If UserAgent is explicitly set, it returns that string.
+// Otherwise, it checks if a "User-Agent" header was provided in custom headers.
+// If still empty, it falls back to the default Chrome UA for Mobile or Desktop.
+func (c *ScanConfig) GetUserAgent() string {
+	if strings.TrimSpace(c.UserAgent) != "" {
+		return strings.TrimSpace(c.UserAgent)
+	}
+	for _, h := range c.Headers {
+		if strings.EqualFold(strings.TrimSpace(h.Key), "user-agent") && strings.TrimSpace(h.Value) != "" {
+			return strings.TrimSpace(h.Value)
+		}
+	}
+	if c.IsMobile {
+		return DefaultMobileUserAgent
+	}
+	return DefaultDesktopUserAgent
 }

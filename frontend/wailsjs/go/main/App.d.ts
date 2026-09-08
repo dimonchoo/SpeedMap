@@ -26,9 +26,15 @@ export function DisconnectGDrive():Promise<void>;
 
 export function DownloadOptimizedWebPZIP(arg1:Array<string>,arg2:config.ScanConfig):Promise<string>;
 
+export function DownloadOriginalImage(arg1:string,arg2:config.ScanConfig):Promise<string>;
+
 export function DownloadSingleWebPImage(arg1:string,arg2:config.ScanConfig):Promise<string>;
 
 export function DownloadSingleWebPTuned(arg1:string,arg2:optimizer.ImageTuneOptions,arg3:config.ScanConfig):Promise<string>;
+
+export function ExportDOMVirtualizationCSS(arg1:string,arg2:string):Promise<string>;
+
+export function ExportDOMVirtualizationPHP(arg1:string,arg2:string):Promise<string>;
 
 export function ExportFontsCSV(arg1:string):Promise<string>;
 

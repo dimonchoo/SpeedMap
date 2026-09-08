@@ -34,7 +34,8 @@ new Promise(async (resolve) => {
             fonts: [],
             iframes: [],
             forms: [],
-            categories: {}
+            categories: {},
+            domVirtualization: null
         }
     };
 
@@ -396,7 +397,7 @@ new Promise(async (resolve) => {
         });
 
         // E. Extract CSS background images from inline styles and <style> tags
-        const bgRegex = /url\(\s*['"]?([^'")]+?\.(?:png|jpg|jpeg|webp|avif|gif|bmp))['"]?\s*\)/gi;
+        const bgRegex = /url\(\s*['"]?([^'")]+?\.(?:png|jpg|jpeg|webp|avif|gif|bmp|svg))['"]?\s*\)/gi;
         document.querySelectorAll('[style*="url"], [data-bg], [data-background], [data-bg-url]').forEach(el => {
             const styleAttr = el.getAttribute('style') || '';
             const dataBg = el.getAttribute('data-bg') || el.getAttribute('data-background') || el.getAttribute('data-bg-url') || '';
@@ -469,7 +470,7 @@ new Promise(async (resolve) => {
                            el.getAttribute('data-image') || el.getAttribute('data-img') || el.getAttribute('data-thumb') ||
                            el.getAttribute('data-slide') || el.getAttribute('data-slide-bg') || el.getAttribute('data-original-src') ||
                            el.getAttribute('data-lazy');
-            if (rawUrl && !rawUrl.startsWith('data:') && /\.(?:png|jpg|jpeg|webp|avif|gif|bmp)(\?.*)?$/i.test(rawUrl)) {
+            if (rawUrl && !rawUrl.startsWith('data:') && /\.(?:png|jpg|jpeg|webp|avif|gif|bmp|svg)(\?.*)?$/i.test(rawUrl)) {
                 try {
                     const fullUrl = new URL(rawUrl, document.baseURI).href;
                     if (!imageMap.has(fullUrl)) {
@@ -492,6 +493,38 @@ new Promise(async (resolve) => {
                         });
                     }
                 } catch(e) {}
+            }
+        });
+
+        // G. Extract SVG <use> sprite references
+        document.querySelectorAll('svg use').forEach(use => {
+            const href = use.getAttribute('href') || use.getAttribute('xlink:href') || '';
+            if (href.includes('.svg')) {
+                const cleanHref = href.split('#')[0].trim();
+                if (cleanHref && !cleanHref.startsWith('data:')) {
+                    try {
+                        const fullUrl = new URL(cleanHref, document.baseURI).href;
+                        if (!imageMap.has(fullUrl)) {
+                            imageMap.set(fullUrl, {
+                                url: fullUrl,
+                                transferSize: 0,
+                                encodedSize: 0,
+                                duration: 0,
+                                width: 0,
+                                height: 0,
+                                naturalWidth: 0,
+                                naturalHeight: 0,
+                                renderedWidth: 0,
+                                renderedHeight: 0,
+                                formattedSize: '0 B',
+                                format: 'svg',
+                                isLazy: true,
+                                alt: '',
+                                isLCP: false
+                            });
+                        }
+                    } catch(e) {}
+                }
             }
         });
 
@@ -798,6 +831,113 @@ new Promise(async (resolve) => {
         });
 
         data.diagnostics.forms = formList;
+    } catch(e) {}
+
+    // 8. DOM Virtualization (content-visibility) Candidate Detection
+    try {
+        const vh = window.innerHeight || 800;
+        const totalDomCount = document.querySelectorAll('*').length;
+        const candidates = [];
+        const seenElements = new Set();
+
+        const containers = Array.from(document.querySelectorAll('main > section, main > div, body > section, article, footer, aside, .container, [class*="section"], [class*="block"], [id*="section"]'));
+
+        containers.forEach(el => {
+            if (!el || el.nodeType !== 1) return;
+
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return;
+
+            // Exclude above-the-fold elements (protect initial paint / LCP / FCP)
+            const topOffset = rect.top + window.scrollY;
+            if (topOffset < 650 || rect.bottom <= 0) return;
+
+            // Skip if parent is already selected
+            let parentAlreadyCandidate = false;
+            for (const parent of seenElements) {
+                if (parent.contains(el)) {
+                    parentAlreadyCandidate = true;
+                    break;
+                }
+            }
+            if (parentAlreadyCandidate) return;
+
+            // Must have meaningful DOM weight (>= 15 elements)
+            const domNodes = el.querySelectorAll('*').length;
+            if (domNodes < 15) return;
+
+            let isOptimized = false;
+            try {
+                const comp = window.getComputedStyle(el);
+                isOptimized = (comp.contentVisibility === 'auto');
+            } catch(err) {}
+
+            let sel = '';
+            if (el.id) {
+                sel = '#' + el.id;
+            } else if (el.tagName.toLowerCase() === 'footer') {
+                const cls = el.className && typeof el.className === 'string' ? el.className.trim().split(/\s+/)[0] : '';
+                sel = cls ? 'footer.' + cls : 'footer';
+            } else if (el.className && typeof el.className === 'string') {
+                const parts = el.className.trim().split(/\s+/).filter(c => c && !c.startsWith('js-') && !c.startsWith('is-') && !c.includes(':'));
+                if (parts.length > 0) {
+                    const tag = el.tagName.toLowerCase();
+                    sel = (tag !== 'div' ? tag : '') + '.' + parts[0];
+                }
+            }
+            if (!sel) {
+                sel = el.tagName.toLowerCase();
+            }
+
+            seenElements.add(el);
+            candidates.push({
+                selector: sel,
+                tagName: el.tagName.toLowerCase(),
+                domNodes: domNodes,
+                estimatedHeight: Math.round(rect.height || 500),
+                topOffset: Math.round(topOffset),
+                isOptimized: isOptimized,
+                imagesCount: el.querySelectorAll('img, svg, picture').length
+            });
+        });
+
+        candidates.sort((a, b) => b.domNodes - a.domNodes);
+
+        const unoptimized = candidates.filter(c => !c.isOptimized);
+        const unoptimizedNodes = unoptimized.reduce((acc, c) => acc + c.domNodes, 0);
+        const deferredPct = totalDomCount > 0 ? Math.round((unoptimizedNodes / totalDomCount) * 1000) / 10 : 0;
+
+        let genCSS = '';
+        let genPHP = '';
+        if (unoptimized.length > 0) {
+            const selectors = unoptimized.map(c => c.selector).join(',\n');
+            genCSS = '/* SpeedMap DOM Virtualization: content-visibility for heavy below-the-fold blocks */\n' +
+                selectors + ' {\n' +
+                '    content-visibility: auto;\n' +
+                '    contain-intrinsic-size: auto 600px;\n' +
+                '}';
+
+            genPHP = 'add_action(\'wp_head\', function() {\n' +
+                '    ?>\n' +
+                '    <style id="speedmap-dom-virtualization">\n' +
+                '    ' + selectors.replace(/\n/g, '\n    ') + ' {\n' +
+                '        content-visibility: auto;\n' +
+                '        contain-intrinsic-size: auto 600px;\n' +
+                '    }\n' +
+                '    </style>\n' +
+                '    <?php\n' +
+                '}, 1);';
+        }
+
+        data.diagnostics.domVirtualization = {
+            totalDomNodes: totalDomCount,
+            candidates: candidates,
+            unoptimizedCount: unoptimized.length,
+            potentialDeferredNodes: unoptimizedNodes,
+            deferredPercentage: deferredPct,
+            generatedCss: genCSS,
+            generatedPhp: genPHP
+        };
     } catch(e) {}
 
     // 1.0s observation window

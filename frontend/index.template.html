@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="uk" class="dark h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpeedMap - Core Web Vitals Sitemap Scanner</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Wails JS Runtime -->
+  <script src="/wails/ipc.js"></script>
+  <script src="/wails/runtime.js"></script>
+
+  <!-- Application State & Logic -->
+  <script src="/src/app.js"></script>
+
+  <!-- Alpine.js CDN -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <style>
+    /* macOS Native Wails Draggable Window Header */
+    .wails-drag {
+      --wails-draggable: drag;
+    }
+    .wails-no-drag,
+    .wails-drag button,
+    .wails-drag input,
+    .wails-drag select,
+    .wails-drag a,
+    .wails-drag [role="button"],
+    .wails-drag nav,
+    .wails-drag label {
+      --wails-draggable: no-drag;
+    }
+
+    /* Silk-smooth horizontal fade out to the right */
+    .mask-fade-right {
+      mask-image: linear-gradient(to right, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%);
+      -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%);
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    @keyframes pokemon-march {
+      0% { transform: translateX(380px); }
+      100% { transform: translateX(-560px); }
+    }
+
+    .pokemon-sprint-track {
+      display: flex;
+      align-items: flex-end;
+      position: absolute;
+      bottom: 2px;
+      white-space: nowrap;
+      animation: pokemon-march 4.5s linear infinite;
+      will-change: transform;
+    }
+
+    .pokemon-sprite {
+      image-rendering: pixelated;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+      -webkit-user-drag: none;
+      user-drag: none;
+      user-select: none;
+      -webkit-user-select: none;
+      pointer-events: auto;
+    }
+
+    .pokemon-btn {
+      background: transparent;
+      border: none;
+      padding: 0;
+      margin: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: flex-end;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+      --wails-draggable: no-drag;
+    }
+
+    .pokemon-btn:hover .pokemon-sprite {
+      transform: translateY(-6px) scale(1.25);
+    }
+
+    .pokemon-btn:focus-visible {
+      outline: 2px solid #38bdf8;
+      border-radius: 6px;
+    }
+
+    .pokemon-sprint-track:hover {
+      animation-play-state: paused;
+    }
+
+    .ground-line {
+      background: linear-gradient(90deg, #10b981 0%, #059669 50%, #047857 100%);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+    }
+
+    @keyframes sunburst {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .anime-bg {
+      background: radial-gradient(circle at 50% 50%, #1e3a8a 0%, #0f172a 70%, #020617 100%);
+    }
+
+    .sunburst-rays {
+      position: absolute;
+      inset: -50%;
+      background: repeating-conic-gradient(
+        from 0deg,
+        rgba(59, 130, 246, 0.15) 0deg 15deg,
+        transparent 15deg 30deg
+      );
+      animation: sunburst 30s linear infinite;
+    }
+
+    .poke-silhouette {
+      filter: brightness(0) drop-shadow(0 0 12px rgba(56, 189, 248, 0.9));
+    }
+
+    .poke-revealed {
+      filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.7));
+      animation: pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes pop-in {
+      0% { transform: scale(0.7) rotate(-6deg); filter: brightness(2.5); }
+      50% { filter: brightness(1.8); }
+      100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.7)); }
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 h-full font-sans antialiased selection:bg-emerald-500 selection:text-white" x-data="speedMapApp()" x-init="initApp()">
+
+  <div class="flex flex-col h-screen overflow-hidden relative">
+    
+
+    <!-- include: partials/layout/header.html -->
+
+    <!-- include: partials/layout/toast.html -->
+
+    <!-- Main Workspace Body -->
+    <main class="flex-1 flex overflow-hidden">
+
+      <!-- include: partials/layout/sidebar.html -->
+
+      <!-- Right Column: Switchable Views (Pages Table vs Site Analytics Dashboard) -->
+      <section class="flex-1 flex flex-col overflow-hidden bg-slate-900">
+        
+        <!-- include: partials/layout/progress-bar.html -->
+
+        <!-- include: partials/tabs/pages.html -->
+
+        <!-- include: partials/tabs/analytics.html -->
+
+        <!-- include: partials/tabs/images.html -->
+
+        <!-- include: partials/tabs/fonts.html -->
+
+        <!-- include: partials/tabs/iframes.html -->
+
+        <!-- include: partials/tabs/forms.html -->
+        
+      </section>
+
+    </main>
+
+    <!-- include: partials/modals/log-drawer.html -->
+
+    <!-- include: partials/modals/settings-modal.html -->
+
+    <!-- include: partials/modals/image-comparison.html -->
+
+    <!-- include: partials/modals/image-studio.html -->
+
+    <!-- include: partials/modals/page-detail.html -->
+
+    <!-- include: partials/modals/wp-export.html -->
+
+    <!-- include: partials/modals/wp-apply.html -->
+
+    <!-- include: partials/modals/profile-modal.html -->
+
+    <!-- include: partials/modals/form-detail.html -->
+
+    <!-- include: partials/modals/pokemon-modal.html -->
+
+  </div>
+</body>
+</html>

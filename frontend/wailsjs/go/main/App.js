@@ -34,12 +34,24 @@ export function DownloadOptimizedWebPZIP(arg1, arg2) {
   return window['go']['main']['App']['DownloadOptimizedWebPZIP'](arg1, arg2);
 }
 
+export function DownloadOriginalImage(arg1, arg2) {
+  return window['go']['main']['App']['DownloadOriginalImage'](arg1, arg2);
+}
+
 export function DownloadSingleWebPImage(arg1, arg2) {
   return window['go']['main']['App']['DownloadSingleWebPImage'](arg1, arg2);
 }
 
 export function DownloadSingleWebPTuned(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadSingleWebPTuned'](arg1, arg2, arg3);
+}
+
+export function ExportDOMVirtualizationCSS(arg1, arg2) {
+  return window['go']['main']['App']['ExportDOMVirtualizationCSS'](arg1, arg2);
+}
+
+export function ExportDOMVirtualizationPHP(arg1, arg2) {
+  return window['go']['main']['App']['ExportDOMVirtualizationPHP'](arg1, arg2);
 }
 
 export function ExportFontsCSV(arg1) {

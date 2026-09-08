@@ -260,6 +260,7 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 	}))
 
 	// Device Emulation (Mobile vs Desktop)
+	ua := s.cfg.GetUserAgent()
 	if s.cfg.IsMobile {
 		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
 			// 1. Mobile Viewport (375x812, DPR 3.0, mobile screen orientation)
@@ -269,8 +270,7 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 			_ = emulation.SetTouchEmulationEnabled(true).Do(ctx)
 
 			// 2. Mobile User Agent
-			mobileUA := "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 SpeedMap/1.0"
-			if err := emulation.SetUserAgentOverride(mobileUA).Do(ctx); err != nil {
+			if err := emulation.SetUserAgentOverride(ua).Do(ctx); err != nil {
 				return err
 			}
 
@@ -297,8 +297,7 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 			_ = emulation.SetTouchEmulationEnabled(false).Do(ctx)
 			_ = emulation.SetCPUThrottlingRate(1.0).Do(ctx)
 
-			desktopUA := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SpeedMap/1.0"
-			return emulation.SetUserAgentOverride(desktopUA).Do(ctx)
+			return emulation.SetUserAgentOverride(ua).Do(ctx)
 		}))
 	}
 
@@ -321,7 +320,14 @@ func (s *Scanner) scanWithContext(allocCtx context.Context, id int, rawURL strin
 				return fmt.Errorf("CDP evaluation error: %w", err)
 			}
 			if expObj != nil {
-				return fmt.Errorf("JS evaluation exception: %s", expObj.Text)
+				errMsg := expObj.Text
+				if expObj.Exception != nil && expObj.Exception.Description != "" {
+					errMsg += " - " + expObj.Exception.Description
+				}
+				if expObj.LineNumber > 0 {
+					errMsg += fmt.Sprintf(" (line %d:%d)", expObj.LineNumber, expObj.ColumnNumber)
+				}
+				return fmt.Errorf("JS evaluation exception: %s", errMsg)
 			}
 			if resObj == nil || resObj.Value == nil {
 				return fmt.Errorf("JS evaluation returned empty result")

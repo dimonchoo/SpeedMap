@@ -32,14 +32,25 @@ function speedMapApp() {
       gifWebPRatio: 50, // Default 50% of original (50% savings)
       authUser: '',
       authPass: '',
-      headers: [
-        { key: 'X-SpeedMap-Scanner', value: '1.0' }
-      ],
+      userAgent: '', // Global User-Agent (empty = use default Chrome SpeedMap/1.0)
+      headers: [],
       isMobile: true, // Default to Mobile Emulation as requested
       autoScroll: false, // Disabled by default as requested
       soundEnabled: true, // Audio notifications toggle
       systemNotifications: true, // Native OS notifications with SpeedMap icon
       timeoutSec: 30
+    },
+
+    defaultDesktopUA: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 SpeedMap/1.0',
+    defaultMobileUA: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 SpeedMap/1.0',
+    getActiveUserAgent() {
+      if (this.config.userAgent && this.config.userAgent.trim()) {
+        return this.config.userAgent.trim();
+      }
+      return this.config.isMobile ? this.defaultMobileUA : this.defaultDesktopUA;
+    },
+    resetUserAgent() {
+      this.config.userAgent = '';
     },
 
 
@@ -125,6 +136,7 @@ function speedMapApp() {
     runComparison: null,
     isComputingAnalytics: false,
     analyticsDirty: true,
+    domVirtTab: 'css', // 'css' | 'php'
 
     // Font Inspector Hub State
     fontSearchQuery: '',
@@ -562,6 +574,9 @@ function speedMapApp() {
           if (this.config.sitemapUrl && !this.sitemapInput) {
             this.sitemapInput = this.config.sitemapUrl;
           }
+          if (Array.isArray(this.config.headers)) {
+            this.config.headers = this.config.headers.filter(h => !(h.key === 'X-SpeedMap-Scanner' && h.value === '1.0'));
+          }
           console.log("[JS LOG] Loaded persistent config from localStorage:", this.config);
         }
       } catch (err) {
@@ -591,6 +606,19 @@ function speedMapApp() {
       this.checkGDriveStatus();
       this.addLog('info', 'SpeedMap додаток готовий до роботи.');
 
+      // Global link interceptor: guarantees ANY link clicked anywhere in app opens in external browser
+      document.addEventListener('click', (e) => {
+        const link = e.target.closest('a');
+        if (link && link.href) {
+          const href = link.getAttribute('href') || '';
+          if (href.startsWith('http://') || href.startsWith('https://') || link.target === '_blank') {
+            e.preventDefault();
+            e.stopPropagation();
+            this.openUrlInBrowser(link.href);
+          }
+        }
+      }, true);
+
       // Unlock WebAudio on first real click (needed for later scan-complete sounds)
       const unlockOnce = () => {
         this.unlockAudio();
@@ -599,13 +627,6 @@ function speedMapApp() {
       };
       window.addEventListener('pointerdown', unlockOnce, true);
       window.addEventListener('keydown', unlockOnce, true);
-
-      // Studio keyboard navigation & slider interaction
-      window.addEventListener('keydown', (e) => this.handleStudioKeydown(e));
-      window.addEventListener('keyup', (e) => this.handleStudioKeyup(e));
-      window.addEventListener('mousemove', (e) => this.onSplitMouseMove(e));
-      window.addEventListener('mouseup', () => this.stopSplitDrag());
-
 
       if (this.$watch) {
         this.$watch('pageSearchQuery', () => { this.pagesPage = 1; });
@@ -995,10 +1016,47 @@ function speedMapApp() {
     // Open URL in external default browser
     openUrlInBrowser(url) {
       if (!url) return;
+      const cleanUrl = String(url).trim();
+      if (!cleanUrl) return;
       if (window.go && window.go.main && window.go.main.App && window.go.main.App.OpenURL) {
-        window.go.main.App.OpenURL(url);
+        window.go.main.App.OpenURL(cleanUrl);
       } else {
-        window.open(url, '_blank');
+        window.open(cleanUrl, '_blank');
+      }
+    },
+
+    async copyToClipboard(text, msg = 'Посилання скопійовано') {
+      if (!text) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        this.showToast('success', 'Скопійовано 📋', msg);
+      } catch (e) {
+        console.error('Copy failed:', e);
+      }
+    },
+
+    async downloadOriginalImage(url) {
+      const targetUrl = url || (this.currentStudioImage && this.currentStudioImage.url);
+      if (!targetUrl) return;
+      this.showToast('info', 'Збереження файлу', 'Завантаження оригінального зображення...');
+      try {
+        if (window.go?.main?.App?.DownloadOriginalImage) {
+          const savedPath = await window.go.main.App.DownloadOriginalImage(targetUrl, this.config);
+          this.addLog('success', `🟢 Оригінальний файл збережено: ${savedPath}`);
+          this.showToast('success', 'Файл збережено 🟢', savedPath);
+        }
+      } catch (err) {
+        console.error('Failed to download original image:', err);
+        this.showToast('error', 'Помилка збереження файлу', err.message);
       }
     },
 
@@ -1109,6 +1167,8 @@ function speedMapApp() {
         list = list.filter(img => img.isHeavy);
       } else if (this.imageFilterTab === 'non-webp') {
         list = list.filter(img => img.format !== 'webp' && img.format !== 'avif' && img.format !== 'svg');
+      } else if (this.imageFilterTab === 'svg') {
+        list = list.filter(img => img.format === 'svg');
       } else if (this.imageFilterTab === 'missing-lazy') {
         list = list.filter(img => !img.isLazy && !img.isLCP);
       } else if (this.imageFilterTab === 'png') {
@@ -1541,6 +1601,48 @@ function speedMapApp() {
       this.showToast('success', 'JSON завантажено 🟢', 'Збережено у папочку Завантаження (~/Downloads)');
     },
 
+    async exportDOMVirtualizationCSS(cssContent, filename) {
+      if (!cssContent) {
+        this.showToast('warning', 'Немає даних', 'Селектори для оптимізації не знайдено.');
+        return;
+      }
+      try {
+        if (window.go?.main?.App?.ExportDOMVirtualizationCSS) {
+          const filePath = await window.go.main.App.ExportDOMVirtualizationCSS(cssContent, filename || 'speedmap-dom-virtualization.css');
+          if (filePath) {
+            this.showToast('success', 'CSS збережено 🟢', filePath);
+            this.addLog('success', `Експортовано CSS віртуалізації DOM: ${filePath}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Native CSS save fallback:", e);
+      }
+      this.downloadFileBlob(filename || 'speedmap-dom-virtualization.css', cssContent, 'text/css;charset=utf-8;');
+      this.showToast('success', 'CSS завантажено 🟢', 'Збережено на диск');
+    },
+
+    async exportDOMVirtualizationPHP(phpContent, filename) {
+      if (!phpContent) {
+        this.showToast('warning', 'Немає даних', 'Селектори для оптимізації не знайдено.');
+        return;
+      }
+      try {
+        if (window.go?.main?.App?.ExportDOMVirtualizationPHP) {
+          const filePath = await window.go.main.App.ExportDOMVirtualizationPHP(phpContent, filename || 'speedmap-dom-virtualization.php');
+          if (filePath) {
+            this.showToast('success', 'PHP хук збережено 🟢', filePath);
+            this.addLog('success', `Експортовано PHP хук (wp_head): ${filePath}`);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Native PHP save fallback:", e);
+      }
+      this.downloadFileBlob(filename || 'speedmap-dom-virtualization.php', phpContent, 'application/x-php;charset=utf-8;');
+      this.showToast('success', 'PHP завантажено 🟢', 'Збережено на диск');
+    },
+
     async exportIframesCSV() {
       if (!this.scanResults || this.scanResults.length === 0) {
         this.showToast('warning', 'Відсутні дані', 'Спочатку проскануйте сайт.');
@@ -1786,16 +1888,17 @@ function speedMapApp() {
     async downloadSingleWebP(url) {
       const targetUrl = url || (this.selectedImageComparison && this.selectedImageComparison.url);
       if (!targetUrl) return;
-      this.showToast('info', 'Збереження WebP', 'Завантаження та конвертація зображення...');
+      const isSvg = targetUrl.toLowerCase().split('?')[0].endsWith('.svg');
+      this.showToast('info', isSvg ? 'Збереження SVG' : 'Збереження WebP', 'Завантаження та обробка зображення...');
       try {
         if (window.go && window.go.main && window.go.main.App && window.go.main.App.DownloadSingleWebPImage) {
           const savedPath = await window.go.main.App.DownloadSingleWebPImage(targetUrl, this.config);
-          this.addLog('success', `🟢 WebP зображення збережено: ${savedPath}`);
+          this.addLog('success', `🟢 Зображення збережено: ${savedPath}`);
           this.showToast('success', 'Файл збережено 🟢', savedPath);
         }
       } catch (err) {
-        console.error('Failed to download single WebP:', err);
-        this.showToast('error', 'Помилка збереження WebP', err.message);
+        console.error('Failed to download single image:', err);
+        this.showToast('error', 'Помилка збереження', err.message);
       }
     },
 
@@ -2073,7 +2176,12 @@ function speedMapApp() {
     pokemonGame: {
       current: null,
       options: [],
-      isRevealed: false
+      isRevealed: false,
+      selectedOpt: null,
+      isCorrect: false,
+      score: 0,
+      streak: 0,
+      total: 0
     },
     pokedex: [
       { id: "pikachu", name: "Пікачу (Pikachu)", perk: "Блискавичний TTFB & LCP" },
@@ -2094,6 +2202,8 @@ function speedMapApp() {
 
     startPokemonRound(targetId) {
       this.pokemonGame.isRevealed = false;
+      this.pokemonGame.selectedOpt = null;
+      this.pokemonGame.isCorrect = false;
       let target = null;
       if (targetId) {
         target = this.pokedex.find(p => p.id === targetId);
@@ -2111,6 +2221,16 @@ function speedMapApp() {
     },
 
     guessPokemon(opt) {
+      if (this.pokemonGame.isRevealed) return;
+      this.pokemonGame.selectedOpt = opt;
+      this.pokemonGame.isCorrect = (opt.id === this.pokemonGame.current?.id);
+      this.pokemonGame.total++;
+      if (this.pokemonGame.isCorrect) {
+        this.pokemonGame.score++;
+        this.pokemonGame.streak++;
+      } else {
+        this.pokemonGame.streak = 0;
+      }
       this.pokemonGame.isRevealed = true;
       this.playPokemonCry();
     },
@@ -2463,6 +2583,12 @@ function speedMapApp() {
       this.imageStudio.isOpen = true;
       this.imageStudio.toggleShowOriginal = false;
       this.imageStudio.zoomMode = 'fit';
+
+      const curImg = this.currentStudioImage;
+      if (curImg && curImg.format === 'svg') {
+        this.imageStudio.viewMode = 'side';
+      }
+
       this.loadStudioCurrent();
     },
 
@@ -2480,6 +2606,10 @@ function speedMapApp() {
     studioPrevImage() {
       if (this.imageStudio.currentIndex > 0) {
         this.imageStudio.currentIndex--;
+        const cur = this.currentStudioImage;
+        if (cur && cur.format === 'svg' && this.imageStudio.viewMode === 'split') {
+          this.imageStudio.viewMode = 'side';
+        }
         this.loadStudioCurrent();
       }
     },
@@ -2487,6 +2617,10 @@ function speedMapApp() {
     studioNextImage() {
       if (this.imageStudio.currentIndex < this.imageStudioImages.length - 1) {
         this.imageStudio.currentIndex++;
+        const cur = this.currentStudioImage;
+        if (cur && cur.format === 'svg' && this.imageStudio.viewMode === 'split') {
+          this.imageStudio.viewMode = 'side';
+        }
         this.loadStudioCurrent();
       }
     },
@@ -2494,6 +2628,10 @@ function speedMapApp() {
     studioSelectImage(idx) {
       if (idx >= 0 && idx < this.imageStudioImages.length) {
         this.imageStudio.currentIndex = idx;
+        const cur = this.currentStudioImage;
+        if (cur && cur.format === 'svg' && this.imageStudio.viewMode === 'split') {
+          this.imageStudio.viewMode = 'side';
+        }
         this.loadStudioCurrent();
       }
     },
@@ -2509,7 +2647,7 @@ function speedMapApp() {
       this.imageStudio.isConverting = true;
       this.imageStudio._debounceTimer = setTimeout(() => {
         this.executeStudioConvert();
-      }, 120);
+      }, 80);
     },
 
     async executeStudioConvert() {
@@ -2518,6 +2656,9 @@ function speedMapApp() {
         this.imageStudio.isConverting = false;
         return;
       }
+
+      if (this.imageStudio._inFlight) return;
+      this.imageStudio._inFlight = true;
 
       const quality = this.currentStudioQuality;
       const lossless = this.currentStudioLossless;
@@ -2543,15 +2684,20 @@ function speedMapApp() {
       try {
         if (window.go?.main?.App?.TuneImagePreview) {
           const res = await window.go.main.App.TuneImagePreview(img.url, tuneOpts, this.config);
-          this.imageStudio.currentResult = res;
-          this.imageStudio.error = null;
+          if (this.currentStudioImage?.url === img.url) {
+            this.imageStudio.currentResult = res;
+            this.imageStudio.error = null;
+          }
         } else {
           throw new Error('TuneImagePreview IPC method not available');
         }
       } catch (err) {
         console.error('Studio preview error:', err);
-        this.imageStudio.error = err.message || 'Помилка генерації прев\'ю';
+        if (this.currentStudioImage?.url === img.url) {
+          this.imageStudio.error = err.message || 'Помилка генерації прев\'ю';
+        }
       } finally {
+        this.imageStudio._inFlight = false;
         this.imageStudio.isConverting = false;
       }
     },
@@ -2680,7 +2826,8 @@ function speedMapApp() {
       try {
         if (window.go?.main?.App?.DownloadSingleWebPTuned) {
           const savedPath = await window.go.main.App.DownloadSingleWebPTuned(img.url, tuneOpts, this.config);
-          this.showToast('success', 'WebP збережено', savedPath);
+          const isSvgSaved = (img.format === 'svg' && this.imageStudio.currentResult?.isSkipped);
+          this.showToast('success', isSvgSaved ? 'SVG збережено 🟢' : 'WebP збережено 🟢', savedPath);
         }
       } catch (err) {
         console.error('Download tuned webp error:', err);
@@ -2698,6 +2845,7 @@ function speedMapApp() {
       const container = document.getElementById('studio-split-container');
       if (!container) return;
       const rect = container.getBoundingClientRect();
+      if (!rect || rect.width <= 0) return;
       const clientX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : e.clientX;
       if (clientX === undefined) return;
       const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
