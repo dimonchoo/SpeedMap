@@ -153,6 +153,9 @@ type ConversionResult struct {
 	IsLossless          bool    `json:"isLossless"`
 	IsSkipped           bool    `json:"isSkipped"`
 	AdaptiveApplied     bool    `json:"adaptiveApplied"`
+	IsPaletted          bool    `json:"isPaletted,omitempty"`
+	PaletteColors       int     `json:"paletteColors,omitempty"`
+	DebandApplied       bool    `json:"debandApplied,omitempty"`
 	OriginalDataBase64  string  `json:"originalDataBase64"`
 	OptimizedWebPBase64 string  `json:"optimizedWebPBase64"`
 	Error               string  `json:"error"`

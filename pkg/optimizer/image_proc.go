@@ -155,6 +155,152 @@ func applyAntiBandingDither(src *image.RGBA) *image.RGBA {
 	return dithered
 }
 
+// applyGradientDeband reconstructs smooth color gradations in paletted or low-color images
+// by gently smoothing plateau boundaries while strictly preserving high-contrast edges and fine details.
+func applyGradientDeband(src *image.RGBA) *image.RGBA {
+	bounds := src.Bounds()
+	w := bounds.Dx()
+	h := bounds.Dy()
+	if w < 3 || h < 3 {
+		return src
+	}
+
+	out := image.NewRGBA(bounds)
+	stride := src.Stride
+
+	// 4x4 Bayer matrix for gentle micro-dithering across gradient plateaus
+	bayer := [4][4]float64{
+		{-1.0, 0.33, -0.66, 0.66},
+		{0.0, -1.33, 0.33, -1.0},
+		{-0.33, 1.0, -1.0, 0.33},
+		{0.66, -0.66, 0.0, -1.33},
+	}
+
+	clamp := func(v float64) uint8 {
+		if v < 0 {
+			return 0
+		}
+		if v > 255 {
+			return 255
+		}
+		return uint8(v + 0.5)
+	}
+
+	absDiff := func(a, b uint8) int {
+		if a > b {
+			return int(a - b)
+		}
+		return int(b - a)
+	}
+
+	for y := 0; y < h; y++ {
+		rowIdx := y * stride
+		bRow := bayer[y%4]
+
+		for x := 0; x < w; x++ {
+			idx := rowIdx + x*4
+			r0 := src.Pix[idx]
+			g0 := src.Pix[idx+1]
+			b0 := src.Pix[idx+2]
+			a0 := src.Pix[idx+3]
+
+			// Boundary or transparent pixels remain untouched
+			if a0 < 250 || x < 1 || x >= w-1 || y < 1 || y >= h-1 {
+				out.Pix[idx] = r0
+				out.Pix[idx+1] = g0
+				out.Pix[idx+2] = b0
+				out.Pix[idx+3] = a0
+				continue
+			}
+
+			// Check maximum channel delta with 4 immediate orthogonal neighbors
+			nIndices := [4]int{
+				idx - 4,
+				idx + 4,
+				idx - stride,
+				idx + stride,
+			}
+
+			maxDelta := 0
+			sumR := int(r0)
+			sumG := int(g0)
+			sumB := int(b0)
+			count := 1
+
+			for _, ni := range nIndices {
+				nr := src.Pix[ni]
+				ng := src.Pix[ni+1]
+				nb := src.Pix[ni+2]
+
+				dr := absDiff(r0, nr)
+				dg := absDiff(g0, ng)
+				db := absDiff(b0, nb)
+				d := dr
+				if dg > d {
+					d = dg
+				}
+				if db > d {
+					d = db
+				}
+				if d > maxDelta {
+					maxDelta = d
+				}
+
+				sumR += int(nr)
+				sumG += int(ng)
+				sumB += int(nb)
+				count++
+			}
+
+			// If maxDelta is small (<= 8), this is a flat/gradient region (e.g. sky, smooth background)
+			if maxDelta <= 8 {
+				// Also include 4 diagonal neighbors for 3x3 kernel smoothing
+				dIndices := [4]int{
+					idx - stride - 4,
+					idx - stride + 4,
+					idx + stride - 4,
+					idx + stride + 4,
+				}
+				isSmoothPatch := true
+				for _, di := range dIndices {
+					dr := absDiff(r0, src.Pix[di])
+					dg := absDiff(g0, src.Pix[di+1])
+					db := absDiff(b0, src.Pix[di+2])
+					if dr > 10 || dg > 10 || db > 10 {
+						isSmoothPatch = false
+						break
+					}
+					sumR += int(src.Pix[di])
+					sumG += int(src.Pix[di+1])
+					sumB += int(src.Pix[di+2])
+					count++
+				}
+
+				if isSmoothPatch {
+					avgR := float64(sumR) / float64(count)
+					avgG := float64(sumG) / float64(count)
+					avgB := float64(sumB) / float64(count)
+
+					dither := bRow[x%4]
+					out.Pix[idx] = clamp(avgR + dither)
+					out.Pix[idx+1] = clamp(avgG + dither)
+					out.Pix[idx+2] = clamp(avgB + dither)
+					out.Pix[idx+3] = a0
+					continue
+				}
+			}
+
+			// Edge / texture detail: preserve exact original pixels
+			out.Pix[idx] = r0
+			out.Pix[idx+1] = g0
+			out.Pix[idx+2] = b0
+			out.Pix[idx+3] = a0
+		}
+	}
+
+	return out
+}
+
 // toStraightRGBA converts any decoded image into *image.RGBA with STRAIGHT (unpremultiplied) RGBA bytes,
 // avoiding Go's color.RGBAModel premultiplication bug from crushing anti-aliased edge colors to dark/black in libwebp C-API.
 func toStraightRGBA(m image.Image) *image.RGBA {

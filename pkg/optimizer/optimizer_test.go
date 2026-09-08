@@ -679,6 +679,43 @@ func TestDetectAndConvertTrojanSVG(t *testing.T) {
 	}
 }
 
+func TestPalettedImageAndDeband(t *testing.T) {
+	palette := color.Palette{
+		color.RGBA{10, 20, 30, 255},
+		color.RGBA{12, 22, 32, 255},
+		color.RGBA{14, 24, 34, 255},
+		color.RGBA{16, 26, 36, 255},
+	}
+	palImg := image.NewPaletted(image.Rect(0, 0, 100, 100), palette)
+	for y := 0; y < 100; y++ {
+		for x := 0; x < 100; x++ {
+			palImg.SetColorIndex(x, y, uint8(y/25))
+		}
+	}
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, palImg); err != nil {
+		t.Fatalf("failed to encode paletted png: %v", err)
+	}
+
+	res, err := ConvertImageBytesTuned("https://example.com/palette.png", pngBuf.Bytes(), ImageTuneOptions{
+		Quality: 90,
+		Deband:  true,
+	})
+	if err != nil {
+		t.Fatalf("ConvertImageBytesTuned failed: %v", err)
+	}
+	if !res.IsPaletted {
+		t.Errorf("expected IsPaletted=true, got false")
+	}
+	if res.PaletteColors != 4 {
+		t.Errorf("expected PaletteColors=4, got %d", res.PaletteColors)
+	}
+	if !res.DebandApplied {
+		t.Errorf("expected DebandApplied=true, got false")
+	}
+}
+
+
 
 
 

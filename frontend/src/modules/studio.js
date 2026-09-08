@@ -43,11 +43,12 @@ export function createStudioModule() {
       const q = this.currentStudioQuality;
       const l = !!this.currentStudioLossless;
       const d = !!this.currentStudioDither;
+      const db = !!this.currentStudioDeband;
       const r = !!this.currentStudioRetina;
       const o = this.currentStudioOverride;
       const maxW = r ? (o.maxW || 0) : 0;
       const maxH = r ? (o.maxH || 0) : 0;
-      return `${url}|q:${q}|l:${l}|d:${d}|r:${r}|w:${maxW}|h:${maxH}`;
+      return `${url}|q:${q}|l:${l}|d:${d}|db:${db}|r:${r}|w:${maxW}|h:${maxH}`;
     },
 
     get imageStudioImages() {
@@ -112,6 +113,14 @@ export function createStudioModule() {
         return override.dither;
       }
       return true;
+    },
+
+    get currentStudioDeband() {
+      const override = this.currentStudioOverride;
+      if (override.deband !== undefined) {
+        return !!override.deband;
+      }
+      return false;
     },
 
     get currentStudioRetina() {
@@ -338,7 +347,8 @@ export function createStudioModule() {
         exact: false,
         maxW: parseInt(maxW) || 0,
         maxH: parseInt(maxH) || 0,
-        dither: !!dither
+        dither: !!dither,
+        deband: !!this.currentStudioDeband
       };
 
       try {
@@ -419,6 +429,20 @@ export function createStudioModule() {
       this.triggerStudioConvert();
     },
 
+    toggleStudioDeband() {
+      const img = this.currentStudioImage;
+      if (!img || !img.url) return;
+      const cur = this.imageStudio.overrides[img.url] || {};
+      this.imageStudio.overrides = {
+        ...this.imageStudio.overrides,
+        [img.url]: {
+          ...cur,
+          deband: !this.currentStudioDeband
+        }
+      };
+      this.triggerStudioConvert();
+    },
+
     toggleStudioRetina() {
       const img = this.currentStudioImage;
       if (!img || !img.url) return;
@@ -490,7 +514,8 @@ export function createStudioModule() {
         exact: false,
         maxW: parseInt(maxW) || 0,
         maxH: parseInt(maxH) || 0,
-        dither: !!dither
+        dither: !!dither,
+        deband: !!this.currentStudioDeband
       };
 
       try {
@@ -656,7 +681,8 @@ export function createStudioModule() {
         exact: false,
         maxW: parseInt(maxW) || 0,
         maxH: parseInt(maxH) || 0,
-        dither: !!d
+        dither: !!d,
+        deband: !!this.currentStudioDeband
       };
 
       try {

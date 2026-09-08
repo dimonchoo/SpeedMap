@@ -88,6 +88,7 @@ type ImageTuneOptions struct {
 	MaxW       int     `json:"maxW"`       // downscale max width (0 = maintain orig)
 	MaxH       int     `json:"maxH"`       // downscale max height (0 = maintain orig)
 	Dither     bool    `json:"dither"`     // apply anti-banding Bayer dither on lossy
+	Deband     bool    `json:"deband"`     // smooth out harsh palette/gradient contour steps
 }
 
 // ConvertImageBytesTuned converts in-memory raw image bytes directly to WebP using exact tuned options.

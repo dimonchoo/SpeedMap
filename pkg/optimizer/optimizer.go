@@ -201,6 +201,13 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 		return nil, fmt.Errorf("failed to decode image (format %s): %w", formatName, err)
 	}
 
+	isPaletted := false
+	paletteColors := 0
+	if paletted, ok := img.(*image.Paletted); ok {
+		isPaletted = true
+		paletteColors = len(paletted.Palette)
+	}
+
 	origBounds := img.Bounds()
 	origW := origBounds.Dx()
 	origH := origBounds.Dy()
@@ -422,6 +429,8 @@ func ConvertImageURLToWebPAdaptiveBudgetAuthResizeMinQuality(rawURL string, qual
 		IsLossless:          isLossless,
 		IsSkipped:           isSkipped,
 		AdaptiveApplied:     adaptiveApplied,
+		IsPaletted:          isPaletted,
+		PaletteColors:       paletteColors,
 		OriginalDataBase64:  origBase64,
 		OptimizedWebPBase64: webpBase64,
 	}, nil
@@ -481,6 +490,13 @@ func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptio
 		return nil, fmt.Errorf("failed to decode image (format %s): %w", formatName, err)
 	}
 
+	isPaletted := false
+	paletteColors := 0
+	if paletted, ok := img.(*image.Paletted); ok {
+		isPaletted = true
+		paletteColors = len(paletted.Palette)
+	}
+
 	origBounds := img.Bounds()
 	origW := origBounds.Dx()
 	origH := origBounds.Dy()
@@ -497,7 +513,11 @@ func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptio
 	optW := optBounds.Dx()
 	optH := optBounds.Dy()
 
-	if opts.Dither && !opts.Lossless {
+	debandApplied := false
+	if opts.Deband && !opts.Lossless {
+		rawImg = applyGradientDeband(rawImg)
+		debandApplied = true
+	} else if opts.Dither && !opts.Lossless {
 		rawImg = applyAntiBandingDither(rawImg)
 	}
 
@@ -575,6 +595,9 @@ func ConvertImageBytesTuned(rawURL string, origBytes []byte, opts ImageTuneOptio
 		IsLossless:          opts.Lossless,
 		IsSkipped:           false,
 		AdaptiveApplied:     false,
+		IsPaletted:          isPaletted,
+		PaletteColors:       paletteColors,
+		DebandApplied:       debandApplied,
 		OriginalDataBase64:  origBase64,
 		OptimizedWebPBase64: webpBase64,
 	}, nil

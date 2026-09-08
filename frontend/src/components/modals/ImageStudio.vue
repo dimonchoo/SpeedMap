@@ -105,6 +105,12 @@
             <template v-if="!currentStudioSkip && isCurrentStudioOverridden">
               <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-950/60 text-purple-300 border border-purple-800 shrink-0 hidden md:inline">Кастом</span>
             </template>
+            <template v-if="imageStudio.currentResult?.isPaletted">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-950/70 text-amber-300 border border-amber-700/80 shrink-0 hidden lg:inline"
+                :title="'Оригінал має індексовану палітру з ' + imageStudio.currentResult.paletteColors + ' кольорів'">
+                Палітра (<span v-text="imageStudio.currentResult.paletteColors"></span>)
+              </span>
+            </template>
           </div>
         </div>
 
@@ -252,6 +258,36 @@
         <!-- CANVAS: Visual Comparator -->
         <div class="flex-1 min-w-0 flex flex-col bg-slate-950 overflow-hidden relative">
           
+          <!-- Paletted Image Notice Banner -->
+          <div v-if="imageStudio.currentResult?.isPaletted && !currentStudioLossless && !currentStudioSkip"
+            class="bg-amber-950/85 border-b border-amber-700/60 px-4 py-2 flex flex-wrap items-center justify-between text-xs font-mono shrink-0 gap-2 shadow-sm z-10">
+            <div class="flex items-center space-x-2 text-amber-200 min-w-0">
+              <span class="text-amber-400 font-bold shrink-0">💡 Обмежена палітра:</span>
+              <span class="font-sans text-amber-200/90 text-xs">
+                Оригінал має лише <strong class="font-mono text-amber-100" v-text="imageStudio.currentResult.paletteColors"></strong> кольорів (Indexed PNG). Lossy WebP руйнує дизеринг і створює смуги на небі/фоні.
+              </span>
+            </div>
+            <div class="flex items-center space-x-2 shrink-0">
+              <button @click="toggleStudioDeband()"
+                :class="currentStudioDeband ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'bg-slate-800 text-amber-300 hover:bg-slate-700 border border-amber-600/50'"
+                class="px-2.5 py-1 rounded-lg text-xs transition flex items-center space-x-1"
+                title="Увімкнути згладжування перепадів палітри">
+                <span v-if="currentStudioDeband">✓ Deband увімкнено</span>
+                <span v-else>Згладити (Deband)</span>
+              </button>
+              <button @click="setStudioLossless(true)"
+                class="px-2.5 py-1 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-xs transition shadow"
+                title="Перемкнути на 100% точний Lossless (рекомендовано для ідеальної якості)">
+                Lossless (100% якість)
+              </button>
+              <button @click="toggleStudioSkip()"
+                class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition border border-slate-700"
+                title="Не оптимізувати цей файл, залишити оригінал">
+                Пропустити
+              </button>
+            </div>
+          </div>
+
           <!-- Top Hint Banner for Toggle Mode -->
           <div v-show="imageStudio.viewMode === 'toggle'"
             class="bg-slate-900/90 border-b border-slate-800/80 px-4 py-2 flex items-center justify-between text-xs font-mono shrink-0">
@@ -762,8 +798,30 @@
 
                 <!-- Section 5: Gradient Enhancements -->
                 <div class="space-y-3 pt-2 border-t border-slate-800">
-                  <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Градієнти та Деталі</div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Градієнти та Деталі</span>
+                    <template v-if="imageStudio.currentResult?.isPaletted">
+                      <span class="text-[10px] font-mono font-bold text-amber-400 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-800/60">
+                        Палітра: <span v-text="imageStudio.currentResult.paletteColors"></span> кол.
+                      </span>
+                    </template>
+                  </div>
 
+                  <!-- Deband Toggle -->
+                  <label class="flex items-start space-x-2.5 cursor-pointer select-none p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition"
+                    :class="currentStudioDeband ? 'border-amber-500/50 bg-amber-950/20' : ''">
+                    <input type="checkbox" :checked="currentStudioDeband" @change="toggleStudioDeband()"
+                      class="mt-0.5 rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer">
+                    <div class="text-slate-300 text-xs">
+                      <div class="font-medium flex items-center space-x-1.5">
+                        <span>Згладжування градієнтів (Deband)</span>
+                        <span v-if="imageStudio.currentResult?.isPaletted" class="text-[9px] bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded font-bold">Рекомендовано</span>
+                      </div>
+                      <div class="text-[10px] text-slate-400 mt-0.5">Усуває різкі смуги та сходинки (banding) на небі та фонах палітри</div>
+                    </div>
+                  </label>
+
+                  <!-- Dither Toggle -->
                   <label class="flex items-start space-x-2.5 cursor-pointer select-none p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 transition">
                     <input type="checkbox" :checked="currentStudioDither" @change="toggleStudioDither()"
                       class="mt-0.5 rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0 focus:ring-offset-0 w-4 h-4 cursor-pointer">
