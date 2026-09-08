@@ -26,6 +26,18 @@ export function createStudioModule() {
       overrides: {}
     },
 
+    // Package Tuning Context (Post-export tuning mode)
+    packageContext: {
+      active: false,
+      packageDir: '',
+      manifestPath: '',
+      domain: '',
+      images: [],
+      modifiedIds: [],
+      searchQuery: '',
+      isLoading: false
+    },
+
     getStudioCacheKey(url) {
       if (!url) return '';
       const q = this.currentStudioQuality;
@@ -39,6 +51,18 @@ export function createStudioModule() {
     },
 
     get imageStudioImages() {
+      if (this.packageContext?.active) {
+        let list = this.packageContext.images || [];
+        const q = (this.packageContext.searchQuery || '').toLowerCase().trim();
+        if (q) {
+          list = list.filter(img =>
+            (img.basename && img.basename.toLowerCase().includes(q)) ||
+            (img.url && img.url.toLowerCase().includes(q)) ||
+            (img.id && img.id.toLowerCase().includes(q))
+          );
+        }
+        return list;
+      }
       if (this.filteredImages && this.filteredImages.length > 0) {
         return this.filteredImages;
       }
@@ -63,6 +87,10 @@ export function createStudioModule() {
       if (override.quality !== undefined && override.quality > 0) {
         return override.quality;
       }
+      const img = this.currentStudioImage;
+      if (this.packageContext?.active && img?.quality && img.quality > 0) {
+        return img.quality;
+      }
       return this.config.webpQuality || 80;
     },
 
@@ -72,6 +100,9 @@ export function createStudioModule() {
         return override.lossless;
       }
       const img = this.currentStudioImage;
+      if (this.packageContext?.active && img?.isLossless !== undefined) {
+        return !!img.isLossless;
+      }
       return img ? (img.format === 'png' && !img.isHeavy) : false;
     },
 
@@ -484,6 +515,16 @@ export function createStudioModule() {
       const tag = e.target.tagName ? e.target.tagName.toLowerCase() : '';
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
 
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (this.packageContext?.active) {
+          this.saveCurrentToPackage();
+        } else {
+          this.downloadCurrentStudioWebP();
+        }
+        return;
+      }
+
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
         this.studioPrevImage();
@@ -520,7 +561,137 @@ export function createStudioModule() {
       if (this.currentStudioImage?.url && e?.target && e.target.src !== this.currentStudioImage.url) {
         e.target.src = this.currentStudioImage.url;
       }
+    },
+
+    async openExportPackageInStudio(targetDir) {
+      try {
+        let dir = targetDir;
+        if (!dir) {
+          if (window.go?.main?.App?.SelectDirectory) {
+            dir = await window.go.main.App.SelectDirectory("Виберіть папку експорту SpeedMap (speedmap-webp-...)");
+          }
+        }
+        if (!dir) return;
+
+        this.packageContext.isLoading = true;
+        this.showToast?.('info', 'Завантаження пакету', 'Зчитуємо manifest.json...');
+
+        if (window.go?.main?.App?.LoadExportPackageForStudio) {
+          const pkg = await window.go.main.App.LoadExportPackageForStudio(dir);
+          if (!pkg || !pkg.images || pkg.images.length === 0) {
+            throw new Error('У вказаній папці не знайдено зображень або некоректний manifest.json');
+          }
+
+          this.packageContext.active = true;
+          this.packageContext.packageDir = pkg.packageDir;
+          this.packageContext.manifestPath = pkg.manifestPath;
+          this.packageContext.domain = pkg.domain;
+          this.packageContext.images = pkg.images;
+          this.packageContext.modifiedIds = [];
+          this.packageContext.searchQuery = '';
+
+          this.imageStudio.isOpen = true;
+          this.imageStudio.currentIndex = 0;
+          this.imageStudio._cache = {};
+          this.studioSelectImage(0);
+
+          const pkgName = pkg.packageDir.split('/').pop() || pkg.packageDir;
+          this.showToast?.('success', 'Пакет відкрито 📦', `${pkg.count} зображень завантажено (${pkgName})`);
+          this.addLog?.('success', `📦 Відкрито пакет для коригування: ${pkg.packageDir} (${pkg.count} зображень)`);
+        } else {
+          throw new Error('LoadExportPackageForStudio IPC method not available');
+        }
+      } catch (err) {
+        console.error('Failed to open export package:', err);
+        this.showToast?.('error', 'Помилка відкриття пакету', err.message);
+        this.addLog?.('error', `Помилка відкриття пакету: ${err.message}`);
+      } finally {
+        this.packageContext.isLoading = false;
+      }
+    },
+
+    closePackageStudioContext() {
+      this.packageContext.active = false;
+      this.packageContext.packageDir = '';
+      this.packageContext.images = [];
+      this.packageContext.searchQuery = '';
+      this.imageStudio._cache = {};
+      this.studioSelectImage(0);
+      this.showToast?.('info', 'Режим пакету закрито', 'Повернуто до перегляду зображень поточного скану');
+    },
+
+    async saveCurrentToPackage() {
+      const img = this.currentStudioImage;
+      if (!this.packageContext.active || !img || !img.id) {
+        return;
+      }
+
+      const q = this.currentStudioQuality;
+      const l = this.currentStudioLossless;
+      const d = this.currentStudioDither;
+      const r = this.currentStudioRetina;
+      const o = this.currentStudioOverride;
+      const maxW = r ? (o.maxW || img.recommendedRetinaWidth || (img.maxRenderedWidth ? img.maxRenderedWidth * 2 : 0) || 0) : 0;
+      const maxH = r ? (o.maxH || img.recommendedRetinaHeight || (img.maxRenderedHeight ? img.maxRenderedHeight * 2 : 0) || 0) : 0;
+
+      const tuneOpts = {
+        quality: parseFloat(q),
+        lossless: !!l,
+        exact: false,
+        maxW: parseInt(maxW) || 0,
+        maxH: parseInt(maxH) || 0,
+        dither: !!d
+      };
+
+      try {
+        this.showToast?.('info', 'Збереження в пакет', `Оновлюємо images/${img.id}/optimized.webp...`);
+        if (window.go?.main?.App?.SaveTunedImageToPackage) {
+          const res = await window.go.main.App.SaveTunedImageToPackage(
+            this.packageContext.packageDir,
+            img.id,
+            img.url,
+            tuneOpts,
+            this.config
+          );
+
+          // Update local image object
+          img.optimizedBytes = res.optimizedBytes;
+          img.optimizedFormatted = res.optimizedFormatted;
+          img.savingsPercent = res.savingsPercent;
+          img.optimizedWidth = res.optimizedWidth;
+          img.optimizedHeight = res.optimizedHeight;
+          img.quality = tuneOpts.quality;
+          img.isLossless = tuneOpts.lossless;
+          img.isModified = true;
+
+          if (!this.packageContext.modifiedIds.includes(img.id)) {
+            this.packageContext.modifiedIds.push(img.id);
+          }
+
+          this.showToast?.('success', `Файл #${img.id} збережено 🟢`, `${img.basename} оновлено в пакеті (${res.optimizedFormatted}, ${res.savingsPercent.toFixed(1)}% економія)`);
+          this.addLog?.('success', `🟢 Оновлено в пакеті: images/${img.id}/optimized.webp (${img.basename}) - ${res.optimizedFormatted}`);
+        } else {
+          throw new Error('SaveTunedImageToPackage IPC method not available');
+        }
+      } catch (err) {
+        console.error('Failed to save to package:', err);
+        this.showToast?.('error', 'Помилка збереження в пакет', err.message);
+        this.addLog?.('error', `Помилка збереження в пакет: ${err.message}`);
+      }
+    },
+
+    async openPackageCompareHTML() {
+      if (!this.packageContext.active || !this.packageContext.packageDir) return;
+      try {
+        if (window.go?.main?.App?.OpenPackageCompareHTML) {
+          await window.go.main.App.OpenPackageCompareHTML(this.packageContext.packageDir);
+        }
+      } catch (err) {
+        console.error('Failed to open compare.html:', err);
+        this.showToast?.('error', 'Помилка відкриття звіту', err.message);
+      }
     }
   };
 }
+
 

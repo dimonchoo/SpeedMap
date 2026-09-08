@@ -64,6 +64,10 @@ export function GetGDriveStatus():Promise<Record<string, any>>;
 
 export function ListSiteProfiles():Promise<Array<profiles.SiteProfile>>;
 
+export function LoadExportPackageForStudio(arg1:string):Promise<wpexport.PackageStudioContext>;
+
+export function OpenPackageCompareHTML(arg1:string):Promise<void>;
+
 export function OpenURL(arg1:string):Promise<void>;
 
 export function ParseSitemap(arg1:string,arg2:config.ScanConfig):Promise<Array<string>>;
@@ -81,6 +85,8 @@ export function RevealInFinder(arg1:string):Promise<void>;
 export function SaveGDriveCredentials(arg1:string,arg2:string):Promise<void>;
 
 export function SaveSiteProfile(arg1:profiles.SiteProfile):Promise<profiles.SiteProfile>;
+
+export function SaveTunedImageToPackage(arg1:string,arg2:string,arg3:string,arg4:optimizer.ImageTuneOptions,arg5:config.ScanConfig):Promise<wpexport.TunedSaveResult>;
 
 export function SelectDirectory(arg1:string):Promise<string>;
 

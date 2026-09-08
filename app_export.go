@@ -13,6 +13,7 @@ import (
 
 	"SpeedMap/pkg/analytics"
 	"SpeedMap/pkg/config"
+	"SpeedMap/pkg/optimizer"
 	"SpeedMap/pkg/scanner"
 	"SpeedMap/pkg/wpexport"
 
@@ -382,3 +383,22 @@ func (a *App) SelectDirectory(title string) (string, error) {
 	}
 	return dir, nil
 }
+
+// LoadExportPackageForStudio loads an existing export package for fine-tuning in Image Studio
+func (a *App) LoadExportPackageForStudio(dirOrManifest string) (*wpexport.PackageStudioContext, error) {
+	fmt.Printf("[GO LOG] LoadExportPackageForStudio called for: %s\n", dirOrManifest)
+	return wpexport.LoadPackageForStudio(dirOrManifest)
+}
+
+// SaveTunedImageToPackage fine-tunes and overwrites an image inside an export package, updating manifest.json & compare.html
+func (a *App) SaveTunedImageToPackage(packageDir string, imageID string, rawURL string, opts optimizer.ImageTuneOptions, cfg config.ScanConfig) (*wpexport.TunedSaveResult, error) {
+	fmt.Printf("[GO LOG] SaveTunedImageToPackage called for image #%s (%s) in package %s\n", imageID, rawURL, packageDir)
+	return wpexport.SaveTunedImageToPackage(packageDir, imageID, rawURL, opts, cfg)
+}
+
+// OpenPackageCompareHTML opens compare.html from the export package in default browser
+func (a *App) OpenPackageCompareHTML(dirOrManifest string) error {
+	fmt.Printf("[GO LOG] OpenPackageCompareHTML called for: %s\n", dirOrManifest)
+	return wpexport.OpenPackageCompareHTML(dirOrManifest)
+}
+

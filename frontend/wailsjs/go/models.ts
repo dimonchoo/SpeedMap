@@ -1523,6 +1523,139 @@ export namespace wpexport {
 	        this.wordpressPath = source["wordpressPath"];
 	    }
 	}
+	export class StudioPackageImageItem {
+	    id: string;
+	    url: string;
+	    sourceUrl: string;
+	    basename: string;
+	    format: string;
+	    pathHint: string;
+	    webpRel: string;
+	    pages: string[];
+	    naturalWidth: number;
+	    naturalHeight: number;
+	    optimizedWidth: number;
+	    optimizedHeight: number;
+	    maxRenderedWidth: number;
+	    maxRenderedHeight: number;
+	    recommendedRetinaWidth: number;
+	    recommendedRetinaHeight: number;
+	    originalBytes: number;
+	    optimizedBytes: number;
+	    bytes: number;
+	    formattedBytes: string;
+	    originalFormatted: string;
+	    optimizedFormatted: string;
+	    savingsPercent: number;
+	    optimizedPath: string;
+	    localWebPAbsPath: string;
+	    isHeavy: boolean;
+	    isModified: boolean;
+	    quality?: number;
+	    isLossless?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StudioPackageImageItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.url = source["url"];
+	        this.sourceUrl = source["sourceUrl"];
+	        this.basename = source["basename"];
+	        this.format = source["format"];
+	        this.pathHint = source["pathHint"];
+	        this.webpRel = source["webpRel"];
+	        this.pages = source["pages"];
+	        this.naturalWidth = source["naturalWidth"];
+	        this.naturalHeight = source["naturalHeight"];
+	        this.optimizedWidth = source["optimizedWidth"];
+	        this.optimizedHeight = source["optimizedHeight"];
+	        this.maxRenderedWidth = source["maxRenderedWidth"];
+	        this.maxRenderedHeight = source["maxRenderedHeight"];
+	        this.recommendedRetinaWidth = source["recommendedRetinaWidth"];
+	        this.recommendedRetinaHeight = source["recommendedRetinaHeight"];
+	        this.originalBytes = source["originalBytes"];
+	        this.optimizedBytes = source["optimizedBytes"];
+	        this.bytes = source["bytes"];
+	        this.formattedBytes = source["formattedBytes"];
+	        this.originalFormatted = source["originalFormatted"];
+	        this.optimizedFormatted = source["optimizedFormatted"];
+	        this.savingsPercent = source["savingsPercent"];
+	        this.optimizedPath = source["optimizedPath"];
+	        this.localWebPAbsPath = source["localWebPAbsPath"];
+	        this.isHeavy = source["isHeavy"];
+	        this.isModified = source["isModified"];
+	        this.quality = source["quality"];
+	        this.isLossless = source["isLossless"];
+	    }
+	}
+	export class PackageStudioContext {
+	    packageDir: string;
+	    manifestPath: string;
+	    domain: string;
+	    generated: string;
+	    count: number;
+	    images: StudioPackageImageItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PackageStudioContext(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.packageDir = source["packageDir"];
+	        this.manifestPath = source["manifestPath"];
+	        this.domain = source["domain"];
+	        this.generated = source["generated"];
+	        this.count = source["count"];
+	        this.images = this.convertValues(source["images"], StudioPackageImageItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class TunedSaveResult {
+	    id: string;
+	    optimizedBytes: number;
+	    optimizedFormatted: string;
+	    savingsPercent: number;
+	    optimizedWidth: number;
+	    optimizedHeight: number;
+	    savedPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TunedSaveResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.optimizedBytes = source["optimizedBytes"];
+	        this.optimizedFormatted = source["optimizedFormatted"];
+	        this.savingsPercent = source["savingsPercent"];
+	        this.optimizedWidth = source["optimizedWidth"];
+	        this.optimizedHeight = source["optimizedHeight"];
+	        this.savedPath = source["savedPath"];
+	    }
+	}
 
 }
 

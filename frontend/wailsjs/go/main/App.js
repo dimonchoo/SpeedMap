@@ -110,6 +110,14 @@ export function ListSiteProfiles() {
   return window['go']['main']['App']['ListSiteProfiles']();
 }
 
+export function LoadExportPackageForStudio(arg1) {
+  return window['go']['main']['App']['LoadExportPackageForStudio'](arg1);
+}
+
+export function OpenPackageCompareHTML(arg1) {
+  return window['go']['main']['App']['OpenPackageCompareHTML'](arg1);
+}
+
 export function OpenURL(arg1) {
   return window['go']['main']['App']['OpenURL'](arg1);
 }
@@ -144,6 +152,10 @@ export function SaveGDriveCredentials(arg1, arg2) {
 
 export function SaveSiteProfile(arg1) {
   return window['go']['main']['App']['SaveSiteProfile'](arg1);
+}
+
+export function SaveTunedImageToPackage(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SaveTunedImageToPackage'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function SelectDirectory(arg1) {

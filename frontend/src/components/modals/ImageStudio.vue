@@ -33,6 +33,35 @@
           </div>
 
           <div class="truncate flex items-center space-x-2">
+            <!-- Package Mode Badge -->
+            <template v-if="packageContext?.active">
+              <div class="flex items-center space-x-1.5 px-2 py-0.5 rounded-lg bg-fuchsia-950/80 border border-fuchsia-700/60 text-fuchsia-300 text-[11px] font-mono shrink-0">
+                <svg class="w-3 h-3 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                </svg>
+                <span class="font-bold">ПАКЕТ</span>
+                <button @click="closePackageStudioContext()" class="hover:text-white ml-1 text-slate-400" title="Вийти з режиму пакету до скану">✕</button>
+              </div>
+
+              <!-- Search in Package -->
+              <div class="relative flex items-center">
+                <input type="text"
+                  v-model="packageContext.searchQuery"
+                  @input="studioSelectImage(0)"
+                  placeholder="🔍 Пошук #ID чи назви..."
+                  class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-200 placeholder-slate-500 font-mono w-36 focus:w-48 transition-all outline-none focus:border-fuchsia-500">
+                <button v-if="packageContext.searchQuery" @click="packageContext.searchQuery = ''; studioSelectImage(0)" class="absolute right-1.5 text-slate-400 hover:text-white text-[10px]">✕</button>
+              </div>
+
+              <!-- Open compare.html -->
+              <button @click="openPackageCompareHTML()"
+                class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px] font-mono flex items-center space-x-1 transition shrink-0"
+                title="Відкрити compare.html у браузері">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                <span>compare.html</span>
+              </button>
+            </template>
+
             <span class="text-sm font-bold text-amber-400 font-mono truncate" v-text="currentStudioImage?.basename || 'image'"></span>
             
             <button type="button" @click.stop="openUrlInBrowser(currentStudioImage?.url)"
@@ -46,6 +75,12 @@
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
 
+            <template v-if="currentStudioImage?.isModified || packageContext?.modifiedIds?.includes(currentStudioImage?.id)">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/80 text-emerald-300 border border-emerald-700 shadow-sm flex items-center space-x-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>Оновлено в пакеті</span>
+              </span>
+            </template>
             <template v-if="currentStudioImage?.format === 'svg'">
               <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-950/60 text-purple-300 border border-purple-800">Векторний SVG</span>
             </template>
@@ -178,14 +213,27 @@
             </template>
           </button>
 
-          <button @click="downloadCurrentStudioWebP()" :disabled="!imageStudio.currentResult"
-            class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow"
-            :title="(currentStudioImage?.format === 'svg' && imageStudio.currentResult?.isSkipped) ? 'Зберегти векторний SVG' : 'Завантажити WebP'">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-            </svg>
-            <span v-text="(currentStudioImage?.format === 'svg' && imageStudio.currentResult?.isSkipped) ? 'SVG' : 'WebP'"></span>
-          </button>
+          <template v-if="packageContext?.active">
+            <button @click="saveCurrentToPackage()" :disabled="!imageStudio.currentResult"
+              class="bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow-lg ring-1 ring-fuchsia-400/50"
+              title="Зберегти та оновити файл прямо в пакеті (Cmd+S / Ctrl+S)">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+              </svg>
+              <span>Зберегти в пакет</span>
+              <span class="text-[10px] opacity-80 font-mono hidden sm:inline">[⌘S]</span>
+            </button>
+          </template>
+          <template v-else>
+            <button @click="downloadCurrentStudioWebP()" :disabled="!imageStudio.currentResult"
+              class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow"
+              :title="(currentStudioImage?.format === 'svg' && imageStudio.currentResult?.isSkipped) ? 'Зберегти векторний SVG' : 'Завантажити WebP'">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              <span v-text="(currentStudioImage?.format === 'svg' && imageStudio.currentResult?.isSkipped) ? 'SVG' : 'WebP'"></span>
+            </button>
+          </template>
 
           <button @click="downloadOriginalImage(currentStudioImage?.url)"
             class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs px-2.5 py-1.5 rounded-xl transition flex items-center space-x-1 border border-slate-700 shadow"
@@ -744,13 +792,32 @@
               </button>
             </template>
 
-            <button @click="downloadCurrentStudioWebP()"
-              class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition text-center shadow flex items-center justify-center space-x-2">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-              </svg>
-              <span v-text="(currentStudioImage?.format === 'svg' && imageStudio.currentResult?.isSkipped) ? 'Завантажити цей SVG' : 'Завантажити цей WebP'"></span>
-            </button>
+            <template v-if="packageContext?.active">
+              <button @click="saveCurrentToPackage()"
+                class="w-full py-2.5 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-xl transition text-center shadow flex items-center justify-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+                </svg>
+                <span>Оновити в пакеті (⌘S)</span>
+              </button>
+              <button @click="openPackageCompareHTML()"
+                class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-medium rounded-xl transition text-center border border-slate-700 text-xs flex items-center justify-center space-x-2">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                <span>Відкрити compare.html</span>
+              </button>
+            </template>
+            <template v-else>
+              <button @click="downloadCurrentStudioWebP()"
+                class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition text-center shadow flex items-center justify-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                <span v-text="(currentStudioImage?.format === 'svg' && imageStudio.currentResult?.isSkipped) ? 'Завантажити цей SVG' : 'Завантажити цей WebP'"></span>
+              </button>
+            </template>
             <button @click="downloadOriginalImage(currentStudioImage?.url)"
               class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl transition text-center border border-slate-700 text-xs flex items-center justify-center space-x-2">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -781,10 +848,13 @@
               <span class="truncate text-slate-300 font-bold" v-text="img.basename"></span>
               
               <!-- Status indicator -->
-              <template v-if="imageStudio.overrides[img.url]?.skip">
+              <template v-if="img.isModified || packageContext?.modifiedIds?.includes(img.id)">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block shrink-0 ring-1 ring-emerald-300" title="Оновлено в пакеті"></span>
+              </template>
+              <template v-else-if="imageStudio.overrides[img.url]?.skip">
                 <span class="w-2 h-2 rounded-full bg-rose-500 inline-block shrink-0" title="Пропущено"></span>
               </template>
-              <template v-if="!imageStudio.overrides[img.url]?.skip && imageStudio.overrides[img.url]">
+              <template v-else-if="!imageStudio.overrides[img.url]?.skip && imageStudio.overrides[img.url]">
                 <span class="w-2 h-2 rounded-full bg-purple-400 inline-block shrink-0" title="Кастомні налаштування"></span>
               </template>
             </div>
