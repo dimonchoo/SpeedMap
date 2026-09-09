@@ -643,7 +643,10 @@ foreach ( $resolved as $row ) {
 							$legacy_dir = dirname( trailingslashit( $uploads['basedir'] ) . $legacy_rel );
 							$legacy_name_no_ext = preg_replace( '/\.[a-zA-Z0-9]+$/', '', basename( $legacy_rel ) );
 							$legacy_webp_abs    = trailingslashit( $legacy_dir ) . $legacy_name_no_ext . '.webp';
-							if ( ! file_exists( $legacy_webp_abs ) && file_exists( $dest_abs ) && is_dir( $legacy_dir ) ) {
+							if ( ! file_exists( $legacy_webp_abs ) && file_exists( $dest_abs ) ) {
+								if ( ! is_dir( $legacy_dir ) ) {
+									wp_mkdir_p( $legacy_dir );
+								}
 								@copy( $dest_abs, $legacy_webp_abs );
 							}
 						}
