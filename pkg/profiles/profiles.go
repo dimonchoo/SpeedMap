@@ -68,7 +68,8 @@ func listProfilesInternal() ([]SiteProfile, error) {
 			list[i].Config.AdaptiveQuality = &trueVal
 		}
 		if list[i].Config.ResizeToRetina == nil {
-			list[i].Config.ResizeToRetina = &trueVal
+			falseVal := false
+			list[i].Config.ResizeToRetina = &falseVal
 		}
 		if list[i].Config.AutoPruneHistory == nil {
 			list[i].Config.AutoPruneHistory = &trueVal

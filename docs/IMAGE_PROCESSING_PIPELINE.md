@@ -184,7 +184,7 @@ $$\text{Включити} \iff (\text{im.IsHeavy} == \text{true}) \lor (\text{im
 
 ## Етап 6: Ресайз під Retina 2x (Retina Downscaling)
 
-Якщо увімкнено `ResizeToRetina` (за замовчуванням `true`) і передано `maxW > 0` або `maxH > 0`:
+Якщо увімкнено `ResizeToRetina` (за замовчуванням `false`, щоб гарантувати 100% збереження оригінальної роздільної здатності для адаптивних екранів) і передано `maxW > 0` або `maxH > 0`:
 
 ### 6.1. Умова спрацьовування:
 $$\text{Ресайзити} \iff (\text{origW} > \text{maxW}) \lor (\text{origH} > \text{maxH})$$

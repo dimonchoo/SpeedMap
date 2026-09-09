@@ -86,8 +86,10 @@ export function createProfilesModule() {
       if (this.config.adaptiveQuality !== false) {
         this.config.adaptiveQuality = true;
       }
-      if (this.config.resizeToRetina !== false) {
+      if (this.config.resizeToRetina === true) {
         this.config.resizeToRetina = true;
+      } else {
+        this.config.resizeToRetina = false;
       }
       if (this.config.autoPruneHistory !== false) {
         this.config.autoPruneHistory = true;

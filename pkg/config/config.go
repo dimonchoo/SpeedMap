@@ -32,7 +32,7 @@ type ScanConfig struct {
 	MinWebPQuality        float32        `json:"minWebPQuality"`        // Minimum quality floor (default 80)
 	SkipIfNoWebPSavings   *bool          `json:"skipIfNoWebPSavings"`   // true by default: skip images if WebP size >= original size
 	AdaptiveQuality       *bool          `json:"adaptiveQuality"`       // true by default: automatically adjusts quality for gradients/transparency
-	ResizeToRetina        *bool          `json:"resizeToRetina"`        // true by default: resize oversized images to max rendered Retina 2x bounds
+	ResizeToRetina        *bool          `json:"resizeToRetina"`        // false by default: keep original image dimensions
 	AutoPruneHistory      *bool          `json:"autoPruneHistory"`      // true by default: auto-prunes old history runs
 	HistoryRetentionRuns  int            `json:"historyRetentionRuns"`  // default 20 (max runs per domain, 0 = unlimited)
 	HistoryRetentionDays  int            `json:"historyRetentionDays"`  // default 30 (max age in days, 0 = unlimited)
@@ -71,7 +71,7 @@ func (c *ScanConfig) IsSkipIfNoWebPSavingsEnabled() bool {
 
 func (c *ScanConfig) IsResizeToRetinaEnabled() bool {
 	if c.ResizeToRetina == nil {
-		return true // Default true
+		return false // Default false: keep original image dimensions
 	}
 	return *c.ResizeToRetina
 }
