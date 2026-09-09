@@ -1531,6 +1531,123 @@ export namespace wpexport {
 	        this.wordpressPath = source["wordpressPath"];
 	    }
 	}
+	export class ImageVerifyResult {
+	    id: string;
+	    basename: string;
+	    originalUrl: string;
+	    targetWebpUrl: string;
+	    targetOldUrl: string;
+	    httpStatus: number;
+	    contentType: string;
+	    contentLength: number;
+	    width?: number;
+	    height?: number;
+	    expectedWidth?: number;
+	    expectedHeight?: number;
+	    dimensionsMatch: boolean;
+	    status: string;
+	    pagesTotal: number;
+	    pagesChecked: number;
+	    pagesReplaced: number;
+	    pagesOldFound: number;
+	    samplePageUrl?: string;
+	    samplePageStatus?: string;
+	    errors?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ImageVerifyResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.basename = source["basename"];
+	        this.originalUrl = source["originalUrl"];
+	        this.targetWebpUrl = source["targetWebpUrl"];
+	        this.targetOldUrl = source["targetOldUrl"];
+	        this.httpStatus = source["httpStatus"];
+	        this.contentType = source["contentType"];
+	        this.contentLength = source["contentLength"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.expectedWidth = source["expectedWidth"];
+	        this.expectedHeight = source["expectedHeight"];
+	        this.dimensionsMatch = source["dimensionsMatch"];
+	        this.status = source["status"];
+	        this.pagesTotal = source["pagesTotal"];
+	        this.pagesChecked = source["pagesChecked"];
+	        this.pagesReplaced = source["pagesReplaced"];
+	        this.pagesOldFound = source["pagesOldFound"];
+	        this.samplePageUrl = source["samplePageUrl"];
+	        this.samplePageStatus = source["samplePageStatus"];
+	        this.errors = source["errors"];
+	    }
+	}
+	export class ManifestVerifySummary {
+	    totalImages: number;
+	    passedImages: number;
+	    warnedImages: number;
+	    failedImages: number;
+	    totalPagesChecked: number;
+	    pagesWithWebp: number;
+	    pagesWithOldRaster: number;
+	    durationMs: number;
+	    targetDomain: string;
+	    manifestCount: number;
+	    allPassed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ManifestVerifySummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalImages = source["totalImages"];
+	        this.passedImages = source["passedImages"];
+	        this.warnedImages = source["warnedImages"];
+	        this.failedImages = source["failedImages"];
+	        this.totalPagesChecked = source["totalPagesChecked"];
+	        this.pagesWithWebp = source["pagesWithWebp"];
+	        this.pagesWithOldRaster = source["pagesWithOldRaster"];
+	        this.durationMs = source["durationMs"];
+	        this.targetDomain = source["targetDomain"];
+	        this.manifestCount = source["manifestCount"];
+	        this.allPassed = source["allPassed"];
+	    }
+	}
+	export class ManifestVerifyResponse {
+	    summary: ManifestVerifySummary;
+	    items: ImageVerifyResult[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ManifestVerifyResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.summary = this.convertValues(source["summary"], ManifestVerifySummary);
+	        this.items = this.convertValues(source["items"], ImageVerifyResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class StudioPackageImageItem {
 	    id: string;
 	    url: string;

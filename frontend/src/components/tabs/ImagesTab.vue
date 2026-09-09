@@ -809,6 +809,7 @@
               </div>
             </div>
           </div>
+        </div>
 
             <!-- SUB-TAB 3: Manifest Verification & Staging QA -->
             <div v-show="imageSectionTab === 'verify'" class="space-y-6">
@@ -957,22 +958,22 @@
                       <button @click="verifyState.filter = 'all'; verifyState.currentPage = 1"
                         :class="verifyState.filter === 'all' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-slate-200'"
                         class="px-3 py-1.5 rounded-lg transition">
-                        Всі (<span v-text="verifyState.result.items.length"></span>)
+                        Всі (<span v-text="verifyState.result?.items?.length || 0"></span>)
                       </button>
                       <button @click="verifyState.filter = 'fail'; verifyState.currentPage = 1"
                         :class="verifyState.filter === 'fail' ? 'bg-rose-500/20 text-rose-300 font-bold border border-rose-500/40' : 'text-slate-400 hover:text-rose-300'"
                         class="px-3 py-1.5 rounded-lg transition">
-                        Помилки (<span v-text="verifyState.result.summary.failedImages"></span>)
+                        Помилки (<span v-text="verifyState.result?.summary?.failedImages || 0"></span>)
                       </button>
                       <button @click="verifyState.filter = 'warn'; verifyState.currentPage = 1"
                         :class="verifyState.filter === 'warn' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40' : 'text-slate-400 hover:text-amber-300'"
                         class="px-3 py-1.5 rounded-lg transition">
-                        Увага (<span v-text="verifyState.result.summary.warnedImages"></span>)
+                        Увага (<span v-text="verifyState.result?.summary?.warnedImages || 0"></span>)
                       </button>
                       <button @click="verifyState.filter = 'pass'; verifyState.currentPage = 1"
                         :class="verifyState.filter === 'pass' ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40' : 'text-slate-400 hover:text-emerald-300'"
                         class="px-3 py-1.5 rounded-lg transition">
-                        Успішні (<span v-text="verifyState.result.summary.passedImages"></span>)
+                        Успішні (<span v-text="verifyState.result?.summary?.passedImages || 0"></span>)
                       </button>
                     </div>
 
@@ -1104,7 +1105,6 @@
               </template>
             </div>
           </div>
-        </div>
       </template>
 </template>
 

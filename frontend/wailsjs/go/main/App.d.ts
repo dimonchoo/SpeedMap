@@ -104,6 +104,8 @@ export function SelectDirectory(arg1:string):Promise<string>;
 
 export function SelectImageFile(arg1:string):Promise<string>;
 
+export function SelectManifestDialog():Promise<string>;
+
 export function SendSystemNotification(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function StartGDriveAuth(arg1:string,arg2:string):Promise<string>;
@@ -115,3 +117,5 @@ export function TuneImagePreview(arg1:string,arg2:optimizer.ImageTuneOptions,arg
 export function UploadFileToGDrive(arg1:string,arg2:string):Promise<cloud.DriveUploadResult>;
 
 export function ValidateW3C(arg1:string):Promise<w3c.W3CReport>;
+
+export function VerifyManifest(arg1:string,arg2:string,arg3:boolean):Promise<wpexport.ManifestVerifyResponse>;

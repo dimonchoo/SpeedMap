@@ -190,6 +190,10 @@ export function SelectImageFile(arg1) {
   return window['go']['main']['App']['SelectImageFile'](arg1);
 }
 
+export function SelectManifestDialog() {
+  return window['go']['main']['App']['SelectManifestDialog']();
+}
+
 export function SendSystemNotification(arg1, arg2, arg3) {
   return window['go']['main']['App']['SendSystemNotification'](arg1, arg2, arg3);
 }
@@ -212,4 +216,8 @@ export function UploadFileToGDrive(arg1, arg2) {
 
 export function ValidateW3C(arg1) {
   return window['go']['main']['App']['ValidateW3C'](arg1);
+}
+
+export function VerifyManifest(arg1, arg2, arg3) {
+  return window['go']['main']['App']['VerifyManifest'](arg1, arg2, arg3);
 }
