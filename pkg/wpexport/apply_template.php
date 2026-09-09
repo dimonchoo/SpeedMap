@@ -210,6 +210,40 @@ function speedmap_replace_urls( $old_url, $new_url ) {
 	return $n;
 }
 
+function speedmap_safe_replace( $data, $map ) {
+	if ( is_string( $data ) ) {
+		if ( is_serialized( $data ) ) {
+			$un = @unserialize( $data );
+			if ( $un !== false || $data === 'b:0;' ) {
+				return serialize( speedmap_safe_replace( $un, $map ) );
+			}
+		}
+		if ( isset( $data[0] ) && ( $data[0] === '{' || $data[0] === '[' ) ) {
+			$j = json_decode( $data, true );
+			if ( json_last_error() === JSON_ERROR_NONE && is_array( $j ) ) {
+				return wp_json_encode( speedmap_safe_replace( $j, $map ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
+			}
+		}
+		return strtr( $data, $map );
+	}
+	if ( is_array( $data ) ) {
+		$out = array();
+		foreach ( $data as $k => $v ) {
+			$new_k = is_string( $k ) ? strtr( $k, $map ) : $k;
+			$out[ $new_k ] = speedmap_safe_replace( $v, $map );
+		}
+		return $out;
+	}
+	if ( is_object( $data ) ) {
+		$vars = get_object_vars( $data );
+		foreach ( $vars as $k => $v ) {
+			$data->$k = speedmap_safe_replace( $v, $map );
+		}
+		return $data;
+	}
+	return $data;
+}
+
 function speedmap_batch_replace_urls( $replacements ) {
 	global $wpdb;
 	if ( empty( $replacements ) ) {
@@ -233,7 +267,7 @@ function speedmap_batch_replace_urls( $replacements ) {
 		return 0;
 	}
 
-	WP_CLI::log( sprintf( 'Replacing %d unique URL patterns in post content and meta...', count( $full_map ) ) );
+	WP_CLI::log( sprintf( 'Replacing %d unique URL patterns in post content, meta, and options (safe serialized/JSON mode)...', count( $full_map ) ) );
 
 	$total_changed = 0;
 
@@ -254,15 +288,11 @@ function speedmap_batch_replace_urls( $replacements ) {
 			break;
 		}
 		foreach ( $posts as $p ) {
-			$new_content = strtr( $p->post_content, $full_map );
-			$new_guid    = strtr( $p->guid, $full_map );
-			if ( $new_content !== $p->post_content || $new_guid !== $p->guid ) {
+			$new_content = speedmap_safe_replace( $p->post_content, $full_map );
+			if ( $new_content !== $p->post_content ) {
 				$wpdb->update(
 					$wpdb->posts,
-					array(
-						'post_content' => $new_content,
-						'guid'         => $new_guid,
-					),
+					array( 'post_content' => $new_content ),
 					array( 'ID' => $p->ID )
 				);
 				$total_changed++;
@@ -281,7 +311,7 @@ function speedmap_batch_replace_urls( $replacements ) {
 	$meta_changed = 0;
 	if ( ! empty( $meta_rows ) ) {
 		foreach ( $meta_rows as $m ) {
-			$new_val = strtr( $m->meta_value, $full_map );
+			$new_val = speedmap_safe_replace( $m->meta_value, $full_map );
 			if ( $new_val !== $m->meta_value ) {
 				$wpdb->update(
 					$wpdb->postmeta,
@@ -300,7 +330,7 @@ function speedmap_batch_replace_urls( $replacements ) {
 	$opt_changed = 0;
 	if ( ! empty( $opt_rows ) ) {
 		foreach ( $opt_rows as $o ) {
-			$new_val = strtr( $o->option_value, $full_map );
+			$new_val = speedmap_safe_replace( $o->option_value, $full_map );
 			if ( $new_val !== $o->option_value ) {
 				$wpdb->update(
 					$wpdb->options,
