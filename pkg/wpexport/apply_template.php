@@ -48,6 +48,32 @@ if ( isset( $args[0] ) && is_string( $args[0] ) && $args[0] !== '' && is_dir( $a
 	$package_dir = rtrim( $args[0], '/\\' );
 }
 
+// Prefer live manifest.json from package directory if present (e.g. after manual tuning)
+$disk_manifest_file = trailingslashit( $package_dir ) . 'manifest.json';
+if ( file_exists( $disk_manifest_file ) ) {
+	$disk_json = json_decode( file_get_contents( $disk_manifest_file ), true );
+	if ( is_array( $disk_json ) && ! empty( $disk_json['images'] ) ) {
+		$SPEEDMAP_MANIFEST = $disk_json;
+	}
+}
+
+// Detect --dry-run flag
+$is_dry_run = false;
+if ( isset( $args ) && is_array( $args ) ) {
+	foreach ( $args as $arg ) {
+		if ( $arg === '--dry-run' || $arg === 'dry-run' ) {
+			$is_dry_run = true;
+			break;
+		}
+	}
+}
+if ( getenv( 'SPEEDMAP_DRY_RUN' ) ) {
+	$is_dry_run = true;
+}
+if ( $is_dry_run ) {
+	WP_CLI::warning( '=== SPEEDMAP DRY-RUN MODE: Simulation only. No files copied, no DB changes committed. ===' );
+}
+
 $uploads = wp_upload_dir();
 if ( ! empty( $uploads['error'] ) ) {
 	WP_CLI::error( 'uploads dir error: ' . $uploads['error'] );
@@ -161,6 +187,14 @@ function speedmap_replace_urls( $old_url, $new_url ) {
 	$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->posts} SET post_content = REPLACE(post_content, %s, %s)", $old_url, $new_url ) );
 	$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->posts} SET guid = REPLACE(guid, %s, %s)", $old_url, $new_url ) );
 	$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->postmeta} SET meta_value = REPLACE(meta_value, %s, %s)", $old_url, $new_url ) );
+
+	// Also replace JSON-escaped slashes (for Gutenberg, Elementor, and serialized JSON)
+	$old_esc = str_replace( '/', '\/', $old_url );
+	$new_esc = str_replace( '/', '\/', $new_url );
+	if ( $old_esc !== $old_url && $old_esc !== $new_esc ) {
+		$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->posts} SET post_content = REPLACE(post_content, %s, %s)", $old_esc, $new_esc ) );
+		$n += (int) $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->postmeta} SET meta_value = REPLACE(meta_value, %s, %s)", $old_esc, $new_esc ) );
+	}
 	return $n;
 }
 
@@ -168,6 +202,7 @@ function speedmap_replace_urls( $old_url, $new_url ) {
  * Copy package webp into uploads/{webpRel}. Never deletes the original raster.
  */
 function speedmap_copy_package_webp( $package_dir, $item, $dest_abs ) {
+	global $is_dry_run;
 	$rel = isset( $item['packageWebp'] ) ? ltrim( str_replace( '\\', '/', $item['packageWebp'] ), '/' ) : '';
 	if ( $rel === '' && ! empty( $item['id'] ) ) {
 		$format = isset( $item['format'] ) ? strtolower( $item['format'] ) : '';
@@ -188,6 +223,9 @@ function speedmap_copy_package_webp( $package_dir, $item, $dest_abs ) {
 	$src = trailingslashit( $package_dir ) . str_replace( '/', DIRECTORY_SEPARATOR, $rel );
 	if ( ! file_exists( $src ) ) {
 		return new WP_Error( 'speedmap_missing_src', 'package file missing: ' . $rel );
+	}
+	if ( ! empty( $is_dry_run ) ) {
+		return $rel; // Dry-run simulation: source exists, don't copy
 	}
 	$dir = dirname( $dest_abs );
 	if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
@@ -344,6 +382,23 @@ foreach ( $SPEEDMAP_MANIFEST['images'] as $item ) {
 		'caption'           => get_post_field( 'post_excerpt', $att_id ),
 		'oldAttachmentMeta' => wp_get_attachment_metadata( $att_id ),
 	);
+}
+
+if ( ! empty( $is_dry_run ) ) {
+	WP_CLI::log( '=== DRY-RUN SIMULATION FINISHED ===' );
+	$matches = 0;
+	$no_att  = 0;
+	foreach ( $resolved as $r ) {
+		if ( ! empty( $r['attachmentId'] ) && $r['attachmentId'] > 0 ) {
+			$matches++;
+			WP_CLI::log( sprintf( ' [MATCH] attachment #%d: %s ➜ %s', $r['attachmentId'], $r['oldUrl'], $r['newUrl'] ) );
+		} else {
+			$no_att++;
+			WP_CLI::warning( sprintf( ' [NO-ATTACHMENT] %s (would be copied to uploads, but no unique DB attachment match)', $r['oldUrl'] ) );
+		}
+	}
+	WP_CLI::success( sprintf( 'Dry run complete: %d total images, %d attachments matched in DB, %d file-only. No files were copied, no database changes were committed.', count( $resolved ), $matches, $no_att ) );
+	return;
 }
 
 $stamp       = gmdate( 'Ymd-His' );
