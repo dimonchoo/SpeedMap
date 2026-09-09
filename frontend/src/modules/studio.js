@@ -743,11 +743,12 @@ export function createStudioModule() {
       }
     },
 
-    async openPackageCompareHTML() {
+    async openPackageCompareHTML(targetAnchor) {
       if (!this.packageContext.active || !this.packageContext.packageDir) return;
       try {
+        const anchor = targetAnchor || (this.currentStudioImage ? `item-${this.imageStudio.currentIndex + 1}` : '');
         if (window.go?.main?.App?.OpenPackageCompareHTML) {
-          await window.go.main.App.OpenPackageCompareHTML(this.packageContext.packageDir);
+          await window.go.main.App.OpenPackageCompareHTML(this.packageContext.packageDir, anchor);
         }
       } catch (err) {
         console.error('Failed to open compare.html:', err);

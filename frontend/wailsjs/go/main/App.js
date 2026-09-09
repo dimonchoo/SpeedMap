@@ -122,8 +122,8 @@ export function LoadExportPackageForStudio(arg1) {
   return window['go']['main']['App']['LoadExportPackageForStudio'](arg1);
 }
 
-export function OpenPackageCompareHTML(arg1) {
-  return window['go']['main']['App']['OpenPackageCompareHTML'](arg1);
+export function OpenPackageCompareHTML(arg1, arg2) {
+  return window['go']['main']['App']['OpenPackageCompareHTML'](arg1, arg2);
 }
 
 export function OpenURL(arg1) {
@@ -140,6 +140,10 @@ export function PlayNotificationSound(arg1) {
 
 export function PreviewImageComparisonHTML(arg1, arg2, arg3) {
   return window['go']['main']['App']['PreviewImageComparisonHTML'](arg1, arg2, arg3);
+}
+
+export function RegeneratePackageCompareHTML(arg1) {
+  return window['go']['main']['App']['RegeneratePackageCompareHTML'](arg1);
 }
 
 export function ReloadPackageImageFromDisk(arg1, arg2, arg3) {

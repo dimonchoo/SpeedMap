@@ -356,11 +356,7 @@ func SaveTunedImageToPackage(packageDir, imageID, rawURL string, opts optimizer.
 	}
 
 	// 5. Update compare.html if present
-	comparePath := filepath.Join(packageDir, "compare.html")
-	if compareHTMLData, err := os.ReadFile(comparePath); err == nil {
-		updatedHTML := syncCompareHTMLItems(string(compareHTMLData), rawManifest.Images)
-		_ = os.WriteFile(comparePath, []byte(updatedHTML), 0644)
-	}
+	updatePackageCompareHTML(packageDir, rawManifest.Images)
 
 	res := &TunedSaveResult{
 		ID:                 imageID,
@@ -377,8 +373,8 @@ func SaveTunedImageToPackage(packageDir, imageID, rawURL string, opts optimizer.
 	return res, nil
 }
 
-// OpenPackageCompareHTML opens compare.html in the user's default browser.
-func OpenPackageCompareHTML(dirOrManifest string) error {
+// OpenPackageCompareHTML opens compare.html in the user's default browser, optionally jumping to a specific item anchor.
+func OpenPackageCompareHTML(dirOrManifest string, targetAnchor ...string) error {
 	packageDir, _, err := ResolvePackagePaths(dirOrManifest)
 	if err != nil {
 		return err
@@ -388,13 +384,60 @@ func OpenPackageCompareHTML(dirOrManifest string) error {
 		return fmt.Errorf("compare.html не знайдено в папці %s", packageDir)
 	}
 
+	target := comparePath
+	if len(targetAnchor) > 0 && strings.TrimSpace(targetAnchor[0]) != "" {
+		anchor := strings.TrimPrefix(strings.TrimSpace(targetAnchor[0]), "#")
+		if !strings.HasPrefix(anchor, "item-") && !strings.HasPrefix(anchor, "row-") {
+			anchor = "item-" + anchor
+		}
+		target = "file://" + filepath.ToSlash(comparePath) + "#" + anchor
+	}
+
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", comparePath).Start()
+		return exec.Command("open", target).Start()
 	case "windows":
-		return exec.Command("explorer", comparePath).Start()
+		return exec.Command("explorer", target).Start()
 	default:
-		return exec.Command("xdg-open", comparePath).Start()
+		return exec.Command("xdg-open", target).Start()
+	}
+}
+
+// RegeneratePackageCompareHTML reads manifest.json in packageDir and rewrites compare.html with up-to-date markup and scripts
+func RegeneratePackageCompareHTML(dirOrManifest string) error {
+	packageDir, manifestPath, err := ResolvePackagePaths(dirOrManifest)
+	if err != nil {
+		return err
+	}
+
+	maniData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return fmt.Errorf("помилка читання manifest.json: %w", err)
+	}
+
+	var mani struct {
+		Domain string           `json:"domain"`
+		Images []ReviewZipEntry `json:"images"`
+	}
+	if err := json.Unmarshal(maniData, &mani); err != nil {
+		return fmt.Errorf("помилка парсингу manifest.json: %w", err)
+	}
+
+	compareHTML := GenerateCompareHTML(mani.Domain, mani.Images)
+	comparePath := filepath.Join(packageDir, "compare.html")
+	if err := os.WriteFile(comparePath, []byte(compareHTML), 0644); err != nil {
+		return fmt.Errorf("помилка запису compare.html: %w", err)
+	}
+	return nil
+}
+
+func updatePackageCompareHTML(packageDir string, rawImages []map[string]interface{}) {
+	if err := RegeneratePackageCompareHTML(packageDir); err != nil {
+		comparePath := filepath.Join(packageDir, "compare.html")
+		if compareHTMLData, err := os.ReadFile(comparePath); err == nil {
+			updatedHTML := syncCompareHTMLItems(string(compareHTMLData), rawImages)
+			_ = os.WriteFile(comparePath, []byte(updatedHTML), 0644)
+		}
 	}
 }
 
@@ -640,11 +683,7 @@ func ReplacePackageImageWithFile(packageDir, imageID, sourceFilePath string) (*T
 		return nil, fmt.Errorf("помилка збереження manifest.json: %w", err)
 	}
 
-	comparePath := filepath.Join(packageDir, "compare.html")
-	if compareHTMLData, err := os.ReadFile(comparePath); err == nil {
-		updatedHTML := syncCompareHTMLItems(string(compareHTMLData), rawManifest.Images)
-		_ = os.WriteFile(comparePath, []byte(updatedHTML), 0644)
-	}
+	updatePackageCompareHTML(packageDir, rawManifest.Images)
 
 	return &TunedSaveResult{
 		ID:                 imageID,
@@ -746,11 +785,7 @@ func ReloadPackageImageFromDisk(packageDir, imageID string) (*TunedSaveResult, e
 		return nil, fmt.Errorf("помилка збереження manifest.json: %w", err)
 	}
 
-	comparePath := filepath.Join(packageDir, "compare.html")
-	if compareHTMLData, err := os.ReadFile(comparePath); err == nil {
-		updatedHTML := syncCompareHTMLItems(string(compareHTMLData), rawManifest.Images)
-		_ = os.WriteFile(comparePath, []byte(updatedHTML), 0644)
-	}
+	updatePackageCompareHTML(packageDir, rawManifest.Images)
 
 	return &TunedSaveResult{
 		ID:                 imageID,
@@ -866,11 +901,7 @@ func RevertPackageImageToRemote(packageDir, imageID string, cfg config.ScanConfi
 		return nil, fmt.Errorf("помилка збереження manifest.json: %w", err)
 	}
 
-	comparePath := filepath.Join(packageDir, "compare.html")
-	if compareHTMLData, err := os.ReadFile(comparePath); err == nil {
-		updatedHTML := syncCompareHTMLItems(string(compareHTMLData), rawManifest.Images)
-		_ = os.WriteFile(comparePath, []byte(updatedHTML), 0644)
-	}
+	updatePackageCompareHTML(packageDir, rawManifest.Images)
 
 	return &TunedSaveResult{
 		ID:                 imageID,

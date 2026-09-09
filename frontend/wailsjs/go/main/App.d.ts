@@ -70,7 +70,7 @@ export function ListSiteProfiles():Promise<Array<profiles.SiteProfile>>;
 
 export function LoadExportPackageForStudio(arg1:string):Promise<wpexport.PackageStudioContext>;
 
-export function OpenPackageCompareHTML(arg1:string):Promise<void>;
+export function OpenPackageCompareHTML(arg1:string,arg2:string):Promise<void>;
 
 export function OpenURL(arg1:string):Promise<void>;
 
@@ -79,6 +79,8 @@ export function ParseSitemap(arg1:string,arg2:config.ScanConfig):Promise<Array<s
 export function PlayNotificationSound(arg1:string):Promise<void>;
 
 export function PreviewImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
+
+export function RegeneratePackageCompareHTML(arg1:string):Promise<void>;
 
 export function ReloadPackageImageFromDisk(arg1:string,arg2:string,arg3:string):Promise<wpexport.TunedSaveResult>;
 

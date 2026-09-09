@@ -68,12 +68,21 @@
 
               <!-- Open compare.html -->
               <button @click="openPackageCompareHTML()"
-                class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px] font-mono flex items-center space-x-1 transition shrink-0"
-                title="Відкрити compare.html у браузері">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-[11px] font-mono flex items-center space-x-1.5 transition shrink-0"
+                :title="'Відкрити compare.html у браузері на зображенні #' + (imageStudio.currentIndex + 1)">
+                <svg class="w-3 h-3 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                 <span class="hidden xl:inline">compare.html</span>
+                <span class="text-[10px] text-cyan-400 font-bold">#{{ imageStudio.currentIndex + 1 }}</span>
               </button>
             </template>
+
+            <!-- Image ID in Package Mode -->
+            <span v-if="packageContext?.active && currentStudioImage?.id"
+              class="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-700/80 shrink-0"
+              :title="'ID папки в архіві: images/' + currentStudioImage.id + '/'">
+              #{{ imageStudio.currentIndex + 1 }}
+              <span class="text-[9px] text-cyan-400 font-normal">({{ currentStudioImage.id }})</span>
+            </span>
 
             <span class="text-sm font-bold text-amber-400 font-mono truncate max-w-[120px] sm:max-w-[160px] md:max-w-[220px]"
               :title="currentStudioImage?.basename"

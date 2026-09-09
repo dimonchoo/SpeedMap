@@ -396,10 +396,16 @@ func (a *App) SaveTunedImageToPackage(packageDir string, imageID string, rawURL 
 	return wpexport.SaveTunedImageToPackage(packageDir, imageID, rawURL, opts, cfg)
 }
 
-// OpenPackageCompareHTML opens compare.html from the export package in default browser
-func (a *App) OpenPackageCompareHTML(dirOrManifest string) error {
-	fmt.Printf("[GO LOG] OpenPackageCompareHTML called for: %s\n", dirOrManifest)
-	return wpexport.OpenPackageCompareHTML(dirOrManifest)
+// OpenPackageCompareHTML opens compare.html from the export package in default browser, optionally jumping to a specific item
+func (a *App) OpenPackageCompareHTML(dirOrManifest string, targetAnchor string) error {
+	fmt.Printf("[GO LOG] OpenPackageCompareHTML called for: %s (anchor: %s)\n", dirOrManifest, targetAnchor)
+	return wpexport.OpenPackageCompareHTML(dirOrManifest, targetAnchor)
+}
+
+// RegeneratePackageCompareHTML regenerates compare.html from manifest.json in the package folder
+func (a *App) RegeneratePackageCompareHTML(dirOrManifest string) error {
+	fmt.Printf("[GO LOG] RegeneratePackageCompareHTML called for: %s\n", dirOrManifest)
+	return wpexport.RegeneratePackageCompareHTML(dirOrManifest)
 }
 
 // SelectImageFile opens native file picker dialog to pick an image file
