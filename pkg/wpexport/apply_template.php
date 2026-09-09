@@ -620,6 +620,37 @@ foreach ( $resolved as $row ) {
 		if ( $source_path && $new_path && $source_path !== $new_path ) {
 			$url_replacements[ $source_path ] = $new_path;
 		}
+
+		// Standalone content image support: if basename exists in posts with a different path or domain (e.g. old staging domain or old upload year)
+		if ( ! empty( $row['basename'] ) && strlen( $row['basename'] ) > 5 ) {
+			$like_base     = '%' . $wpdb->esc_like( $row['basename'] ) . '%';
+			$content_posts = $wpdb->get_col( $wpdb->prepare(
+				"SELECT post_content FROM {$wpdb->posts} WHERE post_content LIKE %s AND post_content NOT LIKE %s LIMIT 10",
+				$like_base,
+				'%' . $wpdb->esc_like( $new_url ) . '%'
+			) );
+			foreach ( $content_posts as $c ) {
+				if ( preg_match_all( '#https?://[^\s"\'<>]*/wp-content/uploads/([^\s"\'<>]*' . preg_quote( $row['basename'], '#' ) . ')#i', $c, $found_m ) ) {
+					foreach ( $found_m[0] as $found_idx => $found_u ) {
+						if ( $found_u !== $new_url && ! isset( $url_replacements[ $found_u ] ) ) {
+							$url_replacements[ $found_u ] = $new_url;
+							$u_path = wp_parse_url( $found_u, PHP_URL_PATH );
+							if ( $u_path && $new_path && $u_path !== $new_path ) {
+								$url_replacements[ $u_path ] = $new_path;
+							}
+							// Also ensure WebP is present in the legacy directory on disk
+							$legacy_rel = $found_m[1][ $found_idx ];
+							$legacy_dir = dirname( trailingslashit( $uploads['basedir'] ) . $legacy_rel );
+							$legacy_name_no_ext = preg_replace( '/\.[a-zA-Z0-9]+$/', '', basename( $legacy_rel ) );
+							$legacy_webp_abs    = trailingslashit( $legacy_dir ) . $legacy_name_no_ext . '.webp';
+							if ( ! file_exists( $legacy_webp_abs ) && file_exists( $dest_abs ) && is_dir( $legacy_dir ) ) {
+								@copy( $dest_abs, $legacy_webp_abs );
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	unset( $row['destAbs'] );
