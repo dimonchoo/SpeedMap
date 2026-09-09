@@ -92,6 +92,9 @@ func basenameAndHint(rawURL string) (basename, pathHint string) {
 	} else if idx := strings.Index(u.Path, "/wp-content/"); idx >= 0 {
 		rel := stripSizeSuffix(u.Path[idx+1:])
 		pathHint = strings.TrimPrefix(rel, "/")
+	} else if strings.HasPrefix(u.Path, "/images/") {
+		rel := stripSizeSuffix(u.Path[1:])
+		pathHint = strings.TrimPrefix(rel, "/")
 	}
 	return base, pathHint
 }
