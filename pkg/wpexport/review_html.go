@@ -264,9 +264,11 @@ func GenerateCompareHTML(domain string, entries []ReviewZipEntry) string {
 	htmlBuf.WriteString(".jump-btn:hover{background:#0369a1}")
 	htmlBuf.WriteString(".preview-btn{background:#0f172a;color:#38bdf8;border:1px solid #334155;border-radius:6px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s}")
 	htmlBuf.WriteString(".preview-btn:hover{background:#1e293b;border-color:#60a5fa}")
+	htmlBuf.WriteString(".lb-goto-btn{background:#1e293b;color:#38bdf8;border:1px solid #334155;padding:6px 12px;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;transition:all 0.2s}")
+	htmlBuf.WriteString(".lb-goto-btn:hover{background:#0284c7;color:#fff;border-color:#38bdf8}")
 
 	// Lightbox Styles
-	htmlBuf.WriteString("#lightbox{display:none;position:fixed;inset:0;background:rgba(5,10,20,0.95);backdrop-filter:blur(10px);z-index:99999;flex-direction:column;justify-content:space-between;padding:16px 24px;box-sizing:border-box}")
+	htmlBuf.WriteString("#lightbox{display:none;position:fixed;inset:0;background:rgba(5,10,20,0.95);backdrop-filter:blur(10px);z-index:99999;flex-direction:column;justify-content:space-between;padding:16px 24px;box-sizing:border-box;overflow:hidden}")
 	htmlBuf.WriteString(".lb-header{display:flex;align-items:center;justify-content:space-between;width:100%;gap:16px;color:#f1f5f9}")
 	htmlBuf.WriteString(".lb-title-wrap{display:flex;align-items:center;gap:10px;min-width:0}")
 	htmlBuf.WriteString(".lb-title{font-size:15px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:35vw}")
@@ -301,7 +303,7 @@ func GenerateCompareHTML(domain string, entries []ReviewZipEntry) string {
 
 	htmlBuf.WriteString("<div class=\"top-bar\">")
 	htmlBuf.WriteString("<input type=\"text\" id=\"compare-search\" placeholder=\"🔍 Пошук по назві, URL або #номеру (наприклад, waves, #25, hero)...\" oninput=\"filterCompare(this.value)\" style=\"flex:1;min-width:240px;max-width:460px;padding:8px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;outline:none;font-family:inherit;\" />")
-	htmlBuf.WriteString(fmt.Sprintf("<div class=\"jump-wrap\" title=\"Швидкий перехід до зображення за порядковим номером\"><span style=\"color:#64748b;font-weight:700;font-size:12px;\">№</span><input type=\"number\" id=\"jump-num-input\" min=\"1\" max=\"%d\" placeholder=\"1\" onkeydown=\"if(event.key==='Enter'){jumpToItem(this.value, false);}\" /><button onclick=\"jumpToItem(document.getElementById('jump-num-input').value, false)\" class=\"jump-btn\" title=\"Прокрутити до картки на сторінці\">Перейти</button><button onclick=\"jumpToItem(document.getElementById('jump-num-input').value, true)\" class=\"preview-btn\" title=\"Відкрити прев'ю Before/After\">🔍 Прев'ю</button></div>", totalCount))
+	htmlBuf.WriteString(fmt.Sprintf("<div class=\"jump-wrap\" title=\"Швидкий перехід до зображення за порядковим номером\"><span style=\"color:#64748b;font-weight:700;font-size:12px;\">№</span><input type=\"number\" id=\"jump-num-input\" min=\"1\" max=\"%d\" placeholder=\"1\" onkeydown=\"if(event.key==='Enter'){event.preventDefault();jumpToItem(this.value, true);}\" /><button type=\"button\" onclick=\"jumpToItem(document.getElementById('jump-num-input').value, true)\" class=\"preview-btn\" title=\"Відкрити прев'ю Before/After\">🔍 Прев'ю</button><button type=\"button\" onclick=\"jumpToItem(document.getElementById('jump-num-input').value, false)\" class=\"jump-btn\" title=\"Прокрутити до картки на сторінці\">⬇ До картки</button></div>", totalCount))
 	htmlBuf.WriteString(fmt.Sprintf("<span id=\"compare-count\" style=\"font-size:13px;font-weight:bold;color:#475569;\">Показано: %d з %d</span>", totalCount, totalCount))
 	htmlBuf.WriteString("</div>")
 
@@ -332,7 +334,10 @@ func GenerateCompareHTML(domain string, entries []ReviewZipEntry) string {
 	htmlBuf.WriteString("<button id=\"btn-before\" class=\"lb-tab\" onclick=\"toggleMode('orig')\">🔴 Before (Original)</button>")
 	htmlBuf.WriteString("<button id=\"btn-after\" class=\"lb-tab lb-tab-active-webp\" onclick=\"toggleMode('after')\">🟢 After (Optimized)</button>")
 	htmlBuf.WriteString("</div>")
-	htmlBuf.WriteString("<button class=\"lb-close-btn\" onclick=\"closeLb()\">✕ Закрити (Esc)</button>")
+	htmlBuf.WriteString("<div style=\"display:flex;align-items:center;gap:8px;\">")
+	htmlBuf.WriteString("<button type=\"button\" class=\"lb-goto-btn\" onclick=\"goToCardFromLb()\" title=\"Закрити прев'ю і перейти до цієї картки на сторінці\">📍 До картки</button>")
+	htmlBuf.WriteString("<button type=\"button\" class=\"lb-close-btn\" onclick=\"closeLb()\">✕ Закрити (Esc)</button>")
+	htmlBuf.WriteString("</div>")
 	htmlBuf.WriteString("</div>")
 
 	htmlBuf.WriteString("<div class=\"lb-body\">")
@@ -360,6 +365,7 @@ function openGallery(idx, mode) {
 	currentMode = mode || 'webp';
 	renderGallery();
 	document.getElementById('lightbox').style.display = 'flex';
+	document.body.style.overflow = 'hidden';
 }
 
 function renderGallery() {
@@ -429,12 +435,32 @@ function toggleMode(mode) {
 
 function closeLb() {
 	document.getElementById('lightbox').style.display = 'none';
-	const target = document.getElementById('item-' + (currentIndex + 1));
-	if (target) {
-		target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-		highlightCard(target);
-		try { history.replaceState(null, '', '#item-' + (currentIndex + 1)); } catch(e) {}
+	document.body.style.overflow = '';
+}
+
+function goToCardFromLb() {
+	const num = currentIndex + 1;
+	closeLb();
+	setTimeout(() => scrollToCard(num), 50);
+}
+
+function scrollToCard(num) {
+	const target = document.getElementById('item-' + num);
+	if (!target) return;
+	if (target.style.display === 'none') {
+		const s = document.getElementById('compare-search');
+		if (s) s.value = '';
+		filterCompare('');
 	}
+	const topBar = document.querySelector('.top-bar');
+	const navHeight = topBar ? topBar.offsetHeight : 60;
+	const rect = target.getBoundingClientRect();
+	const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+	window.scrollTo({
+		top: Math.max(0, rect.top + scrollTop - navHeight - 16),
+		behavior: 'smooth'
+	});
+	highlightCard(target);
 }
 
 function jumpToItem(val, openPreview) {
@@ -447,17 +473,7 @@ function jumpToItem(val, openPreview) {
 		openGallery(num - 1, currentMode || 'webp');
 		return;
 	}
-	const target = document.getElementById('item-' + num);
-	if (target) {
-		if (target.style.display === 'none') {
-			const s = document.getElementById('compare-search');
-			if (s) s.value = '';
-			filterCompare('');
-		}
-		target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-		highlightCard(target);
-		try { history.replaceState(null, '', '#item-' + num); } catch(e) {}
-	}
+	scrollToCard(num);
 }
 
 function highlightCard(el) {
@@ -466,7 +482,7 @@ function highlightCard(el) {
 }
 
 function onBackdropClick(e) {
-	if (e.target.id === 'lightbox' || e.target.classList.contains('lb-body')) {
+	if (e.target.id === 'lightbox') {
 		closeLb();
 	}
 }
