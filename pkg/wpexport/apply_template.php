@@ -102,12 +102,24 @@ function speedmap_path_hint_from_url( $url ) {
 	}
 	$marker = '/wp-content/uploads/';
 	$pos    = strpos( $path, $marker );
-	if ( $pos === false ) {
-		return '';
+	if ( $pos !== false ) {
+		$rel = substr( $path, $pos + strlen( $marker ) );
+		$rel = speedmap_strip_size_suffix( $rel );
+		return ltrim( $rel, '/' );
 	}
-	$rel = substr( $path, $pos + strlen( $marker ) );
-	$rel = speedmap_strip_size_suffix( $rel );
-	return ltrim( $rel, '/' );
+	// Support other wp-content paths (themes, plugins, etc.)
+	$content_marker = '/wp-content/';
+	$pos_content    = strpos( $path, $content_marker );
+	if ( $pos_content !== false ) {
+		$rel = substr( $path, $pos_content + 1 );
+		$rel = speedmap_strip_size_suffix( $rel );
+		return $rel;
+	}
+	// Support root-relative paths like /images/...
+	if ( strpos( $path, '/images/' ) === 0 ) {
+		return ltrim( speedmap_strip_size_suffix( $path ), '/' );
+	}
+	return '';
 }
 
 function speedmap_guess_mime( $filename ) {
@@ -198,6 +210,93 @@ function speedmap_replace_urls( $old_url, $new_url ) {
 	return $n;
 }
 
+function speedmap_batch_replace_urls( $replacements ) {
+	global $wpdb;
+	if ( empty( $replacements ) ) {
+		return 0;
+	}
+
+	$full_map = array();
+	foreach ( $replacements as $old => $new ) {
+		if ( ! $old || ! $new || $old === $new ) {
+			continue;
+		}
+		$full_map[ $old ] = $new;
+		$old_esc = str_replace( '/', '\/', $old );
+		$new_esc = str_replace( '/', '\/', $new );
+		if ( $old_esc !== $old && $old_esc !== $new_esc ) {
+			$full_map[ $old_esc ] = $new_esc;
+		}
+	}
+
+	if ( empty( $full_map ) ) {
+		return 0;
+	}
+
+	WP_CLI::log( sprintf( 'Replacing %d unique URL patterns in post content and meta...', count( $full_map ) ) );
+
+	$total_changed = 0;
+
+	// 1. Process wp_posts in chunks
+	$offset     = 0;
+	$chunk_size = 1000;
+	while ( true ) {
+		$posts = $wpdb->get_results( $wpdb->prepare(
+			"SELECT ID, post_content, guid FROM {$wpdb->posts} WHERE post_status != 'trash' AND (post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR guid LIKE %s) LIMIT %d OFFSET %d",
+			'%uploads%',
+			'%themes%',
+			'%images%',
+			'%uploads%',
+			$chunk_size,
+			$offset
+		) );
+		if ( empty( $posts ) ) {
+			break;
+		}
+		foreach ( $posts as $p ) {
+			$new_content = strtr( $p->post_content, $full_map );
+			$new_guid    = strtr( $p->guid, $full_map );
+			if ( $new_content !== $p->post_content || $new_guid !== $p->guid ) {
+				$wpdb->update(
+					$wpdb->posts,
+					array(
+						'post_content' => $new_content,
+						'guid'         => $new_guid,
+					),
+					array( 'ID' => $p->ID )
+				);
+				$total_changed++;
+			}
+		}
+		if ( count( $posts ) < $chunk_size ) {
+			break;
+		}
+		$offset += $chunk_size;
+	}
+
+	// 2. Process wp_postmeta (for elementor_data, acf, custom fields)
+	$meta_rows = $wpdb->get_results(
+		"SELECT meta_id, meta_value FROM {$wpdb->postmeta} WHERE meta_value LIKE '%uploads%' OR meta_value LIKE '%themes%' OR meta_value LIKE '%images%'"
+	);
+	$meta_changed = 0;
+	if ( ! empty( $meta_rows ) ) {
+		foreach ( $meta_rows as $m ) {
+			$new_val = strtr( $m->meta_value, $full_map );
+			if ( $new_val !== $m->meta_value ) {
+				$wpdb->update(
+					$wpdb->postmeta,
+					array( 'meta_value' => $new_val ),
+					array( 'meta_id' => $m->meta_id )
+				);
+				$meta_changed++;
+			}
+		}
+	}
+
+	WP_CLI::log( sprintf( 'Batch replace done: updated %d posts, %d postmeta rows.', $total_changed, $meta_changed ) );
+	return $total_changed + $meta_changed;
+}
+
 /**
  * Copy package webp into uploads/{webpRel}. Never deletes the original raster.
  */
@@ -268,7 +367,7 @@ function speedmap_resolve_item( $item, $uploads, $package_dir ) {
 		return $row;
 	}
 
-	$path_hint = isset( $item['pathHint'] ) ? $item['pathHint'] : speedmap_path_hint_from_url( $source );
+	$path_hint = ( ! empty( $item['pathHint'] ) ) ? $item['pathHint'] : speedmap_path_hint_from_url( $source );
 	$basename  = isset( $item['basename'] ) ? $item['basename'] : basename( parse_url( $source, PHP_URL_PATH ) );
 	$basename  = speedmap_strip_size_suffix( $basename );
 	$format    = isset( $item['format'] ) ? strtolower( $item['format'] ) : '';
@@ -281,7 +380,7 @@ function speedmap_resolve_item( $item, $uploads, $package_dir ) {
 	$row['format']   = $format;
 
 	$webp_rel = isset( $item['webpRel'] ) ? ltrim( str_replace( '\\', '/', $item['webpRel'] ), '/' ) : '';
-	if ( $webp_rel === '' ) {
+	if ( $webp_rel === '' || ( $path_hint && strpos( $webp_rel, '/' ) === false && strpos( $path_hint, '/' ) !== false ) ) {
 		if ( $format === 'svg' ) {
 			$webp_rel = $path_hint ? $path_hint : $basename;
 		} else {
@@ -294,7 +393,7 @@ function speedmap_resolve_item( $item, $uploads, $package_dir ) {
 		}
 	}
 
-	if ( strpos( $webp_rel, 'wp-content/' ) === 0 ) {
+	if ( strpos( $webp_rel, 'wp-content/' ) === 0 || strpos( $webp_rel, 'images/' ) === 0 ) {
 		$wp_root  = dirname( $uploads['basedir'], 2 );
 		$dest_abs = trailingslashit( $wp_root ) . $webp_rel;
 		$new_url  = trailingslashit( dirname( $uploads['baseurl'], 2 ) ) . $webp_rel;
@@ -408,6 +507,7 @@ $report['backup'] = $backup_path;
 WP_CLI::log( 'Backup written: ' . $backup_path . ' (' . count( $backup['items'] ) . ' attachments)' );
 
 // Pass 2: mutate DB (keep old raster files on disk; preserve title/alt/caption)
+$url_replacements = array();
 foreach ( $resolved as $row ) {
 	if ( $row['status'] !== 'pending' ) {
 		$report['items'][] = $row;
@@ -436,26 +536,6 @@ foreach ( $resolved as $row ) {
 			wp_update_attachment_metadata( $att_id, $meta );
 		}
 
-		// 1) Replace manifest source URL if different (e.g. production domain URL)
-		if ( ! empty( $row['sourceUrl'] ) && $row['sourceUrl'] !== $new_url ) {
-			speedmap_replace_urls( $row['sourceUrl'], $new_url );
-		}
-		// 2) Replace oldUrl if different
-		if ( ! empty( $row['oldUrl'] ) && $row['oldUrl'] !== $new_url ) {
-			speedmap_replace_urls( $row['oldUrl'], $new_url );
-		}
-		// 3) Replace local uploads path (seamlessly handles staging and relative domains)
-		if ( ! empty( $row['pathHint'] ) ) {
-			$local_old_url = trailingslashit( $uploads['baseurl'] ) . $row['pathHint'];
-			if ( $local_old_url !== $new_url ) {
-				speedmap_replace_urls( $local_old_url, $new_url );
-			}
-			$old_path = wp_parse_url( $local_old_url, PHP_URL_PATH );
-			$new_path = wp_parse_url( $new_url, PHP_URL_PATH );
-			if ( $old_path && $new_path && $old_path !== $new_path ) {
-				speedmap_replace_urls( $old_path, $new_path );
-			}
-		}
 		$row['status'] = 'applied';
 		$row['reason'] = $row['copied'] ? 'copied + DB' : 'DB (webp already in uploads)';
 	} else {
@@ -463,10 +543,42 @@ foreach ( $resolved as $row ) {
 		$row['reason'] = 'webp copied/present but no unique attachment match (old files kept)';
 	}
 
+	// Collect URL replacement pairs for batch substitution
+	if ( $row['copied'] || file_exists( $dest_abs ) ) {
+		if ( ! empty( $row['sourceUrl'] ) && $row['sourceUrl'] !== $new_url ) {
+			$url_replacements[ $row['sourceUrl'] ] = $new_url;
+		}
+		if ( ! empty( $row['oldUrl'] ) && $row['oldUrl'] !== $new_url ) {
+			$url_replacements[ $row['oldUrl'] ] = $new_url;
+		}
+		if ( ! empty( $row['pathHint'] ) ) {
+			$base_for_hint = ( strpos( $row['pathHint'], 'wp-content/' ) === 0 || strpos( $row['pathHint'], 'images/' ) === 0 )
+				? trailingslashit( dirname( $uploads['baseurl'], 2 ) )
+				: trailingslashit( $uploads['baseurl'] );
+			$local_old_url = $base_for_hint . $row['pathHint'];
+			if ( $local_old_url !== $new_url ) {
+				$url_replacements[ $local_old_url ] = $new_url;
+			}
+			$old_path = wp_parse_url( $local_old_url, PHP_URL_PATH );
+			$new_path = wp_parse_url( $new_url, PHP_URL_PATH );
+			if ( $old_path && $new_path && $old_path !== $new_path ) {
+				$url_replacements[ $old_path ] = $new_path;
+			}
+		}
+		$source_path = wp_parse_url( $row['sourceUrl'], PHP_URL_PATH );
+		$new_path    = wp_parse_url( $new_url, PHP_URL_PATH );
+		if ( $source_path && $new_path && $source_path !== $new_path ) {
+			$url_replacements[ $source_path ] = $new_path;
+		}
+	}
+
 	unset( $row['destAbs'] );
 	$report['items'][] = $row;
 	WP_CLI::log( sprintf( '[%s] %s → %s', $row['status'], $row['oldUrl'], $row['newUrl'] ? $row['newUrl'] : $webp_rel ) );
 }
+
+// Pass 3: fast batch URL replacement in posts & postmeta across all converted items
+speedmap_batch_replace_urls( $url_replacements );
 
 $report_path = trailingslashit( $uploads['basedir'] ) . 'speedmap-webp-report-' . $stamp . '.json';
 file_put_contents( $report_path, wp_json_encode( $report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) );
