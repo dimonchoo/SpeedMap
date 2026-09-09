@@ -114,105 +114,143 @@
           </div>
         </div>
 
-        <!-- Center: Comparison View Modes & Zoom -->
+        <!-- Center: Comparison View Modes, Zoom Dropdown & Background Popover -->
         <div class="flex items-center space-x-2 shrink-0">
           
-          <!-- View Modes -->
-          <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs">
+          <!-- View Modes (Segmented 1-click Control with responsive labels) -->
+          <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs shadow">
             <button @click="imageStudio.viewMode = 'split'"
               :class="imageStudio.viewMode === 'split' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
               class="px-2.5 py-1 rounded-lg transition flex items-center space-x-1.5"
               title="Інтерактивна шторка-роздільник (Split)">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
               </svg>
-              <span>Шторка</span>
+              <span class="hidden xl:inline">Шторка</span>
             </button>
 
             <button @click="imageStudio.viewMode = 'toggle'"
               :class="imageStudio.viewMode === 'toggle' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
               class="px-2.5 py-1 rounded-lg transition flex items-center space-x-1.5"
               title="Швидкий перемикач: клавіша T або Space">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
-              <span>Toggle</span>
+              <span class="hidden xl:inline">Toggle</span>
             </button>
 
             <button @click="imageStudio.viewMode = 'side'"
               :class="imageStudio.viewMode === 'side' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
               class="px-2.5 py-1 rounded-lg transition flex items-center space-x-1.5"
               title="Два зображення поруч">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m6-16h4a2 2 0 012 2v12a2 2 0 01-2 2h-4"/>
               </svg>
-              <span>Поруч</span>
+              <span class="hidden xl:inline">Поруч</span>
             </button>
           </div>
 
-          <!-- Zoom Modes -->
-          <div class="hidden sm:flex bg-slate-950 p-1 rounded-xl border border-slate-800 items-center text-xs">
-            <button @click="imageStudio.zoomMode = 'fit'"
-              :class="imageStudio.zoomMode === 'fit' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-2.5 py-1 rounded-lg transition" title="Вписати в екран">
-              Fit
-            </button>
-            <button @click="imageStudio.zoomMode = '100'"
-              :class="imageStudio.zoomMode === '100' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-2.5 py-1 rounded-lg transition" title="100% (1:1 масштаб)">
-              100%
-            </button>
-            <button @click="imageStudio.zoomMode = '200'"
-              :class="imageStudio.zoomMode === '200' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-2.5 py-1 rounded-lg transition" title="200% (2x збільшення)">
-              200%
-            </button>
-            <button @click="imageStudio.zoomMode = '400'"
-              :class="imageStudio.zoomMode === '400' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-400 hover:text-slate-200'"
-              class="px-2.5 py-1 rounded-lg transition" title="400% (4x збільшення)">
-              400%
-            </button>
-          </div>
-
-          <!-- Canvas Background Switcher (Dark, Light/White, Checkerboard, Custom Color Picker) -->
-          <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs space-x-1" title="Колір фону робочої області">
-            <!-- Dark Theme -->
-            <button @click="imageStudio.canvasBgMode = 'dark'"
-              :class="imageStudio.canvasBgMode === 'dark' ? 'ring-2 ring-cyan-400 bg-slate-800 shadow' : 'opacity-60 hover:opacity-100'"
-              class="w-6 h-6 rounded-lg bg-slate-950 border border-slate-700 flex items-center justify-center transition"
-              title="Темний фон">
-              <span class="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-600"></span>
-            </button>
-
-            <!-- Pure White (for dark images and black text) -->
-            <button @click="imageStudio.canvasBgMode = 'light'"
-              :class="imageStudio.canvasBgMode === 'light' ? 'ring-2 ring-cyan-400 bg-slate-800 shadow' : 'opacity-60 hover:opacity-100'"
-              class="w-6 h-6 rounded-lg bg-white border border-slate-300 flex items-center justify-center transition"
-              title="Світлий / білий фон (для темних або прозорих фото)">
-              <span class="w-2.5 h-2.5 rounded-full bg-white shadow-sm"></span>
-            </button>
-
-            <!-- Transparency Checkerboard -->
-            <button @click="imageStudio.canvasBgMode = 'checker'"
-              :class="imageStudio.canvasBgMode === 'checker' ? 'ring-2 ring-cyan-400 bg-slate-800 shadow' : 'opacity-60 hover:opacity-100'"
-              class="w-6 h-6 rounded-lg border border-slate-700 flex items-center justify-center transition overflow-hidden"
-              style="background-image: repeating-conic-gradient(#94a3b8 0% 25%, #ffffff 0% 50%); background-size: 8px 8px;"
-              title="Прозорість (шахова сітка)">
-            </button>
-
-            <!-- Native Color Picker -->
-            <label class="relative w-6 h-6 rounded-lg border border-slate-700 flex items-center justify-center cursor-pointer transition overflow-hidden group"
-              :class="imageStudio.canvasBgMode === 'custom' ? 'ring-2 ring-cyan-400 shadow' : 'opacity-70 hover:opacity-100'"
-              :style="'background-color: ' + (imageStudio.canvasCustomColor || '#ffffff')"
-              title="Вибрати довільний колір фону (Color Picker)">
-              <input type="color"
-                v-model="imageStudio.canvasCustomColor"
-                @input="imageStudio.canvasBgMode = 'custom'"
-                class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
-              <svg class="w-3.5 h-3.5 text-slate-300 pointer-events-none drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4 8.014 8.014 0 014.004-6.936M7 21h10a4 4 0 004-4 8.014 8.014 0 00-4.004-6.936M7 21a4 4 0 01-4-4c0-2.485 2.015-4.5 4.5-4.5h.5M17 21a4 4 0 004-4c0-2.485-2.015-4.5-4.5-4.5h-.5"/>
+          <!-- Zoom Dropdown (Compact button with on-hover / on-click popover) -->
+          <div class="relative group">
+            <button class="bg-slate-950 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs text-slate-200 font-mono flex items-center space-x-1.5 hover:bg-slate-900 transition shadow"
+              title="Масштаб перегляду (Zoom)">
+              <svg class="w-3.5 h-3.5 text-cyan-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"/>
               </svg>
-            </label>
+              <span class="font-bold text-cyan-400" v-text="imageStudio.zoomMode === 'fit' ? 'Fit' : imageStudio.zoomMode + '%'"></span>
+              <svg class="w-2.5 h-2.5 text-slate-500 group-hover:text-slate-300 transition-transform group-hover:translate-y-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div class="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 hidden group-hover:block group-focus-within:block bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl p-1.5 z-40 min-w-[125px] space-y-0.5 before:absolute before:-top-2 before:left-0 before:right-0 before:h-2.5 before:content-['']">
+              <button @click="imageStudio.zoomMode = 'fit'"
+                :class="imageStudio.zoomMode === 'fit' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-300 hover:bg-slate-800'"
+                class="w-full px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between font-mono">
+                <span>Fit</span>
+                <span class="text-[10px] opacity-60">Вписати</span>
+              </button>
+              <button @click="imageStudio.zoomMode = '100'"
+                :class="imageStudio.zoomMode === '100' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-300 hover:bg-slate-800'"
+                class="w-full px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between font-mono">
+                <span>100%</span>
+                <span class="text-[10px] opacity-60">1:1</span>
+              </button>
+              <button @click="imageStudio.zoomMode = '200'"
+                :class="imageStudio.zoomMode === '200' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-300 hover:bg-slate-800'"
+                class="w-full px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between font-mono">
+                <span>200%</span>
+                <span class="text-[10px] opacity-60">2x</span>
+              </button>
+              <button @click="imageStudio.zoomMode = '400'"
+                :class="imageStudio.zoomMode === '400' ? 'bg-cyan-600 text-white font-bold shadow' : 'text-slate-300 hover:bg-slate-800'"
+                class="w-full px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between font-mono">
+                <span>400%</span>
+                <span class="text-[10px] opacity-60">4x</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Canvas Background Popover (Single button with active swatch + dropdown) -->
+          <div class="relative group">
+            <button class="bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex items-center space-x-1.5 hover:bg-slate-900 transition shadow"
+              title="Колір фону полотна">
+              <!-- Active Swatch Indicator -->
+              <div class="w-4 h-4 rounded-md border border-slate-700 overflow-hidden flex items-center justify-center shrink-0">
+                <template v-if="imageStudio.canvasBgMode === 'dark'">
+                  <div class="w-full h-full bg-slate-950"></div>
+                </template>
+                <template v-else-if="imageStudio.canvasBgMode === 'light'">
+                  <div class="w-full h-full bg-white"></div>
+                </template>
+                <template v-else-if="imageStudio.canvasBgMode === 'checker'">
+                  <div class="w-full h-full" style="background-image: repeating-conic-gradient(#94a3b8 0% 25%, #ffffff 0% 50%); background-size: 6px 6px;"></div>
+                </template>
+                <template v-else>
+                  <div class="w-full h-full" :style="'background-color: ' + (imageStudio.canvasCustomColor || '#ffffff')"></div>
+                </template>
+              </div>
+              <svg class="w-2.5 h-2.5 text-slate-500 group-hover:text-slate-300 transition-transform group-hover:translate-y-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+
+            <!-- Background Popover Menu -->
+            <div class="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 hidden group-hover:block group-focus-within:block bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl p-2 z-40 min-w-[145px] space-y-1 before:absolute before:-top-2 before:left-0 before:right-0 before:h-2.5 before:content-['']">
+              <div class="text-[10px] font-bold text-slate-400 px-1 pb-1 border-b border-slate-800 uppercase tracking-wider">Фон полотна</div>
+              
+              <button @click="imageStudio.canvasBgMode = 'dark'"
+                :class="imageStudio.canvasBgMode === 'dark' ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50' : 'text-slate-300 hover:bg-slate-800'"
+                class="w-full px-2 py-1.5 rounded-lg text-xs transition flex items-center space-x-2">
+                <span class="w-3.5 h-3.5 rounded-md bg-slate-950 border border-slate-700 shrink-0"></span>
+                <span>Темний</span>
+              </button>
+
+              <button @click="imageStudio.canvasBgMode = 'light'"
+                :class="imageStudio.canvasBgMode === 'light' ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50' : 'text-slate-300 hover:bg-slate-800'"
+                class="w-full px-2 py-1.5 rounded-lg text-xs transition flex items-center space-x-2">
+                <span class="w-3.5 h-3.5 rounded-md bg-white border border-slate-300 shrink-0"></span>
+                <span>Світлий</span>
+              </button>
+
+              <button @click="imageStudio.canvasBgMode = 'checker'"
+                :class="imageStudio.canvasBgMode === 'checker' ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50' : 'text-slate-300 hover:bg-slate-800'"
+                class="w-full px-2 py-1.5 rounded-lg text-xs transition flex items-center space-x-2">
+                <span class="w-3.5 h-3.5 rounded-md border border-slate-700 shrink-0" style="background-image: repeating-conic-gradient(#94a3b8 0% 25%, #ffffff 0% 50%); background-size: 6px 6px;"></span>
+                <span>Шахівниця</span>
+              </button>
+
+              <label class="w-full px-2 py-1.5 rounded-lg text-xs transition flex items-center space-x-2 cursor-pointer hover:bg-slate-800 relative"
+                :class="imageStudio.canvasBgMode === 'custom' ? 'bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/50' : 'text-slate-300'">
+                <input type="color"
+                  v-model="imageStudio.canvasCustomColor"
+                  @input="imageStudio.canvasBgMode = 'custom'"
+                  class="opacity-0 absolute inset-0 w-full h-full cursor-pointer">
+                <span class="w-3.5 h-3.5 rounded-md border border-slate-600 shrink-0" :style="'background-color: ' + (imageStudio.canvasCustomColor || '#ffffff')"></span>
+                <span>Свій колір...</span>
+              </label>
+            </div>
           </div>
 
         </div>
