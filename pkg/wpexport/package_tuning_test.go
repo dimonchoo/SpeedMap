@@ -240,3 +240,83 @@ func TestRealUserPackageIfExists(t *testing.T) {
 	t.Logf("Successfully verified real user package with %d images. First image: %s (%s)", ctx.Count, first.Basename, first.FormattedBytes)
 }
 
+func TestReplaceAndReloadPackageImage(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "speedmap_replace_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	manifestPath := filepath.Join(tmpDir, "manifest.json")
+	manifestJSON := `{
+		"domain": "https://example.com/sitemap.xml",
+		"generated": "2026-09-09T12:00:00Z",
+		"count": 1,
+		"images": [
+			{
+				"id": "001",
+				"sourceUrl": "https://example.com/img.png",
+				"basename": "img.png",
+				"originalBytes": 100000,
+				"optimizedBytes": 50000,
+				"savingsPercent": 50.0
+			}
+		]
+	}`
+	if err := os.WriteFile(manifestPath, []byte(manifestJSON), 0644); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	// Create a dummy custom webp file
+	customFile := filepath.Join(tmpDir, "custom.webp")
+	customContent := []byte("RIFFcustomWEBPdata1234567890")
+	if err := os.WriteFile(customFile, customContent, 0644); err != nil {
+		t.Fatalf("failed to write custom file: %v", err)
+	}
+
+	// Test ReplacePackageImageWithFile
+	res, err := ReplacePackageImageWithFile(tmpDir, "001", customFile)
+	if err != nil {
+		t.Fatalf("ReplacePackageImageWithFile failed: %v", err)
+	}
+	if res.OptimizedBytes != int64(len(customContent)) {
+		t.Errorf("expected optimizedBytes %d, got %d", len(customContent), res.OptimizedBytes)
+	}
+
+	// Verify with LoadPackageForStudio
+	ctx, err := LoadPackageForStudio(tmpDir)
+	if err != nil {
+		t.Fatalf("LoadPackageForStudio failed: %v", err)
+	}
+	if len(ctx.Images) == 0 || !ctx.Images[0].IsCustomReplaced {
+		t.Errorf("expected image to have IsCustomReplaced=true")
+	}
+	if ctx.Images[0].SourceType != "custom_file" {
+		t.Errorf("expected sourceType=custom_file, got %s", ctx.Images[0].SourceType)
+	}
+
+	// Test GetPackageImagePreview
+	prev, err := GetPackageImagePreview(tmpDir, "001")
+	if err != nil {
+		t.Fatalf("GetPackageImagePreview failed: %v", err)
+	}
+	if !strings.HasPrefix(prev.OptimizedWebPBase64, "data:image/webp;base64,") {
+		t.Errorf("expected valid webp data URI, got: %s", prev.OptimizedWebPBase64)
+	}
+
+	// Modify file on disk externally and test ReloadPackageImageFromDisk
+	targetPath := filepath.Join(tmpDir, "images", "001", "optimized.webp")
+	largerContent := append(customContent, []byte("MORE_BYTES_FROM_DISK")...)
+	if err := os.WriteFile(targetPath, largerContent, 0644); err != nil {
+		t.Fatalf("failed to write larger content: %v", err)
+	}
+
+	reloadRes, err := ReloadPackageImageFromDisk(tmpDir, "001")
+	if err != nil {
+		t.Fatalf("ReloadPackageImageFromDisk failed: %v", err)
+	}
+	if reloadRes.OptimizedBytes != int64(len(largerContent)) {
+		t.Errorf("expected reload optimizedBytes %d, got %d", len(largerContent), reloadRes.OptimizedBytes)
+	}
+}
+

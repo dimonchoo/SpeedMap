@@ -21,6 +21,25 @@ var (
 	previewCacheMutex  sync.RWMutex
 )
 
+// ClearPreviewCache invalidates RAM caches for a specific image URL, or completely if rawURL is empty
+func (a *App) ClearPreviewCache(rawURL string) {
+	previewCacheMutex.Lock()
+	defer previewCacheMutex.Unlock()
+	if rawURL == "" {
+		previewBytesCache = make(map[string][]byte)
+		previewResultCache = make(map[string]*optimizer.ConversionResult)
+		fmt.Println("[GO LOG] ClearPreviewCache: all caches cleared")
+		return
+	}
+	delete(previewBytesCache, rawURL)
+	for k := range previewResultCache {
+		if strings.HasPrefix(k, rawURL) {
+			delete(previewResultCache, k)
+		}
+	}
+	fmt.Printf("[GO LOG] ClearPreviewCache: invalidated cache for %s\n", rawURL)
+}
+
 // TuneImagePreview converts an image with exact tuned parameters for Image Studio live preview.
 // Original bytes are cached in memory so subsequent slider movements respond in 10-30ms.
 func (a *App) TuneImagePreview(rawURL string, opts optimizer.ImageTuneOptions, cfg config.ScanConfig) (*optimizer.ConversionResult, error) {

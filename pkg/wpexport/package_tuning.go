@@ -1,18 +1,24 @@
 package wpexport
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 
 	"SpeedMap/pkg/config"
 	"SpeedMap/pkg/optimizer"
+	_ "golang.org/x/image/webp"
 )
 
 // PackageStudioContext holds metadata and images loaded from an existing export package.
@@ -57,6 +63,9 @@ type StudioPackageImageItem struct {
 	IsModified              bool     `json:"isModified"`
 	Quality                 float32  `json:"quality,omitempty"`
 	IsLossless              bool     `json:"isLossless,omitempty"`
+	IsCustomReplaced        bool     `json:"isCustomReplaced,omitempty"`
+	SourceType              string   `json:"sourceType,omitempty"`
+	ReplacedAt              string   `json:"replacedAt,omitempty"`
 }
 
 // TunedSaveResult returns the updated stats after overwriting an image in the package.
@@ -179,6 +188,31 @@ func LoadPackageForStudio(dirOrManifest string) (*PackageStudioContext, error) {
 			savingsPct = float64(origBytes-optBytes) / float64(origBytes) * 100
 		}
 
+		isCustom := getMapBool(m, "isCustomReplaced")
+		srcType := getMapString(m, "sourceType")
+		if isCustom || srcType == "custom_file" {
+			isCustom = true
+			if srcType == "" {
+				srcType = "custom_file"
+			}
+		} else {
+			srcType = "remote_url"
+		}
+		replacedAt := getMapString(m, "replacedAt")
+
+		// If local file exists on disk and its size differs from manifest's optimizedBytes, sync it
+		if fi, err := os.Stat(localWebPAbsPath); err == nil && fi.Size() > 0 {
+			if optBytes > 0 && fi.Size() != optBytes {
+				optBytes = fi.Size()
+				optFormatted = formatBytes(optBytes)
+				if origBytes > 0 {
+					savingsPct = float64(origBytes-optBytes) / float64(origBytes) * 100
+				}
+				isCustom = true
+				srcType = "custom_file"
+			}
+		}
+
 		pages := getMapStringSlice(m, "pages")
 
 		items = append(items, StudioPackageImageItem{
@@ -211,6 +245,9 @@ func LoadPackageForStudio(dirOrManifest string) (*PackageStudioContext, error) {
 			Quality:                 float32(getMapFloat64(m, "quality")),
 			IsLossless:              getMapBool(m, "isLossless"),
 			IsModified:              getMapBool(m, "isOverridden"),
+			IsCustomReplaced:        isCustom,
+			SourceType:              srcType,
+			ReplacedAt:              replacedAt,
 		})
 	}
 
@@ -472,4 +509,496 @@ func formatBytes(b int64) string {
 		exp = len(units) - 1
 	}
 	return fmt.Sprintf("%.1f %s", float64(b)/float64(div), units[exp])
+}
+
+// ReplacePackageImageWithFile replaces the package's optimized image with an external file provided by user.
+// Supported formats: WebP, PNG, JPG/JPEG, SVG.
+// If PNG/JPG is provided, it is converted to high-quality WebP.
+func ReplacePackageImageWithFile(packageDir, imageID, sourceFilePath string) (*TunedSaveResult, error) {
+	packageDir, manifestPath, err := ResolvePackagePaths(packageDir)
+	if err != nil {
+		return nil, err
+	}
+	imageID = strings.TrimSpace(imageID)
+	if imageID == "" {
+		return nil, fmt.Errorf("imageID не може бути порожнім")
+	}
+	sourceFilePath = strings.TrimSpace(sourceFilePath)
+	if sourceFilePath == "" {
+		return nil, fmt.Errorf("шлях до файлу не може бути порожнім")
+	}
+
+	sourceData, err := os.ReadFile(sourceFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("не вдалося прочитати вибраний файл: %w", err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(sourceFilePath))
+	var optFilename string
+	var optData []byte
+	var optW, optH int
+
+	if ext == ".svg" || (len(sourceData) > 5 && bytes.Contains(sourceData[:min(len(sourceData), 512)], []byte("<svg"))) {
+		optFilename = "optimized.svg"
+		optData = sourceData
+	} else if ext == ".webp" {
+		optFilename = "optimized.webp"
+		optData = sourceData
+		if cfg, _, err := image.DecodeConfig(bytes.NewReader(optData)); err == nil {
+			optW = cfg.Width
+			optH = cfg.Height
+		}
+	} else if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
+		optFilename = "optimized.webp"
+		isPng := (ext == ".png")
+		convRes, err := optimizer.ConvertImageBytesTuned(filepath.Base(sourceFilePath), sourceData, optimizer.ImageTuneOptions{
+			Quality:  85.0,
+			Lossless: isPng,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("помилка конвертації файлу в WebP: %w", err)
+		}
+		idx := strings.Index(convRes.OptimizedWebPBase64, ",")
+		if idx == -1 {
+			return nil, fmt.Errorf("некоректні base64 дані після конвертації")
+		}
+		decoded, err := base64.StdEncoding.DecodeString(convRes.OptimizedWebPBase64[idx+1:])
+		if err != nil {
+			return nil, fmt.Errorf("помилка декодування WebP: %w", err)
+		}
+		optData = decoded
+		optW = convRes.OptimizedWidth
+		optH = convRes.OptimizedHeight
+	} else {
+		return nil, fmt.Errorf("непідтримуваний формат файлу: %s (дозволені webp, png, jpg, svg)", ext)
+	}
+
+	targetDir := filepath.Join(packageDir, "images", imageID)
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return nil, fmt.Errorf("помилка створення директорії %s: %w", targetDir, err)
+	}
+
+	targetPath := filepath.Join(targetDir, optFilename)
+	if err := os.WriteFile(targetPath, optData, 0644); err != nil {
+		return nil, fmt.Errorf("помилка запису файлу %s: %w", targetPath, err)
+	}
+
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("помилка читання %s: %w", manifestPath, err)
+	}
+
+	var rawManifest struct {
+		Domain        string                   `json:"domain"`
+		Generated     string                   `json:"generated"`
+		Count         int                      `json:"count"`
+		Quality       int                      `json:"quality,omitempty"`
+		WordPressPath string                   `json:"wordpressPath,omitempty"`
+		Images        []map[string]interface{} `json:"images"`
+	}
+	if err := json.Unmarshal(manifestData, &rawManifest); err != nil {
+		return nil, fmt.Errorf("помилка парсингу %s: %w", manifestPath, err)
+	}
+
+	optBytes := int64(len(optData))
+	optFormatted := formatBytes(optBytes)
+	nowStr := time.Now().Format("2006-01-02 15:04:05")
+	var savingsPct float64
+
+	for _, im := range rawManifest.Images {
+		if getMapString(im, "id") == imageID {
+			origBytes := getMapInt64(im, "originalBytes")
+			if origBytes == 0 {
+				origBytes = getMapInt64(im, "bytes")
+			}
+			if origBytes > 0 {
+				savingsPct = float64(origBytes-optBytes) / float64(origBytes) * 100
+			}
+			im["optimizedBytes"] = optBytes
+			im["optimizedFormatted"] = optFormatted
+			im["savingsPercent"] = savingsPct
+			if optW > 0 {
+				im["optimizedWidth"] = optW
+			}
+			if optH > 0 {
+				im["optimizedHeight"] = optH
+			}
+			im["optimizedPath"] = fmt.Sprintf("images/%s/%s", imageID, optFilename)
+			im["isOverridden"] = true
+			im["isCustomReplaced"] = true
+			im["sourceType"] = "custom_file"
+			im["replacedAt"] = nowStr
+			break
+		}
+	}
+
+	updatedJSON, err := json.MarshalIndent(rawManifest, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("помилка серіалізації manifest.json: %w", err)
+	}
+	if err := os.WriteFile(manifestPath, updatedJSON, 0644); err != nil {
+		return nil, fmt.Errorf("помилка збереження manifest.json: %w", err)
+	}
+
+	comparePath := filepath.Join(packageDir, "compare.html")
+	if compareHTMLData, err := os.ReadFile(comparePath); err == nil {
+		updatedHTML := syncCompareHTMLItems(string(compareHTMLData), rawManifest.Images)
+		_ = os.WriteFile(comparePath, []byte(updatedHTML), 0644)
+	}
+
+	return &TunedSaveResult{
+		ID:                 imageID,
+		OptimizedBytes:     optBytes,
+		OptimizedFormatted: optFormatted,
+		SavingsPercent:     savingsPct,
+		OptimizedWidth:     optW,
+		OptimizedHeight:    optH,
+		SavedPath:          targetPath,
+	}, nil
+}
+
+// ReloadPackageImageFromDisk syncs metadata from the file in images/<id>/ if modified outside SpeedMap.
+func ReloadPackageImageFromDisk(packageDir, imageID string) (*TunedSaveResult, error) {
+	packageDir, manifestPath, err := ResolvePackagePaths(packageDir)
+	if err != nil {
+		return nil, err
+	}
+	imageID = strings.TrimSpace(imageID)
+	if imageID == "" {
+		return nil, fmt.Errorf("imageID не може бути порожнім")
+	}
+
+	targetDir := filepath.Join(packageDir, "images", imageID)
+	optPath := filepath.Join(targetDir, "optimized.webp")
+	if _, err := os.Stat(optPath); os.IsNotExist(err) {
+		optPath = filepath.Join(targetDir, "optimized.svg")
+		if _, err := os.Stat(optPath); os.IsNotExist(err) {
+			return nil, fmt.Errorf("файл optimized.webp/svg не знайдено в папці %s", targetDir)
+		}
+	}
+
+	data, err := os.ReadFile(optPath)
+	if err != nil {
+		return nil, fmt.Errorf("не вдалося прочитати %s: %w", optPath, err)
+	}
+
+	optBytes := int64(len(data))
+	optFormatted := formatBytes(optBytes)
+	var optW, optH int
+	if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
+		optW = cfg.Width
+		optH = cfg.Height
+	}
+
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("помилка читання %s: %w", manifestPath, err)
+	}
+
+	var rawManifest struct {
+		Domain        string                   `json:"domain"`
+		Generated     string                   `json:"generated"`
+		Count         int                      `json:"count"`
+		Quality       int                      `json:"quality,omitempty"`
+		WordPressPath string                   `json:"wordpressPath,omitempty"`
+		Images        []map[string]interface{} `json:"images"`
+	}
+	if err := json.Unmarshal(manifestData, &rawManifest); err != nil {
+		return nil, fmt.Errorf("помилка парсингу %s: %w", manifestPath, err)
+	}
+
+	nowStr := time.Now().Format("2006-01-02 15:04:05")
+	var savingsPct float64
+
+	for _, im := range rawManifest.Images {
+		if getMapString(im, "id") == imageID {
+			origBytes := getMapInt64(im, "originalBytes")
+			if origBytes == 0 {
+				origBytes = getMapInt64(im, "bytes")
+			}
+			if origBytes > 0 {
+				savingsPct = float64(origBytes-optBytes) / float64(origBytes) * 100
+			}
+			im["optimizedBytes"] = optBytes
+			im["optimizedFormatted"] = optFormatted
+			im["savingsPercent"] = savingsPct
+			if optW > 0 {
+				im["optimizedWidth"] = optW
+			}
+			if optH > 0 {
+				im["optimizedHeight"] = optH
+			}
+			im["isOverridden"] = true
+			im["isCustomReplaced"] = true
+			im["sourceType"] = "custom_file"
+			if getMapString(im, "replacedAt") == "" {
+				im["replacedAt"] = nowStr
+			}
+			break
+		}
+	}
+
+	updatedJSON, err := json.MarshalIndent(rawManifest, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("помилка серіалізації manifest.json: %w", err)
+	}
+	if err := os.WriteFile(manifestPath, updatedJSON, 0644); err != nil {
+		return nil, fmt.Errorf("помилка збереження manifest.json: %w", err)
+	}
+
+	comparePath := filepath.Join(packageDir, "compare.html")
+	if compareHTMLData, err := os.ReadFile(comparePath); err == nil {
+		updatedHTML := syncCompareHTMLItems(string(compareHTMLData), rawManifest.Images)
+		_ = os.WriteFile(comparePath, []byte(updatedHTML), 0644)
+	}
+
+	return &TunedSaveResult{
+		ID:                 imageID,
+		OptimizedBytes:     optBytes,
+		OptimizedFormatted: optFormatted,
+		SavingsPercent:     savingsPct,
+		OptimizedWidth:     optW,
+		OptimizedHeight:    optH,
+		SavedPath:          optPath,
+	}, nil
+}
+
+// RevertPackageImageToRemote downloads the original image from the remote URL and re-optimizes it,
+// resetting isCustomReplaced and restoring standard remote tracking.
+func RevertPackageImageToRemote(packageDir, imageID string, cfg config.ScanConfig) (*TunedSaveResult, error) {
+	packageDir, manifestPath, err := ResolvePackagePaths(packageDir)
+	if err != nil {
+		return nil, err
+	}
+	imageID = strings.TrimSpace(imageID)
+	if imageID == "" {
+		return nil, fmt.Errorf("imageID не може бути порожнім")
+	}
+
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("помилка читання %s: %w", manifestPath, err)
+	}
+
+	var rawManifest struct {
+		Domain        string                   `json:"domain"`
+		Generated     string                   `json:"generated"`
+		Count         int                      `json:"count"`
+		Quality       int                      `json:"quality,omitempty"`
+		WordPressPath string                   `json:"wordpressPath,omitempty"`
+		Images        []map[string]interface{} `json:"images"`
+	}
+	if err := json.Unmarshal(manifestData, &rawManifest); err != nil {
+		return nil, fmt.Errorf("помилка парсингу %s: %w", manifestPath, err)
+	}
+
+	var targetEntry map[string]interface{}
+	for _, im := range rawManifest.Images {
+		if getMapString(im, "id") == imageID {
+			targetEntry = im
+			break
+		}
+	}
+	if targetEntry == nil {
+		return nil, fmt.Errorf("зображення #%s не знайдено в manifest.json", imageID)
+	}
+
+	rawURL := getMapString(targetEntry, "sourceUrl")
+	if rawURL == "" {
+		rawURL = getMapString(targetEntry, "originalPath")
+	}
+	if rawURL == "" {
+		return nil, fmt.Errorf("не знайдено sourceUrl для зображення #%s", imageID)
+	}
+
+	origBytes, err := optimizer.FetchImageBytes(rawURL, cfg.AuthUser, cfg.AuthPass, cfg.GetUserAgent())
+	if err != nil {
+		return nil, fmt.Errorf("помилка завантаження оригіналу з %s: %w", rawURL, err)
+	}
+
+	q := float32(rawManifest.Quality)
+	if q <= 0 {
+		q = 80
+	}
+	convRes, err := optimizer.ConvertImageBytesTuned(rawURL, origBytes, optimizer.ImageTuneOptions{
+		Quality: q,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("помилка оптимізації: %w", err)
+	}
+
+	isVectorSVG := strings.HasPrefix(convRes.OptimizedWebPBase64, "data:image/svg+xml")
+	optFilename := "optimized.webp"
+	if isVectorSVG {
+		optFilename = "optimized.svg"
+	}
+	targetDir := filepath.Join(packageDir, "images", imageID)
+	_ = os.MkdirAll(targetDir, 0755)
+
+	idx := strings.Index(convRes.OptimizedWebPBase64, ",")
+	if idx == -1 {
+		return nil, fmt.Errorf("некоректні base64 дані")
+	}
+	optData, err := base64.StdEncoding.DecodeString(convRes.OptimizedWebPBase64[idx+1:])
+	if err != nil {
+		return nil, fmt.Errorf("помилка декодування base64: %w", err)
+	}
+	targetPath := filepath.Join(targetDir, optFilename)
+	if err := os.WriteFile(targetPath, optData, 0644); err != nil {
+		return nil, fmt.Errorf("помилка запису файлу %s: %w", targetPath, err)
+	}
+
+	targetEntry["optimizedBytes"] = convRes.OptimizedBytes
+	targetEntry["optimizedFormatted"] = convRes.OptimizedFormatted
+	targetEntry["savingsPercent"] = convRes.SavingsPercent
+	targetEntry["optimizedWidth"] = convRes.OptimizedWidth
+	targetEntry["optimizedHeight"] = convRes.OptimizedHeight
+	targetEntry["isOverridden"] = false
+	targetEntry["isCustomReplaced"] = false
+	targetEntry["sourceType"] = "remote_url"
+	delete(targetEntry, "replacedAt")
+
+	updatedJSON, err := json.MarshalIndent(rawManifest, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("помилка серіалізації manifest.json: %w", err)
+	}
+	if err := os.WriteFile(manifestPath, updatedJSON, 0644); err != nil {
+		return nil, fmt.Errorf("помилка збереження manifest.json: %w", err)
+	}
+
+	comparePath := filepath.Join(packageDir, "compare.html")
+	if compareHTMLData, err := os.ReadFile(comparePath); err == nil {
+		updatedHTML := syncCompareHTMLItems(string(compareHTMLData), rawManifest.Images)
+		_ = os.WriteFile(comparePath, []byte(updatedHTML), 0644)
+	}
+
+	return &TunedSaveResult{
+		ID:                 imageID,
+		OptimizedBytes:     convRes.OptimizedBytes,
+		OptimizedFormatted: convRes.OptimizedFormatted,
+		SavingsPercent:     convRes.SavingsPercent,
+		OptimizedWidth:     convRes.OptimizedWidth,
+		OptimizedHeight:    convRes.OptimizedHeight,
+		SavedPath:          targetPath,
+	}, nil
+}
+
+// GetPackageImagePreview generates a full ConversionResult for Studio preview using the local package file on disk.
+func GetPackageImagePreview(packageDir, imageID string) (*optimizer.ConversionResult, error) {
+	packageDir, manifestPath, err := ResolvePackagePaths(packageDir)
+	if err != nil {
+		return nil, err
+	}
+	imageID = strings.TrimSpace(imageID)
+	if imageID == "" {
+		return nil, fmt.Errorf("imageID не може бути порожнім")
+	}
+
+	manifestData, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("помилка читання %s: %w", manifestPath, err)
+	}
+
+	var rawManifest struct {
+		Domain string                   `json:"domain"`
+		Images []map[string]interface{} `json:"images"`
+	}
+	if err := json.Unmarshal(manifestData, &rawManifest); err != nil {
+		return nil, fmt.Errorf("помилка парсингу %s: %w", manifestPath, err)
+	}
+
+	var targetEntry map[string]interface{}
+	for _, im := range rawManifest.Images {
+		if getMapString(im, "id") == imageID {
+			targetEntry = im
+			break
+		}
+	}
+	if targetEntry == nil {
+		return nil, fmt.Errorf("зображення #%s не знайдено в manifest.json", imageID)
+	}
+
+	targetDir := filepath.Join(packageDir, "images", imageID)
+	optPath := filepath.Join(targetDir, "optimized.webp")
+	isSVG := false
+	if _, err := os.Stat(optPath); os.IsNotExist(err) {
+		optPath = filepath.Join(targetDir, "optimized.svg")
+		if _, err := os.Stat(optPath); os.IsNotExist(err) {
+			return nil, fmt.Errorf("локальний файл зображення не знайдено в %s", targetDir)
+		}
+		isSVG = true
+	}
+
+	data, err := os.ReadFile(optPath)
+	if err != nil {
+		return nil, fmt.Errorf("помилка читання %s: %w", optPath, err)
+	}
+
+	var optW, optH int
+	if isSVG {
+		// SVG size can be taken from manifest
+	} else if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
+		optW = cfg.Width
+		optH = cfg.Height
+	}
+	if optW == 0 {
+		optW = getMapInt(targetEntry, "optimizedWidth")
+		if optW == 0 {
+			optW = getMapInt(targetEntry, "naturalWidth")
+		}
+	}
+	if optH == 0 {
+		optH = getMapInt(targetEntry, "optimizedHeight")
+		if optH == 0 {
+			optH = getMapInt(targetEntry, "naturalHeight")
+		}
+	}
+
+	var optBase64 string
+	if isSVG {
+		optBase64 = fmt.Sprintf("data:image/svg+xml;base64,%s", base64.StdEncoding.EncodeToString(data))
+	} else {
+		optBase64 = fmt.Sprintf("data:image/webp;base64,%s", base64.StdEncoding.EncodeToString(data))
+	}
+
+	origBytes := getMapInt64(targetEntry, "originalBytes")
+	if origBytes == 0 {
+		origBytes = getMapInt64(targetEntry, "bytes")
+	}
+	origFormatted := getMapString(targetEntry, "originalFormatted")
+	if origFormatted == "" && origBytes > 0 {
+		origFormatted = formatBytes(origBytes)
+	}
+	optBytes := int64(len(data))
+	optFormatted := formatBytes(optBytes)
+	savingsBytes := origBytes - optBytes
+	var savingsPct float64
+	if origBytes > 0 {
+		savingsPct = float64(savingsBytes) / float64(origBytes) * 100
+	}
+
+	rawURL := getMapString(targetEntry, "sourceUrl")
+	if rawURL == "" {
+		rawURL = getMapString(targetEntry, "originalPath")
+	}
+	basename := getMapString(targetEntry, "basename")
+
+	return &optimizer.ConversionResult{
+		URL:                 rawURL,
+		Filename:            basename,
+		OriginalWidth:       getMapInt(targetEntry, "naturalWidth"),
+		OriginalHeight:      getMapInt(targetEntry, "naturalHeight"),
+		OptimizedWidth:      optW,
+		OptimizedHeight:     optH,
+		OriginalBytes:       origBytes,
+		OriginalFormatted:   origFormatted,
+		OptimizedBytes:      optBytes,
+		OptimizedFormatted:  optFormatted,
+		SavingsBytes:        savingsBytes,
+		SavingsFormatted:    formatBytes(savingsBytes),
+		SavingsPercent:      savingsPct,
+		QualityUsed:         float32(getMapFloat64(targetEntry, "quality")),
+		IsLossless:          getMapBool(targetEntry, "isLossless"),
+		OptimizedWebPBase64: optBase64,
+	}, nil
 }

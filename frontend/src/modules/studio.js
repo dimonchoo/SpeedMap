@@ -329,6 +329,27 @@ export function createStudioModule() {
 
       this.imageStudio._inFlight = true;
 
+      // In Package Mode, if this image was replaced with a custom local file, load directly from disk
+      if (this.packageContext?.active && (img.isCustomReplaced || img.sourceType === 'custom_file')) {
+        try {
+          if (window.go?.main?.App?.GetPackageImagePreview) {
+            const localRes = await window.go.main.App.GetPackageImagePreview(this.packageContext.packageDir, img.id);
+            if (!this.imageStudio._cache) this.imageStudio._cache = {};
+            this.imageStudio._cache[cacheKey] = localRes;
+            if (this.currentStudioImage?.id === img.id) {
+              this.imageStudio.currentResult = localRes;
+              this.imageStudio.error = null;
+            }
+            return;
+          }
+        } catch (e) {
+          console.warn('Failed to load package image preview from disk, falling back to remote:', e);
+        } finally {
+          this.imageStudio._inFlight = false;
+          this.imageStudio.isConverting = false;
+        }
+      }
+
       const quality = this.currentStudioQuality;
       const lossless = this.currentStudioLossless;
       const dither = this.currentStudioDither;
@@ -731,6 +752,146 @@ export function createStudioModule() {
       } catch (err) {
         console.error('Failed to open compare.html:', err);
         this.showToast?.('error', 'Помилка відкриття звіту', err.message);
+      }
+    },
+
+    async replaceCustomStudioImage() {
+      const img = this.currentStudioImage;
+      if (!this.packageContext.active || !img || !img.id) return;
+      try {
+        if (!window.go?.main?.App?.SelectImageFile || !window.go?.main?.App?.ReplacePackageImageWithCustomFile) {
+          throw new Error('IPC methods not available');
+        }
+        const filePath = await window.go.main.App.SelectImageFile("Виберіть зображення для заміни (WebP, PNG, JPG, SVG)");
+        if (!filePath) return;
+
+        this.showToast?.('info', 'Заміна файлу', 'Обробка та збереження у пакет...');
+        const res = await window.go.main.App.ReplacePackageImageWithCustomFile(
+          this.packageContext.packageDir,
+          img.id,
+          filePath,
+          img.url
+        );
+
+        img.optimizedBytes = res.optimizedBytes;
+        img.optimizedFormatted = res.optimizedFormatted;
+        img.savingsPercent = res.savingsPercent;
+        img.optimizedWidth = res.optimizedWidth;
+        img.optimizedHeight = res.optimizedHeight;
+        img.isModified = true;
+        img.isCustomReplaced = true;
+        img.sourceType = 'custom_file';
+        img.replacedAt = new Date().toLocaleTimeString();
+
+        if (!this.packageContext.modifiedIds.includes(img.id)) {
+          this.packageContext.modifiedIds.push(img.id);
+        }
+
+        // Invalidate Studio cache
+        const cacheKey = this.getStudioCacheKey(img.url);
+        if (this.imageStudio._cache) {
+          delete this.imageStudio._cache[cacheKey];
+        }
+
+        if (window.go?.main?.App?.GetPackageImagePreview) {
+          const localRes = await window.go.main.App.GetPackageImagePreview(this.packageContext.packageDir, img.id);
+          this.imageStudio.currentResult = localRes;
+          this.imageStudio.error = null;
+        }
+
+        this.showToast?.('success', `Файл #${img.id} замінено 🟢`, `${img.basename} оновлено з власного файлу (${res.optimizedFormatted})`);
+        this.addLog?.('success', `🟢 Замінено на власний файл: images/${img.id}/optimized.webp (${img.basename}) - ${res.optimizedFormatted}`);
+      } catch (err) {
+        console.error('Failed to replace image with custom file:', err);
+        this.showToast?.('error', 'Помилка заміни файлу', err.message);
+      }
+    },
+
+    async reloadStudioImageFromDisk() {
+      const img = this.currentStudioImage;
+      if (!this.packageContext.active || !img || !img.id) return;
+      try {
+        if (!window.go?.main?.App?.ReloadPackageImageFromDisk) {
+          throw new Error('ReloadPackageImageFromDisk IPC method not available');
+        }
+        this.showToast?.('info', 'Синхронізація', 'Зчитуємо файл із папки...');
+        const res = await window.go.main.App.ReloadPackageImageFromDisk(
+          this.packageContext.packageDir,
+          img.id,
+          img.url
+        );
+
+        img.optimizedBytes = res.optimizedBytes;
+        img.optimizedFormatted = res.optimizedFormatted;
+        img.savingsPercent = res.savingsPercent;
+        img.optimizedWidth = res.optimizedWidth;
+        img.optimizedHeight = res.optimizedHeight;
+        img.isModified = true;
+        img.isCustomReplaced = true;
+        img.sourceType = 'custom_file';
+        img.replacedAt = new Date().toLocaleTimeString();
+
+        if (!this.packageContext.modifiedIds.includes(img.id)) {
+          this.packageContext.modifiedIds.push(img.id);
+        }
+
+        const cacheKey = this.getStudioCacheKey(img.url);
+        if (this.imageStudio._cache) {
+          delete this.imageStudio._cache[cacheKey];
+        }
+
+        if (window.go?.main?.App?.GetPackageImagePreview) {
+          const localRes = await window.go.main.App.GetPackageImagePreview(this.packageContext.packageDir, img.id);
+          this.imageStudio.currentResult = localRes;
+          this.imageStudio.error = null;
+        }
+
+        this.showToast?.('success', `Файл #${img.id} синхронізовано 🟢`, `Дані оновлено з диска (${res.optimizedFormatted})`);
+        this.addLog?.('success', `🟢 Синхронізовано з диска: images/${img.id}/optimized.webp - ${res.optimizedFormatted}`);
+      } catch (err) {
+        console.error('Failed to reload image from disk:', err);
+        this.showToast?.('error', 'Помилка синхронізації', err.message);
+      }
+    },
+
+    async revertStudioImageToRemote() {
+      const img = this.currentStudioImage;
+      if (!this.packageContext.active || !img || !img.id) return;
+      if (!confirm(`Повернути вихідний варіант з сайту для #${img.id} (${img.basename})?\nВаш локальний файл буде замінено на версію з сайту.`)) {
+        return;
+      }
+      try {
+        if (!window.go?.main?.App?.RevertPackageImageToRemote) {
+          throw new Error('RevertPackageImageToRemote IPC method not available');
+        }
+        this.showToast?.('info', 'Відновлення', 'Завантажуємо оригінал із сайту...');
+        const res = await window.go.main.App.RevertPackageImageToRemote(
+          this.packageContext.packageDir,
+          img.id,
+          img.url,
+          this.config
+        );
+
+        img.optimizedBytes = res.optimizedBytes;
+        img.optimizedFormatted = res.optimizedFormatted;
+        img.savingsPercent = res.savingsPercent;
+        img.optimizedWidth = res.optimizedWidth;
+        img.optimizedHeight = res.optimizedHeight;
+        img.isCustomReplaced = false;
+        img.sourceType = 'remote_url';
+        delete img.replacedAt;
+
+        const cacheKey = this.getStudioCacheKey(img.url);
+        if (this.imageStudio._cache) {
+          delete this.imageStudio._cache[cacheKey];
+        }
+
+        this.loadStudioCurrent();
+        this.showToast?.('success', 'Відновлено 🌐', 'Зображення знову синхронізоване з сайтом');
+        this.addLog?.('info', `🌐 Відновлено з сайту: images/${img.id}/optimized.webp (${img.basename})`);
+      } catch (err) {
+        console.error('Failed to revert image to remote:', err);
+        this.showToast?.('error', 'Помилка відновлення', err.message);
       }
     }
   };

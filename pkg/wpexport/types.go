@@ -25,6 +25,9 @@ type ManifestImage struct {
 	Quality                 float32  `json:"quality,omitempty"`
 	IsLossless              bool     `json:"isLossless,omitempty"`
 	IsOverridden            bool     `json:"isOverridden,omitempty"`
+	IsCustomReplaced        bool     `json:"isCustomReplaced,omitempty"`
+	SourceType              string   `json:"sourceType,omitempty"`
+	ReplacedAt              string   `json:"replacedAt,omitempty"`
 }
 
 // ImageOverride specifies per-image customization applied in Image Studio.

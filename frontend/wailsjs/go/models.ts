@@ -1561,6 +1561,9 @@ export namespace wpexport {
 	    isModified: boolean;
 	    quality?: number;
 	    isLossless?: boolean;
+	    isCustomReplaced?: boolean;
+	    sourceType?: string;
+	    replacedAt?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new StudioPackageImageItem(source);
@@ -1597,6 +1600,9 @@ export namespace wpexport {
 	        this.isModified = source["isModified"];
 	        this.quality = source["quality"];
 	        this.isLossless = source["isLossless"];
+	        this.isCustomReplaced = source["isCustomReplaced"];
+	        this.sourceType = source["sourceType"];
+	        this.replacedAt = source["replacedAt"];
 	    }
 	}
 	export class PackageStudioContext {

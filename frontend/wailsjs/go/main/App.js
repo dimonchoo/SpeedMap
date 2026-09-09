@@ -6,6 +6,10 @@ export function CancelScan() {
   return window['go']['main']['App']['CancelScan']();
 }
 
+export function ClearPreviewCache(arg1) {
+  return window['go']['main']['App']['ClearPreviewCache'](arg1);
+}
+
 export function CompareExportPackages(arg1, arg2) {
   return window['go']['main']['App']['CompareExportPackages'](arg1, arg2);
 }
@@ -106,6 +110,10 @@ export function GetGDriveStatus() {
   return window['go']['main']['App']['GetGDriveStatus']();
 }
 
+export function GetPackageImagePreview(arg1, arg2) {
+  return window['go']['main']['App']['GetPackageImagePreview'](arg1, arg2);
+}
+
 export function ListSiteProfiles() {
   return window['go']['main']['App']['ListSiteProfiles']();
 }
@@ -134,6 +142,14 @@ export function PreviewImageComparisonHTML(arg1, arg2, arg3) {
   return window['go']['main']['App']['PreviewImageComparisonHTML'](arg1, arg2, arg3);
 }
 
+export function ReloadPackageImageFromDisk(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReloadPackageImageFromDisk'](arg1, arg2, arg3);
+}
+
+export function ReplacePackageImageWithCustomFile(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ReplacePackageImageWithCustomFile'](arg1, arg2, arg3, arg4);
+}
+
 export function RescanSingleURL(arg1, arg2, arg3) {
   return window['go']['main']['App']['RescanSingleURL'](arg1, arg2, arg3);
 }
@@ -144,6 +160,10 @@ export function ResolveDomain(arg1) {
 
 export function RevealInFinder(arg1) {
   return window['go']['main']['App']['RevealInFinder'](arg1);
+}
+
+export function RevertPackageImageToRemote(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RevertPackageImageToRemote'](arg1, arg2, arg3, arg4);
 }
 
 export function SaveGDriveCredentials(arg1, arg2) {
@@ -160,6 +180,10 @@ export function SaveTunedImageToPackage(arg1, arg2, arg3, arg4, arg5) {
 
 export function SelectDirectory(arg1) {
   return window['go']['main']['App']['SelectDirectory'](arg1);
+}
+
+export function SelectImageFile(arg1) {
+  return window['go']['main']['App']['SelectImageFile'](arg1);
 }
 
 export function SendSystemNotification(arg1, arg2, arg3) {

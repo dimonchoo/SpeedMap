@@ -12,6 +12,8 @@ import {w3c} from '../models';
 
 export function CancelScan():Promise<void>;
 
+export function ClearPreviewCache(arg1:string):Promise<void>;
+
 export function CompareExportPackages(arg1:string,arg2:string):Promise<wpexport.ExportDiffReport>;
 
 export function CompareHistoryRuns(arg1:string,arg2:string):Promise<history.RunsDiffResult>;
@@ -62,6 +64,8 @@ export function GetGDriveCredentials():Promise<Record<string, string>>;
 
 export function GetGDriveStatus():Promise<Record<string, any>>;
 
+export function GetPackageImagePreview(arg1:string,arg2:string):Promise<optimizer.ConversionResult>;
+
 export function ListSiteProfiles():Promise<Array<profiles.SiteProfile>>;
 
 export function LoadExportPackageForStudio(arg1:string):Promise<wpexport.PackageStudioContext>;
@@ -76,11 +80,17 @@ export function PlayNotificationSound(arg1:string):Promise<void>;
 
 export function PreviewImageComparisonHTML(arg1:string,arg2:config.ScanConfig,arg3:Array<scanner.PageResult>):Promise<string>;
 
+export function ReloadPackageImageFromDisk(arg1:string,arg2:string,arg3:string):Promise<wpexport.TunedSaveResult>;
+
+export function ReplacePackageImageWithCustomFile(arg1:string,arg2:string,arg3:string,arg4:string):Promise<wpexport.TunedSaveResult>;
+
 export function RescanSingleURL(arg1:config.ScanConfig,arg2:string,arg3:number):Promise<scanner.PageResult>;
 
 export function ResolveDomain(arg1:string):Promise<scanner.DomainResolution>;
 
 export function RevealInFinder(arg1:string):Promise<void>;
+
+export function RevertPackageImageToRemote(arg1:string,arg2:string,arg3:string,arg4:config.ScanConfig):Promise<wpexport.TunedSaveResult>;
 
 export function SaveGDriveCredentials(arg1:string,arg2:string):Promise<void>;
 
@@ -89,6 +99,8 @@ export function SaveSiteProfile(arg1:profiles.SiteProfile):Promise<profiles.Site
 export function SaveTunedImageToPackage(arg1:string,arg2:string,arg3:string,arg4:optimizer.ImageTuneOptions,arg5:config.ScanConfig):Promise<wpexport.TunedSaveResult>;
 
 export function SelectDirectory(arg1:string):Promise<string>;
+
+export function SelectImageFile(arg1:string):Promise<string>;
 
 export function SendSystemNotification(arg1:string,arg2:string,arg3:string):Promise<void>;
 

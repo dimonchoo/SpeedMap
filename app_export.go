@@ -402,3 +402,58 @@ func (a *App) OpenPackageCompareHTML(dirOrManifest string) error {
 	return wpexport.OpenPackageCompareHTML(dirOrManifest)
 }
 
+// SelectImageFile opens native file picker dialog to pick an image file
+func (a *App) SelectImageFile(title string) (string, error) {
+	if title == "" {
+		title = "Виберіть зображення для заміни (WebP, PNG, JPG, SVG)"
+	}
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: title,
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "Зображення (*.webp, *.png, *.jpg, *.jpeg, *.svg)",
+				Pattern:     "*.webp;*.png;*.jpg;*.jpeg;*.svg",
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return filePath, nil
+}
+
+// ReplacePackageImageWithCustomFile replaces an optimized image in package with a custom local file
+func (a *App) ReplacePackageImageWithCustomFile(packageDir, imageID, sourceFilePath, rawURL string) (*wpexport.TunedSaveResult, error) {
+	fmt.Printf("[GO LOG] ReplacePackageImageWithCustomFile image #%s with %s in %s\n", imageID, sourceFilePath, packageDir)
+	res, err := wpexport.ReplacePackageImageWithFile(packageDir, imageID, sourceFilePath)
+	if err == nil && rawURL != "" {
+		a.ClearPreviewCache(rawURL)
+	}
+	return res, err
+}
+
+// ReloadPackageImageFromDisk refreshes manifest & stats if file in package was changed directly in Finder
+func (a *App) ReloadPackageImageFromDisk(packageDir, imageID, rawURL string) (*wpexport.TunedSaveResult, error) {
+	fmt.Printf("[GO LOG] ReloadPackageImageFromDisk image #%s in %s\n", imageID, packageDir)
+	res, err := wpexport.ReloadPackageImageFromDisk(packageDir, imageID)
+	if err == nil && rawURL != "" {
+		a.ClearPreviewCache(rawURL)
+	}
+	return res, err
+}
+
+// RevertPackageImageToRemote restores original from site URL
+func (a *App) RevertPackageImageToRemote(packageDir, imageID, rawURL string, cfg config.ScanConfig) (*wpexport.TunedSaveResult, error) {
+	fmt.Printf("[GO LOG] RevertPackageImageToRemote image #%s in %s\n", imageID, packageDir)
+	res, err := wpexport.RevertPackageImageToRemote(packageDir, imageID, cfg)
+	if err == nil && rawURL != "" {
+		a.ClearPreviewCache(rawURL)
+	}
+	return res, err
+}
+
+// GetPackageImagePreview returns ConversionResult based on local package file
+func (a *App) GetPackageImagePreview(packageDir, imageID string) (*optimizer.ConversionResult, error) {
+	return wpexport.GetPackageImagePreview(packageDir, imageID)
+}
+

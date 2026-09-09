@@ -90,7 +90,19 @@
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
 
-            <template v-if="currentStudioImage?.isModified || packageContext?.modifiedIds?.includes(currentStudioImage?.id)">
+            <template v-if="currentStudioImage?.isCustomReplaced || currentStudioImage?.sourceType === 'custom_file'">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-950/80 text-amber-300 border border-amber-700/80 shadow-sm flex items-center space-x-1 shrink-0"
+                :title="'Замінено вручну на власний файл' + (currentStudioImage?.replacedAt ? ' (' + currentStudioImage?.replacedAt + ')' : '')">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span>Локальний файл</span>
+              </span>
+              <button v-if="packageContext?.active" @click="revertStudioImageToRemote()"
+                class="px-2 py-0.5 rounded text-[10px] text-slate-300 hover:text-cyan-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition shrink-0"
+                title="Повернути початковий варіант із сайту">
+                Повернути з сайту
+              </button>
+            </template>
+            <template v-else-if="currentStudioImage?.isModified || packageContext?.modifiedIds?.includes(currentStudioImage?.id)">
               <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-950/80 text-emerald-300 border border-emerald-700 shadow-sm flex items-center space-x-1 shrink-0">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <span class="hidden sm:inline">Оновлено</span>
@@ -258,6 +270,26 @@
         <!-- Right: Actions & Close -->
         <div class="flex items-center space-x-2 shrink-0">
           <template v-if="packageContext?.active">
+            <!-- Replace with custom file button -->
+            <button @click="replaceCustomStudioImage()"
+              class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow"
+              title="Замінити це оптимізоване зображення на власний файл (WebP, PNG, JPG, SVG)">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              <span class="hidden md:inline">Замінити файл...</span>
+              <span class="md:hidden">Замінити</span>
+            </button>
+
+            <!-- Reload from disk if edited in Finder -->
+            <button @click="reloadStudioImageFromDisk()"
+              class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs p-1.5 rounded-xl transition flex items-center"
+              title="Синхронізувати з диском (якщо файл замінено у папці)">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            </button>
+
             <button @click="saveCurrentToPackage()" :disabled="!imageStudio.currentResult"
               class="bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-40 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition flex items-center space-x-1.5 shadow-lg ring-1 ring-fuchsia-400/50"
               title="Зберегти та оновити файл прямо в пакеті (Cmd+S / Ctrl+S)">
