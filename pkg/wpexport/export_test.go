@@ -256,13 +256,10 @@ func TestWriteWebPFilesAndReviewZIP(t *testing.T) {
 		compareHTML = string(b)
 		break
 	}
-	if !strings.Contains(compareHTML, "flex-direction:column") {
-		t.Fatalf("compare.html should stack Before/After vertically")
+	if !strings.Contains(compareHTML, "grid-2col") || !strings.Contains(compareHTML, "card-item") {
+		t.Fatalf("compare.html should use modern card layout with grid-2col")
 	}
-	if strings.Contains(compareHTML, "grid-template-columns:1fr 1fr") {
-		t.Fatalf("compare.html still uses side-by-side grid")
-	}
-	if !strings.Contains(compareHTML, `class="ctx"`) || !strings.Contains(compareHTML, `target="_blank"`) {
+	if !strings.Contains(compareHTML, `class="card-context ctx"`) || !strings.Contains(compareHTML, `target="_blank"`) {
 		t.Fatalf("compare.html should include live page/file context links")
 	}
 }
