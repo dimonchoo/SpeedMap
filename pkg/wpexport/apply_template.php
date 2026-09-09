@@ -293,8 +293,27 @@ function speedmap_batch_replace_urls( $replacements ) {
 		}
 	}
 
-	WP_CLI::log( sprintf( 'Batch replace done: updated %d posts, %d postmeta rows.', $total_changed, $meta_changed ) );
-	return $total_changed + $meta_changed;
+	// 3. Process wp_options (for ACF Theme Options, Site Settings, Header/Footer)
+	$opt_rows = $wpdb->get_results(
+		"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name NOT LIKE '_transient%' AND (option_value LIKE '%uploads%' OR option_value LIKE '%themes%' OR option_value LIKE '%images%')"
+	);
+	$opt_changed = 0;
+	if ( ! empty( $opt_rows ) ) {
+		foreach ( $opt_rows as $o ) {
+			$new_val = strtr( $o->option_value, $full_map );
+			if ( $new_val !== $o->option_value ) {
+				$wpdb->update(
+					$wpdb->options,
+					array( 'option_value' => $new_val ),
+					array( 'option_name' => $o->option_name )
+				);
+				$opt_changed++;
+			}
+		}
+	}
+
+	WP_CLI::log( sprintf( 'Batch replace done: updated %d posts, %d postmeta, %d options rows.', $total_changed, $meta_changed, $opt_changed ) );
+	return $total_changed + $meta_changed + $opt_changed;
 }
 
 /**
