@@ -463,3 +463,32 @@ func (a *App) GetPackageImagePreview(packageDir, imageID string) (*optimizer.Con
 	return wpexport.GetPackageImagePreview(packageDir, imageID)
 }
 
+// VerifyManifest runs live verification of an export package / manifest against target URL
+func (a *App) VerifyManifest(manifestPathOrDir string, targetURL string, checkPages bool) (*wpexport.ManifestVerifyResponse, error) {
+	fmt.Printf("[GO LOG] VerifyManifest called: manifest=%s, target=%s, checkPages=%v\n", manifestPathOrDir, targetURL, checkPages)
+	req := wpexport.ManifestVerifyRequest{
+		ManifestPathOrDir: manifestPathOrDir,
+		TargetURL:         targetURL,
+		CheckPages:        checkPages,
+		Concurrency:       8,
+		TimeoutSec:        15,
+	}
+
+	return wpexport.VerifyManifest(a.ctx, req, func(p wpexport.ManifestVerifyProgress) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "manifest:verify_progress", p)
+		}
+	})
+}
+
+// SelectManifestDialog opens a directory picker for manifest package folder
+func (a *App) SelectManifestDialog() (string, error) {
+	selectedDir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Оберіть папку пакету (speedmap-webp-...) або папку з manifest.json",
+	})
+	if err != nil {
+		return "", err
+	}
+	return selectedDir, nil
+}
+

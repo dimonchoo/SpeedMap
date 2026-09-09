@@ -2,6 +2,9 @@ package main
 
 import (
 	"embed"
+	"os"
+
+	"SpeedMap/pkg/mcp"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -13,6 +16,14 @@ import (
 var assets embed.FS
 
 func main() {
+	// Check if running as Model Context Protocol (MCP) server
+	if len(os.Args) > 1 && (os.Args[1] == "--mcp" || os.Args[1] == "mcp") {
+		if err := mcp.RunStdioServer(); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Create an instance of the app structure
 	app := NewApp()
 

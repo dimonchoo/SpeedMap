@@ -11,6 +11,7 @@ import { createDiffModule } from './modules/diff.js';
 import { createProfilesModule } from './modules/profiles.js';
 import { createCloudModule } from './modules/cloud.js';
 import { createShortcutsModule } from './modules/shortcuts.js';
+import { createVerifyModule } from './modules/verify.js';
 
 /**
  * Safely merges module objects preserving property descriptors (getters/setters)
@@ -45,7 +46,8 @@ export function speedMapApp() {
     createDiffModule(),
     createProfilesModule(),
     createCloudModule(),
-    createShortcutsModule()
+    createShortcutsModule(),
+    createVerifyModule()
   );
 
   store.initApp = function() {
@@ -55,6 +57,7 @@ export function speedMapApp() {
     this.checkGDriveStatus?.();
     this.initShortcuts?.();
     this.initScannerEvents?.();
+    this.initVerifyEvents?.();
     this.addLog?.('info', 'SpeedMap додаток готовий до роботи.');
   };
 
