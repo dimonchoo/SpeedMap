@@ -313,11 +313,19 @@ func GenerateCompareHTML(domain string, entries []ReviewZipEntry) string {
 			afterFmt = "SVG"
 		}
 		num := idx + 1
+		origDimAttr := ""
+		if e.NaturalWidth > 0 && e.NaturalHeight > 0 {
+			origDimAttr = fmt.Sprintf(" width=\"%d\" height=\"%d\" style=\"aspect-ratio:%d/%d;\"", e.NaturalWidth, e.NaturalHeight, e.NaturalWidth, e.NaturalHeight)
+		}
+		optDimAttr := origDimAttr
+		if e.OptimizedWidth > 0 && e.OptimizedHeight > 0 {
+			optDimAttr = fmt.Sprintf(" width=\"%d\" height=\"%d\" style=\"aspect-ratio:%d/%d;\"", e.OptimizedWidth, e.OptimizedHeight, e.OptimizedWidth, e.OptimizedHeight)
+		}
 		htmlBuf.WriteString(fmt.Sprintf("<section class=\"pair\" id=\"item-%d\" data-index=\"%d\" data-id=\"%s\">", num, idx, esc(e.ID)))
 		htmlBuf.WriteString(fmt.Sprintf("<h2><a href=\"#item-%d\" class=\"item-badge\" title=\"Зображення #%d (клікніть для копіювання посилання)\">#%d</a><span class=\"item-id-pill\" title=\"ID папки в images/%s/\">ID: %s</span>%s</h2>", num, num, num, esc(e.ID), esc(e.ID), esc(e.Basename)))
 		writeReviewContextHTML(&htmlBuf, e.SourceURL, e.Pages)
-		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"original\" loading=\"lazy\" onerror=\"this.onerror=null;this.style.opacity='0.4';\" onclick=\"openGallery(%d, 'orig')\"><figcaption>Before · %s · %s</figcaption></figure>", esc(e.OriginalPath), idx, esc(e.Basename), esc(e.OriginalFormatted)))
-		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"optimized\" loading=\"lazy\" onclick=\"openGallery(%d, 'after')\"><figcaption>After · %s · %s · <span class=\"sav\">−%.1f%%</span></figcaption></figure>", esc(e.OptimizedPath), idx, afterFmt, esc(e.OptimizedFormatted), e.SavingsPercent))
+		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"original\" loading=\"lazy\"%s onerror=\"this.onerror=null;this.style.opacity='0.4';\" onclick=\"openGallery(%d, 'orig')\"><figcaption>Before · %s · %s</figcaption></figure>", esc(e.OriginalPath), origDimAttr, idx, esc(e.Basename), esc(e.OriginalFormatted)))
+		htmlBuf.WriteString(fmt.Sprintf("<figure><img src=\"%s\" alt=\"optimized\" loading=\"lazy\"%s onclick=\"openGallery(%d, 'after')\"><figcaption>After · %s · %s · <span class=\"sav\">−%.1f%%</span></figcaption></figure>", esc(e.OptimizedPath), optDimAttr, idx, afterFmt, esc(e.OptimizedFormatted), e.SavingsPercent))
 		htmlBuf.WriteString("</section>")
 	}
 
@@ -454,13 +462,43 @@ function scrollToCard(num) {
 	}
 	const topBar = document.querySelector('.top-bar');
 	const navHeight = topBar ? topBar.offsetHeight : 60;
-	const rect = target.getBoundingClientRect();
-	const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+
+	function getTargetY() {
+		const rect = target.getBoundingClientRect();
+		const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+		return Math.max(0, rect.top + scrollTop - navHeight - 16);
+	}
+
+	const currentY = window.pageYOffset || document.documentElement.scrollTop;
+	const destY = getTargetY();
+	const dist = Math.abs(destY - currentY);
+
+	if (dist > 3500) {
+		const jumpNear = destY > currentY ? (destY - 1200) : (destY + 1200);
+		window.scrollTo(0, jumpNear);
+	}
+
 	window.scrollTo({
-		top: Math.max(0, rect.top + scrollTop - navHeight - 16),
+		top: getTargetY(),
 		behavior: 'smooth'
 	});
 	highlightCard(target);
+
+	let checks = 0;
+	const interval = setInterval(() => {
+		checks++;
+		const rect = target.getBoundingClientRect();
+		const diff = Math.abs(rect.top - (navHeight + 16));
+		if (diff > 25 && checks <= 6) {
+			window.scrollTo({
+				top: getTargetY(),
+				behavior: checks > 3 ? 'auto' : 'smooth'
+			});
+		}
+		if (checks >= 6 || diff <= 25) {
+			clearInterval(interval);
+		}
+	}, 200);
 }
 
 function jumpToItem(val, openPreview) {
