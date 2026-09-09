@@ -507,6 +507,7 @@ $report['backup'] = $backup_path;
 WP_CLI::log( 'Backup written: ' . $backup_path . ' (' . count( $backup['items'] ) . ' attachments)' );
 
 // Pass 2: mutate DB (keep old raster files on disk; preserve title/alt/caption)
+global $wpdb;
 $url_replacements = array();
 foreach ( $resolved as $row ) {
 	if ( $row['status'] !== 'pending' ) {
@@ -523,16 +524,16 @@ foreach ( $resolved as $row ) {
 	if ( $att_id ) {
 		update_post_meta( $att_id, '_wp_attached_file', $webp_rel );
 		$mime_type = ( isset( $row['format'] ) && $row['format'] === 'svg' ) ? 'image/svg+xml' : 'image/webp';
-		wp_update_post(
-			array(
-				'ID'             => $att_id,
-				'post_mime_type' => $mime_type,
-			)
+		$wpdb->update(
+			$wpdb->posts,
+			array( 'post_mime_type' => $mime_type ),
+			array( 'ID' => $att_id )
 		);
+		clean_post_cache( $att_id );
 
-		require_once ABSPATH . 'wp-admin/includes/image.php';
-		$meta = wp_generate_attachment_metadata( $att_id, $dest_abs );
-		if ( ! empty( $meta ) ) {
+		$meta = wp_get_attachment_metadata( $att_id );
+		if ( is_array( $meta ) ) {
+			$meta['file'] = $webp_rel;
 			wp_update_attachment_metadata( $att_id, $meta );
 		}
 
